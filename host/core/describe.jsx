@@ -15,6 +15,7 @@ function layerKind(l) {
   return "footage";
 }
 
+/** @param {Layer} l @returns {any} */
 function layerInfo(l) {
   return {
     id: l.id, index: l.index, name: l.name, kind: layerKind(l),

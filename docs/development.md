@@ -31,8 +31,18 @@ What a change needs before you can see it in After Effects:
 |---|---|---|
 | `src/` | TypeScript, compiled by `tsc` to `dist/` | The published entry point (`bin`, MCP client configs) is `dist/index.js`; `tsc` also type-checks. |
 | `test/`, `scripts/`, `.claude/skills/run-ae-motion/driver.ts` | TypeScript, run directly by Node | Node 22.18+ strips types at load time, so there is no build step. Only erasable syntax is allowed (no `enum`, `namespace` or `constructor(public x)`), imports use the `.ts` extension, and type-only imports use `import type`; `tsconfig.tools.json` enforces this and type-checks them (`npm run typecheck`). The mock-DOM tests (`test/mock-*.test.ts`) are `// @ts-nocheck`: their After Effects fakes are deliberately loose. |
-| `host/*.jsx` | ExtendScript (ES3 JavaScript) | Runs inside After Effects' ExtendScript engine, which predates ES5; TypeScript can no longer target it. |
+| `host/*.jsx` | ExtendScript (ES3 JavaScript) | Runs inside After Effects' ExtendScript engine, which predates ES5. |
+| `host/*.ts` (`core/layout.ts`, `commands/design.ts`) | TypeScript, compiled by `tsc -p tsconfig.host.json` to `build/host/` | A pilot of typed host code: checked against the After Effects 22.0 API and the ES3 standard library (`types-for-adobe`), compiled to ES5 syntax, then joined with the `.jsx` files by `scripts/build-host.ts`. See below. |
 | `panel/main.js` | JavaScript | Loaded directly by the CEP panel's own (older) Node, without a build step. |
+
+### Host TypeScript (`host/*.ts`)
+
+- **Build:** `npm run build:host` runs `tsc -p tsconfig.host.json` (to `build/host/`, gitignored) and then `scripts/build-host.ts`, which takes the compiled `.js` for every `.ts` entry in `MODULES`. The ES3 lint in `test/static-checks.ts` runs on that compiled output.
+- **Types:** After Effects 22.0 (the manifest minimum), so an API added later (for example `setTrackMatte`, 23.0) needs a cast and a feature check. The standard library is ES3: `map`, `forEach`, `JSON` and other ES5+ runtime APIs are compile errors, while modern *syntax* (`const`, arrows, template strings) is lowered by `tsc`.
+- **One global scope:** files are scripts (`module: none`), all wrapped in the same closure, so every top-level name is shared across `host/` and with the After Effects declarations. Interfaces with a colliding name **merge silently** (a `Bounds` interface merged with ScriptUI's): prefix type names (`LayerBounds`, `Affine`).
+- **Using `.jsx` helpers from `.ts`:** `allowJs` lets TypeScript see them; give the ones you call a JSDoc type (`/** @param {number} id @returns {Layer} */`), especially `@returns {never}` on `fail`. JSDoc in `.jsx` must still pass the ES3 lint, so write `function(): T`, not `() => T`, and avoid `...`.
+- **`property()` returns a union** of every property kind; `group()` / `prop()` in `commands/design.ts` name what a call site expects instead of casting inline.
+- The type definitions are not perfect: they omit `Error.message` (ExtendScript has it; the declarations only list `description`).
 
 ## Adding a tool
 

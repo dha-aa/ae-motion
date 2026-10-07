@@ -1,5 +1,7 @@
 #!/usr/bin/env node
 // Builds panel/host/host.jsx, the single ExtendScript file the CEP panel loads, from the sources in host/.
+// host/*.jsx are used as they are; host/*.ts are first compiled by `tsc -p tsconfig.host.json` into build/host/*.js
+// (npm run build:host does both), and the compiled file is used in their place.
 //
 // The sources are fragments of one closure: everything except json.jsx is wrapped in
 //   var AEM = (function () { var C = {}; ... return { dispatch: dispatch }; })();
@@ -14,6 +16,8 @@ import { fileURLToPath } from "node:url";
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 export const HOST_DIR = path.join(ROOT, "host");
 export const HOST_OUT = path.join(ROOT, "panel", "host", "host.jsx");
+/** Where tsc puts the compiled host/*.ts (tsconfig.host.json outDir). */
+export const HOST_BUILD_DIR = path.join(ROOT, "build", "host");
 
 /** Emitted before the AEM closure. */
 export const PRELUDE = ["json.jsx"];
@@ -27,7 +31,7 @@ export const MODULES = [
   "core/timing.jsx",
   "core/vector.jsx",
   "core/scene3d.jsx",
-  "core/layout.jsx",
+  "core/layout.ts",
   "commands/inspect.jsx",
   "commands/project.jsx",
   "commands/layers.jsx",
@@ -36,13 +40,21 @@ export const MODULES = [
   "commands/animate.jsx",
   "commands/text.jsx",
   "commands/scene3d.jsx",
-  "commands/design.jsx",
+  "commands/design.ts",
   "commands/output.jsx",
   "dispatch.jsx",
 ];
 export const HOST_SOURCES = [...PRELUDE, ...MODULES];
 
-const read = (rel: string): string => fs.readFileSync(path.join(HOST_DIR, rel), "utf8").replace(/\r\n/g, "\n").replace(/\n+$/, "");
+/** The file that is actually emitted for a source: the .jsx itself, or tsc's output for a .ts. */
+export function emittedPath(rel: string): string {
+  return rel.endsWith(".ts") ? path.join(HOST_BUILD_DIR, rel.replace(/\.ts$/, ".js")) : path.join(HOST_DIR, rel);
+}
+const read = (rel: string): string => {
+  const p = emittedPath(rel);
+  if (!fs.existsSync(p)) throw new Error(`${path.relative(ROOT, p)} is missing: run \`npm run build:host\` (it compiles host/*.ts first)`);
+  return fs.readFileSync(p, "utf8").replace(/\r\n/g, "\n").replace(/\n+$/, "");
+};
 const banner = (rel: string): string => `// ---- host/${rel} ----`;
 
 /** Top-level names in the shared closure must be unique, or one file silently overrides another. */

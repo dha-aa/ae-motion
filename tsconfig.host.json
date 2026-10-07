@@ -1,0 +1,23 @@
+{
+  // Compiles host/**/*.ts (ExtendScript for After Effects) to build/host/, which scripts/build-host.ts joins with the
+  // remaining host/**/*.jsx into panel/host/host.jsx. Types: After Effects 22.0 (the manifest minimum) and the ES3
+  // standard library from types-for-adobe, so ES5+ runtime APIs (map, forEach, JSON...) are compile errors.
+  // Modern syntax (const, arrows, template strings) is fine: tsc lowers it; test/static-checks.ts lints the output.
+  "compilerOptions": {
+    "target": "ES5",
+    "module": "none",
+    "noLib": true,
+    "typeRoots": [],
+    "types": [],
+    "strict": true,
+    "alwaysStrict": false,
+    "allowJs": true,
+    "checkJs": false,
+    "outDir": "build/host",
+    "rootDir": "host",
+    "newLine": "lf",
+    "skipLibCheck": true
+  },
+  "files": ["node_modules/types-for-adobe/AfterEffects/22.0/index.d.ts"],
+  "include": ["host/**/*.ts", "host/**/*.jsx"]
+}

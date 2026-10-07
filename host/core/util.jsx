@@ -4,18 +4,23 @@ var EPS = 1e-6;
 
 // Throw a structured error; dispatch() turns it into {ok:false, error:{code,message,hint}}.
 // code is one of NOT_FOUND, BAD_ARGS, AE_ERROR, UNSUPPORTED, EXISTS (see src/errors.ts).
+/** @param {string} code @param {string} message @param {string} [hint] @returns {never} */
 function fail(code, message, hint) { throw { aem: true, code: code, message: message, hint: hint || "" }; }
 
+/** @param {any} o @param {string} k @returns {boolean} */
 function has(o, k) { return o[k] !== undefined && o[k] !== null; }
 
+/** @param {any} a @param {string[]} names @returns {void} */
 function need(a, names) {
   for (var i = 0; i < names.length; i++) if (!has(a, names[i])) fail("BAD_ARGS", "Missing argument: " + names[i]);
 }
 
 // Run fn and return its result, or undefined if it throws (for optional DOM reads that differ between versions).
+/** @template T @param {function(): T} fn @returns {T | undefined} */
 function safe(fn) { try { return fn(); } catch (e) { return undefined; } }
 
 // After Effects returns array-like values; copy them into plain arrays so they serialize.
+/** @param {ArrayLike<number>} v @returns {number[]} */
 function copyArr(v) { var o = [], i; for (i = 0; i < v.length; i++) o.push(v[i]); return o; }
 
 // Colors arrive as [r,g,b] (0-1); After Effects color properties want [r,g,b,a].

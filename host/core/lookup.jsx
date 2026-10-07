@@ -26,6 +26,7 @@ function getComp(id) {
 }
 
 // Layer ids and project.layerByID both arrived in After Effects 22.0, the minimum version in the manifest.
+/** @param {number} id @returns {Layer} */
 function getLayer(id) {
   var l = null;
   try { l = app.project.layerByID(id); } catch (e) {}
@@ -50,6 +51,7 @@ function resolvePath(layer, path) {
 function layersOf(comp) { var out = [], i; for (i = 1; i <= comp.numLayers; i++) out.push(comp.layer(i)); return out; }
 
 // Look up several layers; with comp, every layer must belong to it.
+/** @param {number[]} ids @param {CompItem} [comp] @returns {Layer[]} */
 function pickLayers(ids, comp) {
   var out = [], i, l;
   if (!(ids instanceof Array) || !ids.length) fail("BAD_ARGS", "layer_ids must be a non-empty array");
@@ -62,16 +64,19 @@ function pickLayers(ids, comp) {
 }
 
 // Return the comp shared by all layers, or fail.
+/** @param {Layer[]} layers @returns {CompItem} */
 function sameComp(layers) {
   var comp = layers[0].containingComp, i;
   for (i = 1; i < layers.length; i++) if (layers[i].containingComp.id !== comp.id) fail("BAD_ARGS", "All layers must be in the same composition");
   return comp;
 }
 
+/** @param {Layer[]} layers @returns {void} */
 function assertUnlocked(layers) {
   var i;
   for (i = 0; i < layers.length; i++) if (layers[i].locked) fail("BAD_ARGS", "Layer " + layers[i].id + " is locked", "Unlock it with set_layer locked:false");
 }
 
 // Shorthand for a layer's transform property by match name.
+/** @param {Layer} l @param {string} match @returns {Property<any>} */
 function tp(l, match) { return l.property("ADBE Transform Group").property(match); }

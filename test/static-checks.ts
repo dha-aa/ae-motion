@@ -8,7 +8,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawn, execFileSync } from "node:child_process";
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
-import { buildHost, HOST_DIR, HOST_OUT, HOST_SOURCES } from "../scripts/build-host.ts";
+import { buildHost, emittedPath, HOST_OUT, HOST_SOURCES } from "../scripts/build-host.ts";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -29,7 +29,7 @@ fs.writeFileSync(checkFile, host);
 try { execFileSync(process.execPath, ["--check", checkFile]); report(true, "host.jsx parses"); } catch (e) { report(false, "host.jsx syntax: " + (e instanceof Error ? e.message : String(e))); }
 fs.rmSync(TMP, { recursive: true, force: true });
 
-// 2. ES3 lint, per source file
+// 2. ES3 lint, per emitted file (host/*.jsx as written, host/*.ts as compiled by tsc into build/host/)
 const banned: [RegExp, string][] = [
   [/=>/, "arrow function"], [/\blet\s/, "let"], [/\bconst\s/, "const"], [/`/, "template literal"],
   [/\.(forEach|map|filter|reduce|some|every)\(/, "ES5 array method"],
@@ -39,9 +39,10 @@ const banned: [RegExp, string][] = [
 let lintHits = 0;
 const indexOfUses: string[] = [];
 for (const rel of HOST_SOURCES) {
-  fs.readFileSync(path.join(HOST_DIR, rel), "utf8").split("\n").forEach((ln, i) => {
-    for (const [re, what] of banned) if (re.test(ln)) { console.log(`      host/${rel}:${i + 1}: ${what}: ${ln.trim().slice(0, 100)}`); lintHits++; }
-    if (/\.indexOf\(/.test(ln)) indexOfUses.push(`host/${rel}:${i + 1}: ${ln.trim().slice(0, 100)}`);
+  const file = path.relative(ROOT, emittedPath(rel));
+  fs.readFileSync(emittedPath(rel), "utf8").split("\n").forEach((ln, i) => {
+    for (const [re, what] of banned) if (re.test(ln)) { console.log(`      ${file}:${i + 1}: ${what}: ${ln.trim().slice(0, 100)}`); lintHits++; }
+    if (/\.indexOf\(/.test(ln)) indexOfUses.push(`${file}:${i + 1}: ${ln.trim().slice(0, 100)}`);
   });
 }
 report(lintHits === 0, `ES3 lint (${lintHits} hits)`);

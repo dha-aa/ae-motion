@@ -67,6 +67,7 @@ function checkShapeSpec(s) {
 // Add one shape group (rect | ellipse | star | polygon | path) with optional fill and stroke to a shape layer and
 // return the group. Stroke extras: stroke_opacity, dashes [dash, gap, dash, gap] (up to 3 pairs), line_cap, line_join.
 // Group extras: name, position (offset inside the layer), rotation, opacity; fill_opacity.
+/** @param {Layer} l @param {any} s @returns {PropertyGroup} */
 function addShapeContent(l, s) {
   var root, grp, g, sh, f, st, d, i, tg;
   checkShapeSpec(s);

@@ -4,6 +4,7 @@
 function layerOf(prop) { return prop.propertyGroup(prop.propertyDepth); }
 
 // Check a value can be set on prop and convert it (3-value colors get an alpha; shape specs become Shapes).
+/** @param {Property<any>} prop @param {any} v @returns {any} */
 function coerce(prop, v) {
   var t = prop.propertyValueType, V = PropertyValueType, l;
   if (t === V.TEXT_DOCUMENT) fail("BAD_ARGS", "Text properties are set with set_text");
