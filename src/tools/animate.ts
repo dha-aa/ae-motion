@@ -4,13 +4,13 @@
  */
 import { z } from "zod";
 import type { ToolRegistry } from "./registry.js";
-import { Color, Ease, id, LayerIds, PropPath, Size, Value } from "./schemas.js";
+import { Color, Ease, id, LayerIds, PropPath, Size, Value, ValueOrShape } from "./schemas.js";
 
 export function registerAnimateTools(r: ToolRegistry): void {
   r.bridged(
     "set_property",
     "Set a static value, or a value at `time` (creates/updates a keyframe). Animated properties need `time`. Use set_text for text.",
-    { layer_id: id("Layer"), path: PropPath, value: Value, time: z.number().min(0).optional() },
+    { layer_id: id("Layer"), path: PropPath, value: ValueOrShape, time: z.number().min(0).optional() },
     { idempotent: true },
   );
 
@@ -19,7 +19,7 @@ export function registerAnimateTools(r: ToolRegistry): void {
     "Replace all keyframes on a property. Each key: {t, v, interp?: linear|bezier|hold, ease_in?, ease_out?}. For path properties (ADBE Mask Shape, a shape layer's ADBE Vector Shape) v is a shape spec ({type: rect|ellipse, position?, size?}, {type: polygon, points} or {type: path, vertices, in_tangents?, out_tangents?, closed?}); keep the same vertex count across keys for a clean morph. Fails if the property has an active expression.",
     {
       layer_id: id("Layer"), path: PropPath,
-      keys: z.array(z.object({ t: z.number().min(0), v: Value, interp: z.enum(["linear", "bezier", "hold"]).optional(), ease_in: Ease.optional(), ease_out: Ease.optional() })).min(1),
+      keys: z.array(z.object({ t: z.number().min(0), v: ValueOrShape, interp: z.enum(["linear", "bezier", "hold"]).optional(), ease_in: Ease.optional(), ease_out: Ease.optional() })).min(1),
     },
     { idempotent: true },
   );
@@ -34,7 +34,7 @@ export function registerAnimateTools(r: ToolRegistry): void {
         t: z.number().min(0).optional().describe("Key time in seconds (set creates a key here if none exists)"),
         index: z.number().int().min(1).optional().describe("1-based key index from get_keyframes (instead of t)"),
         to: z.number().min(0).optional().describe("move: new time in seconds"),
-        v: Value.optional(), interp: z.enum(["linear", "bezier", "hold"]).optional(), ease_in: Ease.optional(), ease_out: Ease.optional(),
+        v: ValueOrShape.optional(), interp: z.enum(["linear", "bezier", "hold"]).optional(), ease_in: Ease.optional(), ease_out: Ease.optional(),
         spatial_in: z.array(z.number()).min(2).max(3).optional().describe("Incoming motion-path tangent [x,y(,z)], relative to the key (turns auto_bezier off)"),
         spatial_out: z.array(z.number()).min(2).max(3).optional().describe("Outgoing motion-path tangent [x,y(,z)], relative to the key"),
         auto_bezier: z.boolean().optional(), continuous: z.boolean().optional(),

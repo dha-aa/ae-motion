@@ -13,6 +13,7 @@
  *   src/tools/scripting.ts <-> host/commands/output.jsx    (run_jsx)
  *   src/tools/meta.ts      (server only: check_for_updates)
  */
+import { enabledToolsets, type Toolset } from "../config.js";
 import { registerAnimateTools } from "./animate.js";
 import { registerDesignTools } from "./design.js";
 import { registerInspectTools } from "./inspect.js";
@@ -26,16 +27,14 @@ import { registerScene3dTools } from "./scene3d.js";
 import { registerScriptingTools } from "./scripting.js";
 import { registerTimelineTools } from "./timeline.js";
 
+/** Register the tool groups enabled by AE_MCP_TOOLSETS (default: all). */
 export function registerAllTools(r: ToolRegistry): void {
-  registerInspectTools(r);
-  registerProjectTools(r);
-  registerLayerTools(r);
-  registerTimelineTools(r);
-  registerMaskTools(r);
-  registerAnimateTools(r);
-  registerScene3dTools(r);
-  registerDesignTools(r);
-  registerOutputTools(r);
-  registerScriptingTools(r);
-  registerMetaTools(r);
+  const on = enabledToolsets();
+  const groups: [Toolset, (r: ToolRegistry) => void][] = [
+    ["inspect", registerInspectTools], ["project", registerProjectTools], ["layers", registerLayerTools],
+    ["timeline", registerTimelineTools], ["masks", registerMaskTools], ["animate", registerAnimateTools],
+    ["scene3d", registerScene3dTools], ["design", registerDesignTools], ["output", registerOutputTools],
+    ["scripting", registerScriptingTools], ["meta", registerMetaTools],
+  ];
+  for (const [name, register] of groups) if (on.has(name)) register(r);
 }

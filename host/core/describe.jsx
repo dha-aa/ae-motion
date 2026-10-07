@@ -23,16 +23,21 @@ function blendModeName(v) {
   return undefined;
 }
 
+// A layer as JSON. Only non-default values are included, to keep get_comp and every result that describes a layer
+// small (the server instructions tell clients a missing flag means false, blend NORMAL, stretch 100, enabled true).
 function layerInfo(l) {
-  return {
-    id: l.id, index: l.index, name: l.name, kind: layerKind(l),
-    "in": l.inPoint, "out": l.outPoint, start: l.startTime,
-    parent_id: l.parent ? l.parent.id : null, enabled: l.enabled, comp_id: l.containingComp.id,
-    locked: l.locked, shy: l.shy, solo: l.solo, label: l.label,
-    three_d: safe(function () { return l.threeDLayer; }), stretch: safe(function () { return l.stretch; }),
-    // cameras and lights have neither
-    blend_mode: safe(function () { return blendModeName(l.blendingMode); }), motion_blur: safe(function () { return l.motionBlur; })
-  };
+  var o = { id: l.id, index: l.index, name: l.name, kind: layerKind(l), "in": l.inPoint, "out": l.outPoint, start: l.startTime, comp_id: l.containingComp.id, label: l.label },
+    bm = safe(function () { return blendModeName(l.blendingMode); }), st = safe(function () { return l.stretch; });
+  if (l.parent) o.parent_id = l.parent.id;
+  if (l.enabled === false) o.enabled = false;
+  if (l.locked) o.locked = true;
+  if (l.shy) o.shy = true;
+  if (l.solo) o.solo = true;
+  if (safe(function () { return l.threeDLayer; })) o.three_d = true;
+  if (st !== undefined && st !== 100) o.stretch = st;
+  if (bm && bm !== "NORMAL") o.blend_mode = bm; // cameras and lights have no blend mode or motion blur
+  if (safe(function () { return l.motionBlur; })) o.motion_blur = true;
+  return o;
 }
 
 function compInfo(c, withLayers) {

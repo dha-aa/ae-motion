@@ -116,8 +116,14 @@ C.edit_keyframes = function (a) {
       fail("BAD_ARGS", "Edit " + i + ": action must be set, move or delete");
     }
   }
-  k = [];
-  for (i = 1; i <= p.numKeys && i <= 500; i++) k.push(keyInfo(p, i));
+  // the keys that were set or moved, as they are now (get_keyframes lists all of them)
+  // (found again by time: later edits can shift indices). Each key is listed once.
+  k = []; v = {};
+  for (i = 0; i < done.length; i++) {
+    if (done[i].action === "delete" || p.numKeys === 0) continue;
+    idx = p.nearestKeyIndex(done[i].t); done[i].index = idx;
+    if (!v[idx]) { v[idx] = true; k.push(keyInfo(p, idx)); }
+  }
   return { edits: done, num_keys: p.numKeys, keys: k, expression_active: p.expressionEnabled === true };
 };
 

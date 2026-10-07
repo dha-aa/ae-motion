@@ -2,6 +2,18 @@
 
 All notable changes. Versions follow [semantic versioning](https://semver.org); each release is a git tag `vX.Y.Z`, which is what the update check looks for.
 
+## 2.1.0 — 2026-10-08
+
+### Added
+- `open_project` opens an `.aep` (refuses to discard unsaved changes unless asked).
+- Layer info reports `blend_mode` and `motion_blur`.
+- `AE_MCP_TOOLSETS` loads only some tool groups, so the model gets fewer tool definitions (`core`: 38 tools, about half the tokens).
+- An MCP evaluation (`evals/`): 10 read-only questions on a fixture project.
+
+### Changed
+- Lower token cost. Tool definitions are about 16% smaller (shorter shared descriptions, no per-tool `$schema`, the shape spec only where a shape is accepted). Typical results are about 35% smaller: layer and key info leave out default values (a missing flag means false, blend mode `NORMAL`, stretch 100, enabled, no parent), `set_text` reads back only the fields set, and `edit_keyframes` returns only the edited keys. Non-integer numbers are rounded to 6 significant digits.
+- `run_jsx` is the tool of last resort: its description and the server instructions point to the dedicated tools first.
+
 ## 2.0.0 — 2026-10-07
 
 **Breaking:** Node.js 22.18 or later is required (the build, tests and scripts run TypeScript directly).

@@ -14,6 +14,9 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 
 const EXPECTED_TOOLS = 66; // update when adding or removing a tool
+// Tool definitions are sent to the model on every request, so their size is a cost. Raise this only on purpose
+// (measured at about 78.5k chars, roughly 22k tokens, for 66 tools).
+const TOOLS_LIST_BUDGET = 82_000;
 const SERVER_ONLY_TOOLS = new Set(["render_start", "render_status", "render_cancel", "check_for_updates"]); // implemented in TypeScript, no host command
 const HOST_ONLY_COMMANDS = new Set(["get_selection", "prepare_render"]); // used by a resource / render_start, not tools
 
@@ -86,5 +89,9 @@ const unannotated = tools.filter((t) => !t.title || !t.annotations || ANNOTATION
 report(unannotated.length === 0, `every tool has a title and all four annotations${unannotated.length ? " (" + unannotated.join(", ") + ")" : ""}`);
 const loose = tools.filter((t) => t.inputSchema.additionalProperties !== false).map((t) => t.name);
 report(loose.length === 0, `every input schema rejects unknown keys${loose.length ? " (" + loose.join(", ") + ")" : ""}`);
+const listSize = JSON.stringify(tools).length;
+report(listSize <= TOOLS_LIST_BUDGET, `tools/list is ${listSize} chars, within the ${TOOLS_LIST_BUDGET} budget`);
+const withDialect = tools.filter((t) => "$schema" in t.inputSchema).map((t) => t.name);
+report(withDialect.length === 0, `no input schema carries a $schema header${withDialect.length ? " (" + withDialect.join(", ") + ")" : ""}`);
 console.log("      tools: " + names.join(", "));
 process.exit(bad ? 1 : 0);

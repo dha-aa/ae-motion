@@ -153,6 +153,7 @@ All settings are environment variables on the MCP server process. The one except
 |---|---|
 | `AE_MCP_ALLOWED_DIRS` | Folders (separated by the OS path delimiter, `:` or `;`) that tools may read from and write to. Default: your home folder. The temp folder is always allowed. |
 | `AE_MCP_ALLOW_JSX` | Set to `1` to enable `run_jsx`. |
+| `AE_MCP_TOOLSETS` | Load only some tool groups, to send the model fewer tool definitions (cheaper requests): a comma list of `project`, `layers`, `timeline`, `masks`, `animate`, `scene3d`, `design`, `output`, `scripting`, or `core` (= project, layers, animate, output: 38 tools, about half the tokens of all 66). `inspect` and `check_for_updates` are always on. Default: all. |
 | `AE_AERENDER` | Full path to `aerender` if auto-detection fails. |
 | `AE_MCP_BRIDGE_FILE` | Override the bridge file (default `~/.ae-motion-mcp/bridge.json`). |
 | `AE_MCP_UPDATE_CHECK` | Set to `0` to turn off the daily check for new releases (see [Updates](#updates)). |

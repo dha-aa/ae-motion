@@ -22,7 +22,7 @@ npm run typecheck   # tsc --noEmit (src/) + tsc -p tsconfig.tools.json (scripts/
 ```
 
 Tests, `scripts/` and the skill driver are TypeScript that Node (22.18+) runs directly via type stripping: erasable syntax only (no enum/namespace/parameter properties), `.ts` import extensions, `import type` for types. The `test/mock-*.test.ts` files are `// @ts-nocheck` (loose AE fakes); the rest are strictly typed. There is no lint command and no single-test runner. `npm test` runs `test/run-all.ts`; run one file with `node test/<file>` after `npm run build`:
-1. `static-checks.ts` — generated `host.jsx` is current and parses; ES3 lint of `host/` (reports `host/<file>:<line>`); boots `dist/index.js` and diffs `tools/list` against the `C.<name> = function` commands. `EXPECTED_TOOLS` must match the tool count.
+1. `static-checks.ts` — generated `host.jsx` is current and parses; ES3 lint of `host/` (reports `host/<file>:<line>`); boots `dist/index.js` and diffs `tools/list` against the `C.<name> = function` commands. `EXPECTED_TOOLS` must match the tool count; `tools/list` must fit `TOOLS_LIST_BUDGET` and carry no `$schema`.
 2. `mock-host.test.ts` — layer/timeline/comp/marker commands (incl. insert_time, align_to_markers, trim_comp, update_marker, replace_source) against a mock AE DOM.
 3. `mock-camera.test.ts` — camera maths, rigs, shake, lights, 3D layers, linking, 3D views against a mock DOM.
 4. `mock-shapes.test.ts` — path (shape) values for masks/shape layers, ellipse vertex order, comp motion blur.
@@ -53,6 +53,7 @@ Tests, `scripts/` and the skill driver are TypeScript that Node (22.18+) runs di
 - **Paths**: only arguments listed in `paths` are sandboxed (`assertAllowed` against `AE_MCP_ALLOWED_DIRS`, default home + temp) and slash-normalised (`toAe`). List every path argument there, and nothing that isn't a path (a match name was once sandboxed by mistake).
 - **Errors**: always `{error:{code,message,hint}}` with `code` one of `NOT_FOUND`, `BAD_ARGS`, `AE_ERROR`, `BRIDGE_DOWN`, `TIMEOUT`, `FORBIDDEN`, `UNSUPPORTED`, `EXISTS`. Throw `AeToolError` in TypeScript, `fail(code, message, hint)` in ExtendScript.
 - **Undo**: every mutating command runs in one undo group (`host/dispatch.jsx`); read-only commands are listed in `READONLY` there.
+- **Token cost**: tool definitions go to the model on every request. Keep descriptions short and share schemas from `src/tools/schemas.ts`; `TOOLS_LIST_BUDGET` in `test/static-checks.ts` fails the build above it. Results leave out default values (`layerInfo`, `keyInfo`), which `SERVER_INSTRUCTIONS` in `src/prompts.ts` documents for clients. `AE_MCP_TOOLSETS` (`src/config.ts`) loads a subset of the groups.
 - Conventions for tools: time in seconds, sizes in pixels, colors `[r,g,b]` 0–1, scale in percent; comps/layers by numeric id; properties by alias (`position|scale|rotation|opacity|anchor`) or match-name arrays.
 - Changes to `host/` or `panel/` need `npm run build` **and** the installer re-run (`scripts/install.sh` / `.ps1`) plus reopening the panel. `host/` is the first place to look when a tool behaves differently on another AE version.
 

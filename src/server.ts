@@ -6,7 +6,7 @@ import { registerPrompts, SERVER_INSTRUCTIONS } from "./prompts.js";
 import { RenderManager } from "./render/manager.js";
 import { registerResources } from "./resources.js";
 import { registerAllTools } from "./tools/index.js";
-import { ToolRegistry } from "./tools/registry.js";
+import { slimToolList, ToolRegistry } from "./tools/registry.js";
 
 export interface AeMotionServer {
   server: McpServer;
@@ -19,5 +19,6 @@ export function createServer(bridge: Bridge): AeMotionServer {
   registerAllTools(new ToolRegistry(server, { bridge, renders }));
   registerResources(server, bridge);
   registerPrompts(server);
+  slimToolList(server);
   return { server, renders };
 }
