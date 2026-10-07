@@ -164,4 +164,15 @@ server.registerPrompt("motion-guide", { description: "Conventions and the recomm
   }],
 }));
 
+// Stop running aerender jobs when the client disconnects or the server is terminated.
+let shuttingDown = false;
+const shutdown = () => {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  renders.dispose();
+};
+process.on("exit", shutdown);
+for (const sig of ["SIGINT", "SIGTERM", "SIGHUP"] as const) process.on(sig, () => { shutdown(); process.exit(0); });
+process.stdin.on("end", () => { shutdown(); process.exit(0); });
+
 await server.connect(new StdioServerTransport());

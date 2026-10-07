@@ -15,6 +15,7 @@ interface Job {
   log: string[];
   child: ChildProcess;
   exitCode: number | null;
+  finishedAt?: number;
 }
 
 export interface RenderArgs {
@@ -38,10 +39,13 @@ export class RenderManager {
 
   async start(a: RenderArgs) {
     const out = assertAllowed(a.output_path);
-    if (fs.existsSync(out) && !a.overwrite) {
-      throw new AeToolError("EXISTS", `Output already exists: ${out}`, "Pass overwrite: true or choose another path");
+    const replacing = fs.existsSync(out);
+    if (replacing) {
+      if (!a.overwrite) throw new AeToolError("EXISTS", `Output already exists: ${out}`, "Pass overwrite: true or choose another path");
+      if (fs.statSync(out).isDirectory()) throw new AeToolError("BAD_ARGS", `Output path is a directory: ${out}`);
     }
     fs.mkdirSync(path.dirname(out), { recursive: true });
+    this.prune();
 
     const prep = await this.bridge.run("prepare_render", { comp_id: a.comp_id });
     if (!prep.ok) throw new AeToolError(prep.error.code, prep.error.message, prep.error.hint);
@@ -51,14 +55,20 @@ export class RenderManager {
     const args = ["-project", project_path, "-comp", comp_name, "-output", out];
     if (a.rs_template) args.push("-RStemplate", a.rs_template);
     if (a.om_template) args.push("-OMtemplate", a.om_template);
-    if (a.overwrite) args.push("-OVERWRITE");
+
+    // Remove the old output only now that nothing else can fail, so a render that never starts keeps the previous file.
+    if (replacing) fs.rmSync(out, { force: true });
 
     const child = spawn(bin, args, { windowsHide: true });
     const job: Job = { id: randomUUID().slice(0, 8), state: "running", percent: 0, output: out, totalFrames: Math.max(1, total_frames), log: [], child, exitCode: null };
     this.jobs.set(job.id, job);
 
+    let partial = "";
     const onData = (buf: Buffer) => {
-      for (const line of buf.toString().split(/\r?\n/)) {
+      const chunk = partial + buf.toString();
+      const lines = chunk.split(/\r?\n/);
+      partial = lines.pop() ?? "";
+      for (const line of lines) {
         if (!line.trim()) continue;
         job.log.push(line);
         if (job.log.length > 40) job.log.shift();
@@ -69,16 +79,34 @@ export class RenderManager {
     child.stdout?.on("data", onData);
     child.stderr?.on("data", onData);
     child.on("error", (e) => {
-      job.state = "failed";
+      if (job.state === "running") job.state = "failed";
       job.log.push(String(e));
     });
-    child.on("exit", (code) => {
+    child.on("exit", (code, signal) => {
       job.exitCode = code;
+      job.finishedAt = Date.now();
       if (job.state === "canceled") return;
+      if (signal) job.log.push(`aerender was terminated by ${signal}`);
       job.state = code === 0 ? "done" : "failed";
       if (code === 0) job.percent = 100;
     });
     return { job_id: job.id, output_path: out };
+  }
+
+  /** Keep the job table bounded: drop finished jobs beyond the 30 most recent. */
+  private prune() {
+    const done = [...this.jobs.values()].filter((j) => j.state !== "running").sort((x, y) => (y.finishedAt ?? 0) - (x.finishedAt ?? 0));
+    for (const j of done.slice(30)) this.jobs.delete(j.id);
+  }
+
+  /** Stop any running aerender processes (called when the MCP server shuts down). */
+  dispose() {
+    for (const j of this.jobs.values()) {
+      if (j.state === "running") {
+        j.state = "canceled";
+        try { j.child.kill(); } catch {}
+      }
+    }
   }
 
   private get(id: string): Job {
