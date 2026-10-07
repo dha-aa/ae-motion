@@ -9,6 +9,7 @@
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { HttpBridge } from "./bridge.js";
 import { createServer } from "./server.js";
+import { checkForUpdates } from "./update.js";
 
 const { server, renders } = createServer(new HttpBridge());
 
@@ -28,3 +29,6 @@ for (const sig of ["SIGINT", "SIGTERM", "SIGHUP"] as const) process.on(sig, shut
 process.stdin.on("end", shutdownAndExit);
 
 await server.connect(new StdioServerTransport());
+
+// Look for a newer version in the background (at most once a day, cached; never blocks or fails a tool).
+void checkForUpdates();

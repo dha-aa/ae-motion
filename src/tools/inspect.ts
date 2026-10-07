@@ -1,12 +1,23 @@
 /** Read-only inspection tools. Host side: host/commands/inspect.jsx. */
 import { z } from "zod";
-import type { ToolRegistry } from "./registry.js";
+import { knownUpdate } from "../update.js";
+import { fromBridge, json, type ToolRegistry } from "./registry.js";
 import { id, PropPath } from "./schemas.js";
 
 export function registerInspectTools(r: ToolRegistry): void {
   const ro = { readOnly: true };
 
-  r.bridged("get_project", "List project items (comps, footage, folders), the active comp id, AE version and project path.", {}, ro);
+  r.tool(
+    "get_project",
+    "List project items (comps, footage, folders), the active comp id, AE version and project path. When a newer ae-motion-mcp version is known, the result also has an update field (current, latest, how to update): tell the user.",
+    {},
+    async () => {
+      const res = await r.deps.bridge.run("get_project", {});
+      const update = knownUpdate();
+      return res.ok && update?.update_available ? json({ ...res.result, update }) : fromBridge(res);
+    },
+    ro,
+  );
 
   r.bridged(
     "get_comp",

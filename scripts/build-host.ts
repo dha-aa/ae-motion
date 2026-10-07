@@ -4,7 +4,7 @@
 // (npm run build:host does both), and the compiled file is used in their place.
 //
 // The sources are fragments of one closure: everything except json.jsx is wrapped in
-//   var AEM = (function () { var C = {}; ... return { dispatch: dispatch }; })();
+//   var AEM = (function () { var C = {}; ... return { dispatch: dispatch, version: "<package.json version>" }; })();
 // so helpers and commands share scope without globals. Order only matters for json.jsx (first) and the
 // wrapper; function declarations are hoisted and constants are only read when a command runs.
 //
@@ -14,6 +14,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+/** The release version, stamped into the host script as AEM.version (the panel shows it and compares it with updates). */
+export const VERSION: string = JSON.parse(fs.readFileSync(path.join(ROOT, "package.json"), "utf8")).version;
 export const HOST_DIR = path.join(ROOT, "host");
 export const HOST_OUT = path.join(ROOT, "panel", "host", "host.jsx");
 /** Where tsc puts the compiled host/*.ts (tsconfig.host.json outDir). */
@@ -87,7 +89,7 @@ export function buildHost(): string {
     "  var C = {}; // command name -> function(args); one per bridged tool",
     "",
     ...MODULES.flatMap((rel) => [indent(banner(rel)), indent(read(rel)), ""]),
-    "  return { dispatch: dispatch };",
+    `  return { dispatch: dispatch, version: ${JSON.stringify(VERSION)} };`,
     "})();",
     "",
   ];

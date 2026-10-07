@@ -134,6 +134,15 @@ Found in live testing; the code relies on all of these.
 
 `test/mock-host.test.ts` models the first two; keep the mocks in sync when you find another.
 
+## Releasing
+
+1. Bump the version in `package.json` **and** both versions in `panel/CSXS/manifest.xml` (`npm test` fails if they differ; the build stamps it into `host.jsx` as `AEM.version`).
+2. Add a section to `CHANGELOG.md`.
+3. `npm run typecheck && npm test`, then commit.
+4. Tag and push: `git tag vX.Y.Z && git push && git push origin vX.Y.Z`. The tag is what installed servers detect (GitHub's tags API, at most once a day per user); a GitHub Release page is optional.
+
+Use semantic versioning: a breaking change (a removed or renamed tool or argument, a higher Node requirement) bumps the major version.
+
 ## Tests
 
 `npm test` runs `test/run-all.ts`, which runs each file below and fails if any fails. Run one directly with `node test/<file>` after `npm run build`.

@@ -4,6 +4,9 @@
 //   GET /health              -> {ok:true}
 // Every request needs the x-ae-token header. Port and token are written to the bridge file, which the MCP
 // server reads on every call. See docs/architecture.md ("Wire protocol").
+//
+// Updates: the MCP server checks for new releases (at most daily) and caches the answer in update.json next to the
+// bridge file; this panel only reads that file (no network) and shows a line when a newer version exists.
 (function () {
   var http = require("http");
   var fs = require("fs");
@@ -78,6 +81,29 @@
       catch (e) { setStatus("Cannot write bridge file: " + e.message, false); }
     });
   }
+
+  // "2.10.0" > "2.9.1"
+  function newer(a, b) {
+    var x = String(a).split("."), y = String(b).split("."), i;
+    for (i = 0; i < 3; i++) { if ((+x[i] || 0) !== (+y[i] || 0)) return (+x[i] || 0) > (+y[i] || 0); }
+    return false;
+  }
+  var version = null;
+  function checkUpdate() {
+    var info, row = $("update-row");
+    if (!version) return;
+    try { info = JSON.parse(fs.readFileSync(path.join(path.dirname(bridgeFile), "update.json"), "utf8")); } catch (e) { return; }
+    if (info && info.latest && newer(info.latest, version)) {
+      $("update").textContent = "v" + info.latest + " available: git pull, re-run the installer";
+      row.style.display = "";
+    } else row.style.display = "none";
+  }
+  cep.evalScript("AEM.version", function (v) {
+    version = v && v !== "undefined" && v.indexOf("Error") === -1 ? v : null;
+    $("version").textContent = version ? "v" + version : "unknown (old host script)";
+    checkUpdate();
+  });
+  setInterval(checkUpdate, 5 * 60 * 1000);
 
   window.addEventListener("unload", function () {
     try {

@@ -19,6 +19,7 @@ MCP client --stdio--> MCP server (Node) --HTTP 127.0.0.1 + token--> CEP panel in
 - [Configuration](#configuration)
 - [Security](#security)
 - [Troubleshooting](#troubleshooting)
+- [Updates](#updates)
 - [Updating and uninstalling](#updating-and-uninstalling)
 - [Documentation](#documentation)
 
@@ -118,7 +119,7 @@ If a call fails, the error includes a code and a hint. See [Troubleshooting](#tr
 
 ## What it can do
 
-64 tools in ten groups. The full reference, with behavior notes, is in [docs/tools.md](docs/tools.md).
+65 tools in eleven groups. The full reference, with behavior notes, is in [docs/tools.md](docs/tools.md).
 
 | Group | Tools |
 |---|---|
@@ -132,6 +133,7 @@ If a call fails, the error includes a code and a hint. See [Troubleshooting](#tr
 | 3D and camera | `get_camera`, `set_camera`, `camera_move`, `camera_shake`, `camera_rig`, `set_3d`, `set_light`, `set_3d_view` |
 | Preview and render | `preview_frame`, `render_start`, `render_status`, `render_cancel` |
 | Escape hatch | `run_jsx` (disabled unless `AE_MCP_ALLOW_JSX=1`) |
+| Server | `check_for_updates` |
 
 Also: resources `ae://project` and `ae://selection`, and the prompt `motion-guide` (conventions and a recommended build loop).
 
@@ -149,6 +151,7 @@ All settings are environment variables on the MCP server process. The one except
 | `AE_MCP_ALLOW_JSX` | Set to `1` to enable `run_jsx`. |
 | `AE_AERENDER` | Full path to `aerender` if auto-detection fails. |
 | `AE_MCP_BRIDGE_FILE` | Override the bridge file (default `~/.ae-motion-mcp/bridge.json`). |
+| `AE_MCP_UPDATE_CHECK` | Set to `0` to turn off the daily check for new releases (see [Updates](#updates)). |
 
 ## Security
 
@@ -180,9 +183,19 @@ All settings are environment variables on the MCP server process. The one except
 
 Panel logs are in `~/Library/Logs/CSXS/` on macOS and `%TEMP%` (`csxs*.log`) on Windows.
 
+## Updates
+
+You find out about new versions in three places:
+
+- **The After Effects panel** shows the installed version and, when a newer release exists, a line like `v2.1.0 available`.
+- **Your AI client:** `get_project` (usually the first call) includes an `update` note with the new version and the command to run, so the model can tell you. You can also ask "check for updates" (`check_for_updates`).
+- **GitHub:** releases are git tags `vX.Y.Z`; what changed is in [CHANGELOG.md](CHANGELOG.md).
+
+How the check works: the MCP server asks GitHub for the repository's version tags at most once a day, in the background, with a short timeout, and caches the answer in `~/.ae-motion-mcp/update.json` (the panel only reads that file). It sends nothing but a normal anonymous request, and a failed check never affects a tool. Set `AE_MCP_UPDATE_CHECK=0` to turn it off.
+
 ## Updating and uninstalling
 
-**Update:** `git pull`, run the installer again (it rebuilds and replaces the installed panel), restart After Effects, and restart the MCP server from your client.
+**Update:** in the repo folder, `git pull`, then run the installer again (`bash scripts/install.sh`, or `./scripts/install.ps1` on Windows; it rebuilds and replaces the installed panel). Reopen the AE Motion MCP panel (or restart After Effects) and restart the MCP server from your client. The panel's Version line shows the new version.
 
 **Uninstall:**
 

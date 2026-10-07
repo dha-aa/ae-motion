@@ -50,7 +50,8 @@ fs.writeFileSync(fake, `#!/bin/bash\necho $$ > ${DIR}/aerender.pid\nif [ "$FAKE_
 
 function startServer(extraEnv: Record<string, string> = {}) {
   const p = spawn("node", [SERVER], {
-    env: { ...process.env, AE_MCP_BRIDGE_FILE: path.join(DIR, "bridge.json"), AE_AERENDER: fake, AE_MCP_ALLOWED_DIRS: DIR, ...extraEnv },
+    // update checks stay off unless a test turns them on (no real network calls from tests)
+    env: { ...process.env, AE_MCP_BRIDGE_FILE: path.join(DIR, "bridge.json"), AE_AERENDER: fake, AE_MCP_ALLOWED_DIRS: DIR, AE_MCP_UPDATE_CHECK: "0", ...extraEnv },
     stdio: ["pipe", "pipe", "pipe"],
   });
   let buf = "";
@@ -222,6 +223,44 @@ const results: [name: string, pass: boolean][] = [];
   s.p.stdin.end();
   await Promise.race([s.exited, sleep(3000)]);
   s.p.kill();
+}
+
+// Phase G: update check against a fake GitHub tags API.
+{
+  const tagServer = http.createServer((req, res) => {
+    res.setHeader("content-type", "application/json");
+    res.end(JSON.stringify([{ name: "v99.1.0" }, { name: "v2.0.0" }, { name: "nightly" }, { name: "v99.0.9" }]));
+  });
+  await new Promise<void>((r) => tagServer.listen(0, "127.0.0.1", () => r()));
+  const tagsUrl = `http://127.0.0.1:${(tagServer.address() as AddressInfo).port}/tags`;
+  const cache = path.join(DIR, "update.json");
+  try { fs.rmSync(cache); } catch {}
+
+  const s = startServer({ AE_MCP_UPDATE_CHECK: "1", AE_MCP_UPDATE_URL: tagsUrl });
+  await s.init();
+  const check = JSON.parse(textOf(await s.call("tools/call", { name: "check_for_updates", arguments: { force: true } })));
+  results.push(["G: check_for_updates finds the newest vX.Y.Z tag and how to update",
+    check.latest === "99.1.0" && check.update_available === true && /git pull/.test(check.how ?? "")]);
+  results.push(["G: the result is cached next to the bridge file (the panel reads it)", fs.existsSync(cache) && JSON.parse(fs.readFileSync(cache, "utf8")).latest === "99.1.0"]);
+  const proj = JSON.parse(textOf(await s.call("tools/call", { name: "get_project", arguments: {} })));
+  results.push(["G: get_project carries the update note", proj.update?.latest === "99.1.0"]);
+  s.p.stdin.end(); await Promise.race([s.exited, sleep(3000)]); s.p.kill();
+
+  const off = startServer({ AE_MCP_UPDATE_CHECK: "0", AE_MCP_UPDATE_URL: tagsUrl });
+  await off.init();
+  const disabled = JSON.parse(textOf(await off.call("tools/call", { name: "check_for_updates", arguments: {} })));
+  const proj2 = JSON.parse(textOf(await off.call("tools/call", { name: "get_project", arguments: {} })));
+  results.push(["G: AE_MCP_UPDATE_CHECK=0 turns the check and the note off", disabled.disabled === true && proj2.update === undefined]);
+  off.p.stdin.end(); await Promise.race([off.exited, sleep(3000)]); off.p.kill();
+
+  try { fs.rmSync(cache); } catch {}
+  const down = startServer({ AE_MCP_UPDATE_CHECK: "1", AE_MCP_UPDATE_URL: "http://127.0.0.1:9/tags" });
+  await down.init();
+  const failed = await down.call("tools/call", { name: "check_for_updates", arguments: { force: true } });
+  const fbody = JSON.parse(textOf(failed));
+  results.push(["G: an unreachable update server is reported, not thrown", failed.result?.isError !== true && fbody.latest === null && typeof fbody.error === "string"]);
+  down.p.stdin.end(); await Promise.race([down.exited, sleep(3000)]); down.p.kill();
+  tagServer.close();
 }
 
 for (const [name, ok] of results) console.log((ok ? "PASS" : "FAIL") + "  " + name);

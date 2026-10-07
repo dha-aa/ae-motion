@@ -7,11 +7,16 @@
 import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
-const pkg = createRequire(import.meta.url)("../package.json") as { name: string; version: string };
+const pkg = createRequire(import.meta.url)("../package.json") as { name: string; version: string; repository?: { url?: string } };
 
 export const SERVER_NAME: string = pkg.name;
 export const SERVER_VERSION: string = pkg.version;
+/** The folder the server was installed from (the git checkout users update with git pull). */
+export const REPO_ROOT: string = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+/** "owner/name" of the GitHub repository, from package.json repository.url. */
+export const REPO_SLUG: string = /github\.com[/:]([^/]+\/[^/.]+)/.exec(pkg.repository?.url ?? "")?.[1] ?? "dha-aa/ae-motion";
 
 /** Path of the file the CEP panel writes its port and token to. Override: AE_MCP_BRIDGE_FILE (set it for the panel too). */
 export function bridgeFile(): string {
@@ -27,6 +32,16 @@ export function allowedDirs(): string[] {
 /** run_jsx is off unless AE_MCP_ALLOW_JSX=1. */
 export function jsxEnabled(): boolean {
   return process.env.AE_MCP_ALLOW_JSX === "1";
+}
+
+/** The update check runs unless AE_MCP_UPDATE_CHECK=0. */
+export function updateCheckEnabled(): boolean {
+  return process.env.AE_MCP_UPDATE_CHECK !== "0";
+}
+
+/** Where version tags are listed (GitHub's tags API). AE_MCP_UPDATE_URL overrides it (tests, mirrors). */
+export function updateTagsUrl(): string {
+  return process.env.AE_MCP_UPDATE_URL || `https://api.github.com/repos/${REPO_SLUG}/tags?per_page=100`;
 }
 
 /** Explicit path to the aerender executable (AE_AERENDER), if set. */

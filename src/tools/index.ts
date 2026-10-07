@@ -11,11 +11,13 @@
  *   src/tools/design.ts    <-> host/commands/design.jsx    (layout, shapes, layer styles)
  *   src/tools/output.ts    <-> host/commands/output.jsx    (preview, render)
  *   src/tools/scripting.ts <-> host/commands/output.jsx    (run_jsx)
+ *   src/tools/meta.ts      (server only: check_for_updates)
  */
 import { registerAnimateTools } from "./animate.js";
 import { registerDesignTools } from "./design.js";
 import { registerInspectTools } from "./inspect.js";
 import { registerLayerTools } from "./layers.js";
+import { registerMetaTools } from "./meta.js";
 import { registerMaskTools } from "./masks.js";
 import { registerOutputTools } from "./output.js";
 import { registerProjectTools } from "./project.js";
@@ -35,4 +37,5 @@ export function registerAllTools(r: ToolRegistry): void {
   registerDesignTools(r);
   registerOutputTools(r);
   registerScriptingTools(r);
+  registerMetaTools(r);
 }

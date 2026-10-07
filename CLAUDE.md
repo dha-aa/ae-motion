@@ -41,6 +41,11 @@ Tests, `scripts/` and the skill driver are TypeScript that Node (22.18+) runs di
 - `host/` — ExtendScript sources: `json.jsx` polyfill, `core/` helpers, `commands/`, `dispatch.jsx`. `scripts/build-host.ts` wraps them in one closure (`var AEM = (function () { var C = {}; ... })()`) and writes `panel/host/host.jsx`, which is **generated and gitignored — never edit it**. New host files go in `MODULES` in the build script; top-level names must be unique across `host/` (the build checks).
 - `panel/` — the CEP extension as installed (manifest, `main.js` HTTP bridge with serial queue, `index.html`).
 
+## Versions and updates
+
+- One version in `package.json` and `panel/CSXS/manifest.xml` (two places); the build stamps it into host.jsx as `AEM.version`; `test/static-checks.ts` enforces all three. Releases are git tags `vX.Y.Z` plus a `CHANGELOG.md` entry (`docs/development.md` → Releasing).
+- `src/update.ts`: daily background check of GitHub's tags API (`AE_MCP_UPDATE_CHECK=0` off, `AE_MCP_UPDATE_URL` override), cached in `update.json` next to the bridge file; `get_project` adds an `update` note, `check_for_updates` (server-only tool) asks directly, the panel reads the cache and shows an update line. Tests keep the check off by default (no real network).
+
 ## Rules
 
 - **Adding a tool touches both ends**: register it in `src/tools/<group>.ts` and implement `C.<name>` in `host/commands/<group>.jsx`; bump `EXPECTED_TOOLS`; add it to `docs/tools.md` and the README group table. Step by step: `docs/development.md`.

@@ -10,6 +10,7 @@
   .k { color: #888; }
   #status.ok { color: #7fd17f; }
   #status.bad { color: #ff8a80; }
+  #update { color: #ffd479; }
 </style>
 </head>
 <body>
@@ -18,6 +19,8 @@
   <div class="row"><span class="k">Commands run</span><span id="count">0</span></div>
   <div class="row"><span class="k">Last command</span><span id="last">-</span></div>
   <div class="row"><span class="k">Last error</span><span id="err">-</span></div>
+  <div class="row"><span class="k">Version</span><span id="version">-</span></div>
+  <div class="row" id="update-row" style="display:none"><span class="k">Update</span><span id="update" class="bad"></span></div>
   <script src="main.js"></script>
 </body>
 </html>

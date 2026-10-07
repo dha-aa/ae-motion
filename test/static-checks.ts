@@ -13,8 +13,8 @@ import { buildHost, emittedPath, HOST_OUT, HOST_SOURCES } from "../scripts/build
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 
-const EXPECTED_TOOLS = 64; // update when adding or removing a tool
-const SERVER_ONLY_TOOLS = new Set(["render_start", "render_status", "render_cancel"]); // implemented in TypeScript, no host command
+const EXPECTED_TOOLS = 65; // update when adding or removing a tool
+const SERVER_ONLY_TOOLS = new Set(["render_start", "render_status", "render_cancel", "check_for_updates"]); // implemented in TypeScript, no host command
 const HOST_ONLY_COMMANDS = new Set(["get_selection", "prepare_render"]); // used by a resource / render_start, not tools
 
 let bad = 0;
@@ -28,6 +28,13 @@ const checkFile = path.join(TMP, "host_check.js");
 fs.writeFileSync(checkFile, host);
 try { execFileSync(process.execPath, ["--check", checkFile]); report(true, "host.jsx parses"); } catch (e) { report(false, "host.jsx syntax: " + (e instanceof Error ? e.message : String(e))); }
 fs.rmSync(TMP, { recursive: true, force: true });
+
+// 1b. one version everywhere: package.json, the panel manifest and the host stamp
+const pkgVersion: string = JSON.parse(fs.readFileSync(path.join(ROOT, "package.json"), "utf8")).version;
+const manifest = fs.readFileSync(path.join(ROOT, "panel", "CSXS", "manifest.xml"), "utf8");
+const manifestVersions = [...manifest.matchAll(/(?:ExtensionBundleVersion|Extension Id="[^"]+" Version)="([^"]+)"/g)].map((m) => m[1]);
+report(manifestVersions.length === 2 && manifestVersions.every((v) => v === pkgVersion), `panel manifest versions match package.json ${pkgVersion} (found ${manifestVersions.join(", ")})`);
+report(host.includes(`version: ${JSON.stringify(pkgVersion)}`), `host.jsx is stamped with version ${pkgVersion}`);
 
 // 2. ES3 lint, per emitted file (host/*.jsx as written, host/*.ts as compiled by tsc into build/host/)
 const banned: [RegExp, string][] = [
@@ -51,7 +58,7 @@ console.log("      indexOf uses (must all be on strings):");
 for (const u of indexOfUses) console.log("        " + u);
 
 // 3. tool/command cross-check via a real tools/list
-const srv = spawn(process.execPath, [path.join(ROOT, "dist", "index.js")], { stdio: ["pipe", "pipe", "pipe"] });
+const srv = spawn(process.execPath, [path.join(ROOT, "dist", "index.js")], { stdio: ["pipe", "pipe", "pipe"], env: { ...process.env, AE_MCP_UPDATE_CHECK: "0" } });
 let out = "";
 srv.stdout.on("data", (d) => (out += d));
 const send = (o: object): boolean => srv.stdin.write(JSON.stringify(o) + "\n");
