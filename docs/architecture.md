@@ -66,12 +66,12 @@ Each tool group has a matching pair: `src/tools/<group>.ts` declares the tools, 
 Take `set_keyframes`:
 
 1. The client calls the tool over stdio. The MCP SDK validates the arguments against the zod schema in `src/tools/animate.ts`.
-2. `ToolRegistry.bridged` sandboxes any declared path arguments (`src/sandbox.ts`) and calls `bridge.run("set_keyframes", args)`.
+2. The registry has made every input schema strict (`deepStrict`), so unknown keys at any depth are rejected here. `ToolRegistry.bridged` then sandboxes any declared path arguments (`src/sandbox.ts`) and calls `bridge.run("set_keyframes", args)`.
 3. `HttpBridge` reads `~/.ae-motion-mcp/bridge.json` for the port and token and POSTs `{cmd, args}` to `http://127.0.0.1:<port>/cmd`.
 4. `panel/main.js` checks the `x-ae-token` header and queues the command behind any in-flight one, so After Effects runs exactly one command at a time.
 5. The panel calls `cep.evalScript('AEM.dispatch("<json>")')`.
 6. `dispatch` (in `host/dispatch.jsx`) parses the JSON, opens an undo group unless the command is read-only, runs `C.set_keyframes(args)`, closes the undo group, and returns `{"ok":true,"result":...}` or `{"ok":false,"error":{...}}` as a string.
-7. The panel parses the string and replies over HTTP; the server returns it to the client as JSON text, with `isError` set on failure.
+7. The panel parses the string and replies over HTTP; the server returns it to the client as compact JSON text, with `isError` set on failure. Results over `CHARACTER_LIMIT` (25,000 characters, `src/config.ts`) are replaced by an error carrying the tool's `tooLargeHint`.
 
 Tools with server-side logic use `ToolRegistry.tool` instead: `preview_frame` (bridge call, then waits for the PNG to finish writing), `render_start` / `render_status` / `render_cancel` (`src/render/`), and `run_jsx` (gated by `AE_MCP_ALLOW_JSX`).
 

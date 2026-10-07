@@ -43,6 +43,7 @@ export function registerTimelineTools(r: ToolRegistry): void {
     "set_playhead",
     "Move a comp's current-time indicator (playhead) to a time in seconds. Snaps to a whole frame unless snap is false.",
     { comp_id: id("Comp"), time: Time, snap: z.boolean().optional() },
+    { idempotent: true },
   );
 
   r.bridged(
@@ -52,6 +53,7 @@ export function registerTimelineTools(r: ToolRegistry): void {
       ...MarkerTarget, time: Time, comment: z.string().optional(), duration: z.number().min(0).optional(), chapter: z.string().optional(),
       url: z.string().optional(), label: Label.optional(),
     },
+    { destructive: false },
   );
 
   r.bridged(

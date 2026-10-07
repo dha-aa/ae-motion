@@ -12,12 +12,13 @@ export function registerProjectTools(r: ToolRegistry): void {
     "save_project",
     "Save the project. With path it does Save As (.aep or .aepx, inside the allowed folders; pass overwrite to replace an existing file). Without path it saves in place, which needs a project that has been saved once. render_start needs a saved project.",
     { path: z.string().optional(), overwrite: z.boolean().optional() },
-    { paths: ["path"] },
+    { paths: ["path"], idempotent: true },
   );
 
   r.bridged("create_comp", "Create a composition and open it in the viewer.", {
     name: z.string(), width: dimension(), height: dimension(), fps: fps(), duration: z.number().positive(), bg_color: Color.optional(),
-  });
+  },
+    { destructive: false });
 
   r.bridged(
     "set_comp",
@@ -27,18 +28,20 @@ export function registerProjectTools(r: ToolRegistry): void {
       fps: fps().optional(), duration: z.number().positive().optional(), bg_color: Color.optional(), pixel_aspect: z.number().positive().optional(),
       work_area: z.object({ start: z.number().min(0).optional(), duration: z.number().positive().optional() }).optional(),
     },
+    { idempotent: true },
   );
 
   r.bridged(
     "import_footage",
     "Import a file (or an image sequence) into the project. Path must be inside the allowed folders.",
     { path: z.string(), as: z.enum(["footage", "sequence"]).optional() },
-    { paths: ["path"] },
+    { paths: ["path"], destructive: false },
   );
 
   r.bridged(
     "delete_item",
     "Delete a project item (comp, footage or folder) by id. Refuses items that are used in comps, and non-empty folders, unless force is true (force also deletes the layers that use the item).",
     { item_id: id("Item"), force: z.boolean().optional() },
+    { idempotent: true },
   );
 }

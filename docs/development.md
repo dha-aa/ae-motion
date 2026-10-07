@@ -41,7 +41,8 @@ A tool has two halves with the same name: a schema on the server and a command i
 
    - Use the shared schemas from `src/tools/schemas.ts` (`id`, `Color`, `V3`, `PropPath`, `Time`, ...).
    - Any argument that is a filesystem path must be listed in `{ paths: ["..."] }`, so it is sandboxed and slash-normalised. Never list anything that isn't a path.
-   - Pass `{ readOnly: true }` if the tool changes nothing.
+   - Set the annotations in the options: `readOnly: true` if it changes nothing; otherwise it defaults to destructive and non-idempotent, so pass `destructive: false` for purely additive tools and `idempotent: true` when repeating the call changes nothing more. Add a `tooLargeHint` if the result can get big. `title` is derived from the name.
+   - Nested `z.object`s need nothing special: the registry makes every object strict (unknown keys rejected).
    - Use `r.tool(...)` instead only when the server must do real work (see `src/tools/output.ts`).
    - Write the description for the model: what the tool does, units, defaults, and what it refuses.
 

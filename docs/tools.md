@@ -68,7 +68,13 @@
 
 Resources: `ae://project` (same as `get_project`) and `ae://selection` (layers selected in the active comp). Prompt: `motion-guide`.
 
-Read-only tools carry the MCP `readOnlyHint` annotation, so clients can run them without asking for confirmation.
+Every tool has a title and the four MCP annotations: `readOnlyHint` (inspection, preview, render status), `destructiveHint` (false only for purely additive tools such as `create_comp`, `add_layer`, `add_marker`), `idempotentHint` (the `set_*` tools and deletes by id) and `openWorldHint` (only `run_jsx`). Clients can use them to skip confirmation for safe calls.
+
+## Input and output rules
+
+- **Unknown arguments are rejected**, at any depth: `set_layer` with `colour` fails with `Unrecognized key(s) in object: 'colour'` instead of silently ignoring it. Schema errors come back as plain text (`MCP error -32602: Input validation error: ...`) and never reach After Effects.
+- **Results are compact JSON** (no indentation).
+- **Responses are capped at 25,000 characters.** A bigger result is replaced by a `BAD_ARGS` error that says how to ask for less; for `list_properties`, pass `group_path` and/or a smaller `depth`.
 
 ## Timeline editing
 

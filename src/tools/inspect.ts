@@ -26,7 +26,7 @@ export function registerInspectTools(r: ToolRegistry): void {
     "list_properties",
     "Walk a layer's property tree and return names, match names, value types, values, keyframe counts and expressions. Use it to find property paths before set_property / set_keyframes.",
     { layer_id: id("Layer"), group_path: PropPath.optional(), depth: z.number().int().min(1).max(6).optional(), time: z.number().min(0).optional() },
-    ro,
+    { ...ro, tooLargeHint: "Pass group_path to list one group (e.g. [\"ADBE Transform Group\"]) and/or a smaller depth" },
   );
 
   r.bridged(

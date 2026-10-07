@@ -11,6 +11,7 @@ export function registerAnimateTools(r: ToolRegistry): void {
     "set_property",
     "Set a static value, or a value at `time` (creates/updates a keyframe). Animated properties need `time`. Use set_text for text.",
     { layer_id: id("Layer"), path: PropPath, value: Value, time: z.number().min(0).optional() },
+    { idempotent: true },
   );
 
   r.bridged(
@@ -20,30 +21,35 @@ export function registerAnimateTools(r: ToolRegistry): void {
       layer_id: id("Layer"), path: PropPath,
       keys: z.array(z.object({ t: z.number().min(0), v: Value, interp: z.enum(["linear", "bezier", "hold"]).optional(), ease_in: Ease.optional(), ease_out: Ease.optional() })).min(1),
     },
+    { idempotent: true },
   );
 
   r.bridged(
     "add_property",
     "Add a property or group to a layer, for things set_property cannot reach until they exist. Text animator: group_path ['ADBE Text Properties','ADBE Text Animators'], match_name ADBE Text Animator; then add properties with group_path = returned path + 'ADBE Text Animator Properties' (match_name ADBE Text Position 3D, ADBE Text Opacity, ADBE Text Fill Color, ADBE Text Tracking Amount...) and a range selector with group_path = returned path + 'ADBE Text Selectors', match_name ADBE Text Selector. Layer styles cannot be created by scripts in After Effects, so they are not supported. Returns the new property path for set_property / set_keyframes.",
     { layer_id: id("Layer"), match_name: z.string(), group_path: PropPath.optional() },
+    { destructive: false },
   );
 
   r.bridged(
     "set_expression",
     "Set an expression on a property (empty string clears it). Returns whether After Effects accepted the syntax.",
     { layer_id: id("Layer"), path: PropPath, expression: z.string() },
+    { idempotent: true },
   );
 
   r.bridged(
     "apply_effect",
     "Add an effect by match name (see find_effects) and set parameters by name, match name or 1-based index. If any parameter fails the effect is removed.",
     { layer_id: id("Layer"), match_name: z.string(), name: z.string().optional(), params: z.record(Value).optional() },
+    { destructive: false },
   );
 
   r.bridged(
     "edit_effect",
     "Remove, enable or disable an effect on a layer by its 1-based index (see get_layer for the list).",
     { layer_id: id("Layer"), effect_index: z.number().int().min(1), action: z.enum(["remove", "enable", "disable"]) },
+    { idempotent: true },
   );
 
   r.bridged(
@@ -69,6 +75,7 @@ export function registerAnimateTools(r: ToolRegistry): void {
       space_before: z.number().optional(), space_after: z.number().optional(),
       box_size: Size.optional(),
     },
+    { idempotent: true },
   );
 
   r.bridged(
@@ -88,5 +95,6 @@ export function registerAnimateTools(r: ToolRegistry): void {
     "add_shape_modifier",
     "Add a modifier to a shape layer's group: trim_paths (ADBE Vector Trim Start / End / Offset), repeater (ADBE Vector Repeater Copies / Offset, plus a Transform group) or round_corners (ADBE Vector RoundCorner Radius). params maps a property name or match name to a value. group_index is the 1-based shape group (default 1). Returns the modifier's property path and property names, ready for set_keyframes and list_properties.",
     { layer_id: id("Layer"), modifier: z.enum(["trim_paths", "repeater", "round_corners"]), group_index: z.number().int().min(1).optional(), params: z.record(Value).optional() },
+    { destructive: false },
   );
 }

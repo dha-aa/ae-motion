@@ -27,6 +27,7 @@ export function registerLayerTools(r: ToolRegistry): void {
         })
         .default({}),
     },
+    { destructive: false },
   );
 
   r.bridged(
@@ -38,6 +39,7 @@ export function registerLayerTools(r: ToolRegistry): void {
       stretch: z.number().refine((n) => n !== 0, "stretch cannot be 0").optional(), three_d: z.boolean().optional(), shy: z.boolean().optional(), solo: z.boolean().optional(),
       locked: z.boolean().optional(), label: Label.optional(), motion_blur: z.boolean().optional(), time_remap: z.boolean().optional(),
     },
+    { idempotent: true },
   );
 
   r.bridged(
@@ -49,12 +51,13 @@ export function registerLayerTools(r: ToolRegistry): void {
     },
   );
 
-  r.bridged("delete_layer", "Delete a layer.", { layer_id: id("Layer") });
+  r.bridged("delete_layer", "Delete a layer.", { layer_id: id("Layer") }, { idempotent: true });
 
   r.bridged(
     "duplicate_layer",
     "Duplicate a layer (the copy sits above the original). count makes several copies; offset_seconds shifts copy N later in time by N * offset_seconds.",
     { layer_id: id("Layer"), count: z.number().int().min(1).max(50).optional(), name: z.string().optional(), offset_seconds: z.number().optional() },
+    { destructive: false },
   );
 
   r.bridged(

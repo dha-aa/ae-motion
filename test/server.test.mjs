@@ -27,6 +27,7 @@ const bridge = http.createServer((req, res) => {
       if (!prepareOk) return res.end(JSON.stringify({ ok: false, error: { code: "BAD_ARGS", message: "Project has never been saved" } }));
       return res.end(JSON.stringify({ ok: true, result: { project_path: "/tmp/x.aep", comp_name: "C", total_frames: 10, aerender_dir: DIR } }));
     }
+    if (cmd === "list_properties") return res.end(JSON.stringify({ ok: true, result: { properties: "x".repeat(30000) } })); // over CHARACTER_LIMIT
     if (cmd === "preview_frame") {
       // After Effects can finish writing the PNG a moment after the command returns, especially for heavy 3D frames.
       setTimeout(() => fs.writeFileSync(args.output_path, "fake png bytes"), 700);
@@ -181,6 +182,34 @@ const results = [];
 
   const jsx = await callTool("run_jsx", { code: "1+1" });
   results.push(["E: run_jsx is refused unless AE_MCP_ALLOW_JSX=1", errCode(jsx) === "FORBIDDEN" && !received.run_jsx]);
+
+  s.p.stdin.end();
+  await Promise.race([s.exited, sleep(3000)]);
+  s.p.kill();
+}
+
+// Phase F: strict input validation and the response size cap.
+{
+  const s = startServer();
+  await s.init();
+  const callTool = (name, args) => s.call("tools/call", { name, arguments: args });
+  const text = (r) => r.result?.content?.[0]?.text ?? "";
+
+  delete received.set_layer;
+  const typo = await callTool("set_layer", { layer_id: 1, colour: 5 });
+  results.push(["F: an unknown argument is rejected, not silently dropped", typo.result?.isError === true && text(typo).includes("colour") && !received.set_layer]);
+
+  delete received.add_layer;
+  const nested = await callTool("add_layer", { comp_id: 1, kind: "shape", options: { shape: { type: "rect", fil: [1, 0, 0] } } });
+  results.push(["F: unknown keys in nested objects are rejected too", nested.result?.isError === true && text(nested).includes("fil") && !received.add_layer]);
+
+  await callTool("add_layer", { comp_id: 1, kind: "shape", options: { shape: { fill: [1, 0, 0] } } });
+  results.push(["F: schema defaults still apply under strict validation", received.add_layer?.options?.shape?.type === "rect"]);
+
+  const big = await callTool("list_properties", { layer_id: 1 });
+  let body = {};
+  try { body = JSON.parse(text(big)); } catch {}
+  results.push(["F: an over-limit response becomes an error with the tool's hint", big.result?.isError === true && /over the 25000 limit/.test(body.error?.message ?? "") && /group_path/.test(body.error?.hint ?? "")]);
 
   s.p.stdin.end();
   await Promise.race([s.exited, sleep(3000)]);

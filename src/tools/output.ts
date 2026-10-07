@@ -77,5 +77,5 @@ export function registerOutputTools(r: ToolRegistry): void {
     { readOnly: true },
   );
 
-  r.tool("render_cancel", "Cancel a running render job.", { job_id: z.string() }, async (a) => json(renders.cancel(a.job_id)));
+  r.tool("render_cancel", "Cancel a running render job.", { job_id: z.string() }, async (a) => json(renders.cancel(a.job_id)), { destructive: false, idempotent: true });
 }

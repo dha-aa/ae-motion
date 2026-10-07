@@ -68,5 +68,10 @@ const extra = [...cmds].filter((c) => !names.includes(c) && !HOST_ONLY_COMMANDS.
 report(extra.length === 0, `no host commands without a tool${extra.length ? " (" + extra.join(", ") + ")" : ""}`);
 const badSchema = tools.filter((t) => !t.inputSchema || t.inputSchema.type !== "object").map((t) => t.name);
 report(badSchema.length === 0, "all tools have object input schemas");
+const ANNOTATIONS = ["readOnlyHint", "destructiveHint", "idempotentHint", "openWorldHint"];
+const unannotated = tools.filter((t) => !t.title || !t.annotations || ANNOTATIONS.some((k) => typeof t.annotations[k] !== "boolean")).map((t) => t.name);
+report(unannotated.length === 0, `every tool has a title and all four annotations${unannotated.length ? " (" + unannotated.join(", ") + ")" : ""}`);
+const loose = tools.filter((t) => t.inputSchema.additionalProperties !== false).map((t) => t.name);
+report(loose.length === 0, `every input schema rejects unknown keys${loose.length ? " (" + loose.join(", ") + ")" : ""}`);
 console.log("      tools: " + names.join(", "));
 process.exit(bad ? 1 : 0);

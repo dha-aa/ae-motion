@@ -40,6 +40,7 @@ export function registerScene3dTools(r: ToolRegistry): void {
       iris_diffraction_fringe: z.number().optional(), highlight_gain: z.number().optional(), highlight_threshold: z.number().optional(), highlight_saturation: z.number().optional(),
       ...Xform, look_at_layer_id: z.number().int().optional(), follow: z.boolean().optional(), time: Time.optional(),
     },
+    { idempotent: true },
   );
 
   r.bridged(
@@ -65,6 +66,7 @@ export function registerScene3dTools(r: ToolRegistry): void {
       rotation_amount: z.number().min(0).optional(), frequency: z.number().positive().optional(), octaves: z.number().int().min(1).max(8).optional(),
       include_depth: z.boolean().optional(), seed: z.number().int().optional(), remove: z.boolean().optional(),
     },
+    { idempotent: true },
   );
 
   r.bridged(
@@ -80,6 +82,7 @@ export function registerScene3dTools(r: ToolRegistry): void {
       layer_id: id("Layer"), three_d: z.boolean().optional(), position: V3.optional(), anchor: V3.optional(), scale: V3.optional(), orientation: V3.optional(),
       rotation: Rot3.optional(), material: Material.optional(), time: Time.optional(),
     },
+    { idempotent: true },
   );
 
   r.bridged(
@@ -92,6 +95,7 @@ export function registerScene3dTools(r: ToolRegistry): void {
       casts_shadows: z.boolean().optional(), shadow_darkness: z.number().min(0).max(100).optional(), shadow_diffusion: z.number().min(0).optional(),
       ...Xform, time: Time.optional(),
     },
+    { idempotent: true },
   );
 
   r.bridged(
@@ -101,5 +105,6 @@ export function registerScene3dTools(r: ToolRegistry): void {
       view: z.enum(["active_camera", "default", "front", "left", "top", "back", "right", "bottom", "custom_1", "custom_2", "custom_3"]),
       comp_id: id("Comp").optional(),
     },
+    { idempotent: true },
   );
 }

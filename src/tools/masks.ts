@@ -21,6 +21,7 @@ export function registerMaskTools(r: ToolRegistry): void {
       inverted: z.boolean().optional(), feather: z.number().min(0).optional(), feather_xy: Pt.optional(), opacity: z.number().min(0).max(100).optional(),
       expansion: z.number().optional(), name: z.string().optional(),
     },
+    { destructive: false },
   );
 
   r.bridged(
@@ -30,5 +31,6 @@ export function registerMaskTools(r: ToolRegistry): void {
       layer_id: id("Layer"), matte_layer_id: z.number().int().nullable().describe("Matte layer id, or null to remove the matte"),
       type: z.enum(["alpha", "alpha_inverted", "luma", "luma_inverted"]).optional(),
     },
+    { idempotent: true },
   );
 }

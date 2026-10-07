@@ -97,6 +97,8 @@ npm test     # build + 5 test files, no AE needed: "all 5 test files passed"
 - **A Claude Code session's own ae-motion MCP tools run the server it started with.** After `npm run build`, those tools still run old code until `/mcp` reconnects. The driver has no such problem (fresh server per command).
 - **Preview PNGs are transparent where nothing is drawn**: the comp's `bg_color` is not rendered, so frames look white in a viewer. Add a full-frame solid first (smoke does) if you need to see the background.
 - **`~` is not expanded in path arguments.** `"~/x.mov"` becomes `<server cwd>/~/x.mov` (seen via `--fake`). Pass absolute paths.
+- **Unknown argument keys are rejected at any depth** (`Unrecognized key(s) in object: 'fil' at options.shape`): check spelling against `list` / the tool schema rather than retrying.
+- **The driver pretty-prints results for reading; the wire format is compact JSON.** Measure response sizes from the server, not from driver output (the 25,000-character cap applies to the compact form).
 - **Schema violations come back as plain text** (`MCP error -32602: Input validation error: ...`), not `{error:{code}}` JSON. They never reach AE. The driver still exits 1.
 - **`bridge` and `reload-host` bypass the `AE_MCP_ALLOW_JSX` gate**: run_jsx's gate lives in the server, and the host command always exists. It's a local dev tool using your own token. Don't build product features on it.
 - **Render jobs live in one server's memory**: `render_status` in a separate `call` won't find a job started by an earlier `call`. Keep `render_start` and its status checks in one `script`. (Rendering was not exercised with this driver: it needs a saved project.)

@@ -34,6 +34,9 @@ export function aerenderOverride(): string | undefined {
   return process.env.AE_AERENDER || undefined;
 }
 
+/** Largest tool response (text characters) returned to the client; bigger ones become an error with a hint. */
+export const CHARACTER_LIMIT = 25_000;
+
 /** Bridge timeouts in milliseconds. */
 export const TIMEOUTS = {
   /** Default for a bridged command. */
