@@ -75,7 +75,7 @@
 | | `render_start` | Save the project and start a background `aerender` job |
 | | `render_status` | State, percent, log tail and the file actually written |
 | | `render_cancel` | Cancel a running render job |
-| Escape hatch | `run_jsx` | Run arbitrary ExtendScript (disabled unless `AE_MCP_ALLOW_JSX=1`) |
+| Escape hatch | `run_jsx` | Last resort: run arbitrary ExtendScript (disabled unless `AE_MCP_ALLOW_JSX=1`). Its description, the server instructions and `motion-guide` all tell models to use a dedicated tool whenever one exists |
 
 Resources: `ae://project` (same as `get_project`) and `ae://selection` (layers selected in the active comp). Prompt: `motion-guide`.
 
