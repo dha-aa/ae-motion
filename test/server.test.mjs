@@ -1,4 +1,5 @@
-// Integration test for render_start against a fake bridge and a fake aerender (no After Effects needed).
+// Integration tests for the MCP server against a fake bridge and a fake aerender (no After Effects needed):
+// render job lifecycle, preview_frame, and how arguments are forwarded (path sandboxing, run_jsx gate).
 // Uses a bash script as the fake aerender, so it is skipped on Windows.
 import http from "node:http";
 import os from "node:os";
@@ -12,6 +13,7 @@ const DIR = fs.mkdtempSync(path.join(os.tmpdir(), "ae-motion-render-"));
 const SERVER = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "dist", "index.js");
 const TOKEN = "testtoken";
 let prepareOk = true;
+const received = {}; // command -> args of the last call the fake bridge received
 
 const bridge = http.createServer((req, res) => {
   let body = "";
@@ -20,6 +22,7 @@ const bridge = http.createServer((req, res) => {
     res.setHeader("content-type", "application/json");
     if (req.headers["x-ae-token"] !== TOKEN) { res.statusCode = 401; return res.end("{}"); }
     const { cmd, args } = JSON.parse(body);
+    received[cmd] = args;
     if (cmd === "prepare_render") {
       if (!prepareOk) return res.end(JSON.stringify({ ok: false, error: { code: "BAD_ARGS", message: "Project has never been saved" } }));
       return res.end(JSON.stringify({ ok: true, result: { project_path: "/tmp/x.aep", comp_name: "C", total_frames: 10, aerender_dir: DIR } }));
@@ -152,6 +155,33 @@ const results = [];
   const content = r.result?.content ?? [];
   results.push(["D: preview_frame waits for a PNG written after the command returns", r.result?.isError !== true && content.some((c) => c.type === "image")]);
   results.push(["D: ...without waiting much longer than needed", Date.now() - started < 5000]);
+  s.p.stdin.end();
+  await Promise.race([s.exited, sleep(3000)]);
+  s.p.kill();
+}
+
+// Phase E: argument forwarding. Only declared path arguments are sandboxed; everything else reaches the host unchanged.
+{
+  const s = startServer();
+  await s.init();
+  const callTool = (name, args) => s.call("tools/call", { name, arguments: args });
+  const errCode = (r) => { try { return JSON.parse(r.result.content[0].text).error.code; } catch { return undefined; } };
+
+  await callTool("add_property", { layer_id: 1, match_name: "ADBE Text Animator", group_path: ["ADBE Text Properties", "ADBE Text Animators"] });
+  results.push(["E: add_property forwards match_name unchanged (it is not a path)", received.add_property?.match_name === "ADBE Text Animator"]);
+
+  const inside = path.join(DIR, "sub", "clip.mov");
+  await callTool("import_footage", { path: inside });
+  results.push(["E: path arguments inside the allowed folders are resolved and sent with forward slashes",
+    received.import_footage?.path === fs.realpathSync(DIR).replace(/\\/g, "/") + "/sub/clip.mov"]);
+
+  delete received.import_footage;
+  const outside = await callTool("import_footage", { path: path.join(path.parse(DIR).root, "definitely-not-allowed", "x.mov") });
+  results.push(["E: path arguments outside the allowed folders are refused before reaching the host", errCode(outside) === "FORBIDDEN" && !received.import_footage]);
+
+  const jsx = await callTool("run_jsx", { code: "1+1" });
+  results.push(["E: run_jsx is refused unless AE_MCP_ALLOW_JSX=1", errCode(jsx) === "FORBIDDEN" && !received.run_jsx]);
+
   s.p.stdin.end();
   await Promise.race([s.exited, sleep(3000)]);
   s.p.kill();

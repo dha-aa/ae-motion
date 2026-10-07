@@ -1,4 +1,9 @@
-// AE Motion MCP panel: localhost HTTP bridge (token-protected) -> serial queue -> ExtendScript.
+// AE Motion MCP panel (CEP, Node enabled): localhost HTTP bridge (token-protected) -> serial queue -> ExtendScript.
+//
+//   POST /cmd   {cmd, args}  -> AEM.dispatch(...) in panel/host/host.jsx -> {ok, result} | {ok:false, error}
+//   GET /health              -> {ok:true}
+// Every request needs the x-ae-token header. Port and token are written to the bridge file, which the MCP
+// server reads on every call. See docs/architecture.md ("Wire protocol").
 (function () {
   var http = require("http");
   var fs = require("fs");

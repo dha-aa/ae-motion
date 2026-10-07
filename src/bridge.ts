@@ -1,30 +1,28 @@
+/**
+ * The only way the server talks to After Effects.
+ *
+ * Tools depend on the {@link Bridge} interface, never on the transport, so the CEP/HTTP transport could be
+ * replaced (for example by UXP) without touching the tool definitions.
+ *
+ * Wire protocol (see docs/architecture.md): POST http://127.0.0.1:<port>/cmd with header `x-ae-token` and body
+ * `{cmd, args}`; the reply is a {@link BridgeResult}. Port and token come from the bridge file the panel writes.
+ */
 import fs from "node:fs";
-import os from "node:os";
-import path from "node:path";
+import { bridgeFile, TIMEOUTS } from "./config.js";
+import type { ToolErrorBody } from "./errors.js";
 
-export type BridgeError = { code: string; message: string; hint?: string };
-export type BridgeResult = { ok: true; result: any } | { ok: false; error: BridgeError };
+export type BridgeResult = { ok: true; result: any } | { ok: false; error: ToolErrorBody };
 
-export class AeToolError extends Error {
-  constructor(public code: string, message: string, public hint?: string) {
-    super(message);
-  }
-}
-
-/** The server only talks to After Effects through this interface, so the transport is swappable. */
 export interface Bridge {
+  /** Run one host command. Never throws: transport failures come back as BRIDGE_DOWN / TIMEOUT results. */
   run(command: string, args: Record<string, unknown>, timeoutMs?: number): Promise<BridgeResult>;
 }
 
-const fail = (code: string, message: string, hint?: string): BridgeResult => ({ ok: false, error: { code, message, hint } });
+const fail = (code: ToolErrorBody["code"], message: string, hint?: string): BridgeResult => ({ ok: false, error: { code, message, hint } });
 
-function bridgeFile(): string {
-  return process.env.AE_MCP_BRIDGE_FILE || path.join(os.homedir(), ".ae-motion-mcp", "bridge.json");
-}
-
-/** Talks to the CEP panel's localhost HTTP endpoint (port + token read from the bridge file). */
+/** Talks to the CEP panel's localhost HTTP endpoint. The bridge file is re-read on every call, so a panel restart is picked up. */
 export class HttpBridge implements Bridge {
-  async run(command: string, args: Record<string, unknown>, timeoutMs = 30_000): Promise<BridgeResult> {
+  async run(command: string, args: Record<string, unknown>, timeoutMs: number = TIMEOUTS.command): Promise<BridgeResult> {
     let info: { port: number; token: string };
     try {
       info = JSON.parse(fs.readFileSync(bridgeFile(), "utf8"));

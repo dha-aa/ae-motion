@@ -71,6 +71,7 @@ function makeWorld({ startShiftsInOut = true, inKeepsDuration = true } = {}) {
       get numItems() { return world.items.length; },
       item(i) { return world.items[i - 1]; },
       itemByID(id) { return world.items.find((i) => i.id === id) || null; },
+      layerByID(id) { for (const c of world.items) for (let j = 1; j <= (c.numLayers || 0); j++) if (c.layer(j).id === id) return c.layer(j); return null; },
       file: null,
     },
     beginUndoGroup() {}, endUndoGroup() {},

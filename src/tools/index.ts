@@ -1,0 +1,35 @@
+/**
+ * Registers every tool. Each module covers one group and has a matching host file:
+ *
+ *   src/tools/inspect.ts   <-> host/commands/inspect.jsx
+ *   src/tools/project.ts   <-> host/commands/project.jsx
+ *   src/tools/layers.ts    <-> host/commands/layers.jsx
+ *   src/tools/timeline.ts  <-> host/commands/timeline.jsx   (incl. markers)
+ *   src/tools/masks.ts     <-> host/commands/masks.jsx
+ *   src/tools/animate.ts   <-> host/commands/animate.jsx, host/commands/text.jsx
+ *   src/tools/scene3d.ts   <-> host/commands/scene3d.jsx
+ *   src/tools/output.ts    <-> host/commands/output.jsx    (preview, render)
+ *   src/tools/scripting.ts <-> host/commands/output.jsx    (run_jsx)
+ */
+import { registerAnimateTools } from "./animate.js";
+import { registerInspectTools } from "./inspect.js";
+import { registerLayerTools } from "./layers.js";
+import { registerMaskTools } from "./masks.js";
+import { registerOutputTools } from "./output.js";
+import { registerProjectTools } from "./project.js";
+import type { ToolRegistry } from "./registry.js";
+import { registerScene3dTools } from "./scene3d.js";
+import { registerScriptingTools } from "./scripting.js";
+import { registerTimelineTools } from "./timeline.js";
+
+export function registerAllTools(r: ToolRegistry): void {
+  registerInspectTools(r);
+  registerProjectTools(r);
+  registerLayerTools(r);
+  registerTimelineTools(r);
+  registerMaskTools(r);
+  registerAnimateTools(r);
+  registerScene3dTools(r);
+  registerOutputTools(r);
+  registerScriptingTools(r);
+}

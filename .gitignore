@@ -3,6 +3,8 @@ node_modules/
 
 # Build output
 dist/
+# generated from host/ by scripts/build-host.mjs
+panel/host/host.jsx
 
 # Logs
 *.log
