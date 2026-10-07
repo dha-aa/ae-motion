@@ -103,6 +103,13 @@ Found in live testing; the code relies on all of these.
 - `saveFrameToPng` can return before the PNG is fully written (heavy 3D frames); `preview_frame` waits for the file to appear and stop growing.
 - Setting keyframes on time remapping: removing every key switches time remapping off, so `set_keyframes` adds the new keys before removing the old ones.
 - Layer ids and `project.layerByID` exist from After Effects 22.0, the manifest's minimum version.
+- `PropertyGroup.moveTo()` invalidates the object it was called on (and menu commands can invalidate held references): read what you need first, then look the property up again.
+- Menu commands (`app.executeCommand`) act on the selection in the active viewer: `selectOnly` opens the comp and selects just the target layer. Command names are localized, so look them up with `findMenuCommandId` and keep the id as a fallback (Create Shapes from Text 3781, Layer Styles 9000 to 9008).
+- Layer style property groups exist even while the style is off, so parameter names can be checked before running the menu command.
+- Gradient colors (`ADBE Vector Grad Colors`) have no settable value from scripts.
+- Adding the first stroke dash lists all three dash/gap pairs plus the offset (defaults 10); pairs that were never added do not render. They cannot be removed.
+- "Leave all attributes" precompose needs a single layer with a source (not text or shape layers).
+- In mock tests, arrays passed into the vm context must be created there: the host's `v instanceof Array` is false for arrays from another realm (see `inner()` in `test/mock-design.test.mjs`).
 - Setting a key's temporal ease switches it to bezier, so `restoreKey` sets the ease first and the interpolation type last.
 - Roving keys re-time themselves whenever any other key changes, so code that rewrites keys (`replaceKeys`) turns roving off first and restores it at the end. After Effects may also rescale a roving key's tangents.
 
@@ -118,6 +125,7 @@ Found in live testing; the code relies on all of these.
 | `mock-host.test.mjs` | Layer, timeline (split, delete/insert time, align to markers, trim comp), comp, marker, item and replace-source commands against a fake After Effects DOM |
 | `mock-camera.test.mjs` | Camera maths, moves, rigs, shake, look-at, 3D layers, lights, linking and 3D views against a fake DOM |
 | `mock-shapes.test.mjs` | Path values from shape specs, the ellipse vertex order, get_keyframes round trips, comp motion blur |
+| `mock-design.test.mjs` | Bounds and alignment maths (rotation, scale, parents, animated and separated position), anchor points, layer switches, solids, precompose leave-attributes, layer style and shape validation |
 | `mock-keyframes.test.mjs` | `edit_keyframes`, `copy_animation`, `stagger` fidelity, separate dimensions, auto-orient; the fake property models the ease-switches-to-bezier and roving re-time behaviors |
 | `aerender-discovery.test.mjs` | `findAerender` against fake install layouts |
 | `server.test.mjs` | The built server end to end over stdio, with a fake bridge and a fake `aerender`: render lifecycle (failed start keeps old output, jobs stop on disconnect, the real output file is reported), `preview_frame` waiting, path sandboxing, the `run_jsx` gate. Skipped on Windows (uses a bash script) |

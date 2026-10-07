@@ -27,6 +27,7 @@ export const MODULES = [
   "core/timing.jsx",
   "core/vector.jsx",
   "core/scene3d.jsx",
+  "core/layout.jsx",
   "commands/inspect.jsx",
   "commands/project.jsx",
   "commands/layers.jsx",
@@ -35,6 +36,7 @@ export const MODULES = [
   "commands/animate.jsx",
   "commands/text.jsx",
   "commands/scene3d.jsx",
+  "commands/design.jsx",
   "commands/output.jsx",
   "dispatch.jsx",
 ];

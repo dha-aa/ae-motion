@@ -1,20 +1,12 @@
 /** Layer tools: add, edit, link, delete, duplicate, reorder, precompose. Host side: host/commands/layers.jsx. */
 import { z } from "zod";
 import type { ToolRegistry } from "./registry.js";
-import { Color, id, Label, LayerIds, LightType, Pt, Size, V3 } from "./schemas.js";
-
-const ShapeSpec = z.object({
-  type: z.enum(["rect", "ellipse", "star", "polygon", "path"]).default("rect"),
-  points: z.number().int().min(3).max(100).optional(), outer_radius: z.number().positive().optional(), inner_radius: z.number().positive().optional(),
-  vertices: Pt.array().min(2).optional(), in_tangents: Pt.array().optional(), out_tangents: Pt.array().optional(), closed: z.boolean().optional(),
-  size: z.array(z.number()).length(2).optional(), fill: Color.optional(), stroke: Color.optional(), stroke_width: z.number().positive().optional(),
-  roundness: z.number().min(0).optional(),
-});
+import { Color, id, Label, LayerIds, LightType, ShapeLayerSpec, Size, V3 } from "./schemas.js";
 
 export function registerLayerTools(r: ToolRegistry): void {
   r.bridged(
     "add_layer",
-    "Add a layer (text layers take options.box_size [w,h] for box text). kind: solid | text | shape | null | adjustment | footage | precomp | camera | light. options: name, color, size, duration, text, item_id (footage/precomp), center (camera/light), position ([x,y] or [x,y,z]; three values turn 3D on), three_d, light_type (point|spot|parallel|ambient), start/in/out, shape {type: rect|ellipse|star|polygon|path, size, fill, stroke, stroke_width, roundness, points, outer_radius, inner_radius (star/polygon), vertices/in_tangents/out_tangents/closed (path)}.",
+    "Add a layer (text layers take options.box_size [w,h] for box text). kind: solid | text | shape | null | adjustment | footage | precomp | camera | light. options: name, color, size, duration, text, item_id (footage/precomp), center (camera/light), position ([x,y] or [x,y,z]; three values turn 3D on), three_d, light_type (point|spot|parallel|ambient), start/in/out, shape {type: rect|ellipse|star|polygon|path, size, fill, stroke, stroke_width, roundness, points, outer_radius, inner_radius (star/polygon), vertices/in_tangents/out_tangents/closed (path), plus fill_opacity, stroke_opacity, dashes, line_cap, line_join, name, position, rotation, opacity}. More shapes can be added to the layer with add_shape.",
     {
       comp_id: id("Comp"),
       kind: z.enum(["solid", "text", "shape", "null", "adjustment", "footage", "precomp", "camera", "light"]),
@@ -23,7 +15,7 @@ export function registerLayerTools(r: ToolRegistry): void {
           name: z.string().optional(), color: Color.optional(), size: z.array(z.number()).length(2).optional(), duration: z.number().positive().optional(),
           text: z.string().optional(), item_id: z.number().int().optional(), center: z.array(z.number()).min(2).max(3).optional(), light_type: LightType.optional(),
           start: z.number().optional(), in: z.number().optional(), out: z.number().optional(), position: V3.optional(), three_d: z.boolean().optional(),
-          box_size: Size.optional(), shape: ShapeSpec.optional(),
+          box_size: Size.optional(), shape: ShapeLayerSpec.optional(),
         })
         .default({}),
     },
@@ -32,7 +24,7 @@ export function registerLayerTools(r: ToolRegistry): void {
 
   r.bridged(
     "set_layer",
-    "Edit a layer: name, timing (start/in/out in seconds), time stretch (percent; 200 = half speed, negative reverses), parent (parent_id, or null to unparent), blend mode name (e.g. ADD, SCREEN, MULTIPLY), visibility, and flags: three_d, shy, solo, locked, label (0-16), motion_blur (renders only with set_comp motion_blur on), time_remap, separate_dimensions (position becomes x_position / y_position / z_position, each with its own keys and easing), auto_orient (path: rotate along the motion path, or off), frame_blending (off | frame_mix | pixel_motion; smooths slowed-down footage, renders only with set_comp frame_blending on), quality (best | draft | wireframe), collapse (collapse transformations / continuously rasterize, precomp and vector layers).",
+    "Edit a layer: name, timing (start/in/out in seconds), time stretch (percent; 200 = half speed, negative reverses), parent (parent_id, or null to unparent), blend mode name (e.g. ADD, SCREEN, MULTIPLY), visibility, and flags: three_d, shy, solo, locked, label (0-16), motion_blur (renders only with set_comp motion_blur on), time_remap, separate_dimensions (position becomes x_position / y_position / z_position, each with its own keys and easing), auto_orient (path: rotate along the motion path, or off), frame_blending (off | frame_mix | pixel_motion; smooths slowed-down footage, renders only with set_comp frame_blending on), quality (best | draft | wireframe), collapse (collapse transformations / continuously rasterize, precomp and vector layers), guide (guide layer: visible in the comp, not rendered), adjustment (make it an adjustment layer or not), effects (effects on/off), audio (audio on/off), preserve_transparency, and for solid layers solid_color and solid_size [w,h] (they change the solid item, so every layer using that solid changes).",
     {
       layer_id: id("Layer"), name: z.string().optional(), start: z.number().optional(), in: z.number().optional(), out: z.number().optional(),
       parent_id: z.number().int().nullable().optional(), blend_mode: z.string().optional(), enabled: z.boolean().optional(),
@@ -40,6 +32,8 @@ export function registerLayerTools(r: ToolRegistry): void {
       locked: z.boolean().optional(), label: Label.optional(), motion_blur: z.boolean().optional(), time_remap: z.boolean().optional(),
       separate_dimensions: z.boolean().optional(), auto_orient: z.enum(["path", "off"]).optional(),
       frame_blending: z.enum(["off", "frame_mix", "pixel_motion"]).optional(), quality: z.enum(["best", "draft", "wireframe"]).optional(), collapse: z.boolean().optional(),
+      guide: z.boolean().optional(), adjustment: z.boolean().optional(), effects: z.boolean().optional(), audio: z.boolean().optional(), preserve_transparency: z.boolean().optional(),
+      solid_color: Color.optional(), solid_size: Size.optional(),
     },
     { idempotent: true },
   );
@@ -78,5 +72,9 @@ export function registerLayerTools(r: ToolRegistry): void {
     },
   );
 
-  r.bridged("precompose", "Precompose layers from the same comp into a new comp.", { layer_ids: LayerIds, name: z.string() });
+  r.bridged(
+    "precompose",
+    "Precompose layers from the same comp into a new comp. move_attributes (default true) moves their transforms, effects and masks into the new comp; false (\"leave all attributes\", one footage, solid or precomp layer only) keeps them on the layer in the current comp.",
+    { layer_ids: LayerIds, name: z.string(), move_attributes: z.boolean().optional() },
+  );
 }

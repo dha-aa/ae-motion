@@ -39,6 +39,10 @@ C.get_layer = function (a) {
     for (k = 1; k <= ms.numProperties; k++) { m = ms.property(k); out.push({ index: k, name: m.name, mode: maskModeName(m.maskMode), inverted: m.inverted, locked: m.locked }); }
     return out;
   });
+  o.bounds = safe(function () {
+    var r = contentRect(l, time);
+    return r ? { content: r, comp: compBounds(l, time) } : null;
+  });
   o.track_matte = safe(function () {
     if (!l.hasTrackMatte) return null;
     return { type: matteTypeName(l.trackMatteType), matte_layer_id: safe(function () { return l.trackMatteLayer.id; }) };

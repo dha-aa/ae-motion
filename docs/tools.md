@@ -1,6 +1,6 @@
 # Tool reference
 
-59 tools, grouped the same way as the source (`src/tools/<group>.ts` on the server, `host/commands/<group>.jsx` in After Effects). Every tool's full argument schema and description is served by the MCP `tools/list` call, so your client always sees the current details. This page gives the overview and the behavior you can't read off a schema.
+64 tools, grouped the same way as the source (`src/tools/<group>.ts` on the server, `host/commands/<group>.jsx` in After Effects). Every tool's full argument schema and description is served by the MCP `tools/list` call, so your client always sees the current details. This page gives the overview and the behavior you can't read off a schema.
 
 ## Conventions
 
@@ -17,7 +17,7 @@
 |---|---|---|
 | Inspect | `get_project` | Project items, active comp id, AE version, project path |
 | | `get_comp` | Comp settings, work area, playhead time, marker count, and its layers |
-| | `get_layer` | Transform values, effects, expressions, masks, track matte, marker count, layer flags |
+| | `get_layer` | Transform values, effects, expressions, masks, track matte, marker count, layer flags, and bounds (content box and where it sits in the comp) |
 | | `list_properties` | Walk a layer's property tree (names, match names, values, keyframe counts) |
 | | `get_keyframes` | Read a property's keyframes: values, interpolation, temporal ease, expression |
 | | `find_effects` | Search installed effects by name, match name or category |
@@ -27,13 +27,13 @@
 | | `import_footage` | Import a file or image sequence |
 | | `delete_item` | Delete a comp, footage item or folder (refuses used items unless `force`) |
 | Layers | `add_layer` | Add a solid, text (point or box), shape (rect, ellipse, star, polygon, path), null, adjustment, footage, precomp, camera or light layer; optional `position` and `three_d` place it as it is created |
-| | `set_layer` | Name, timing, time stretch, parent, blend mode, visibility, 3D, shy, solo, lock, label, motion blur, time remap, separate dimensions, auto-orient along path, frame blending, quality, collapse transformations |
+| | `set_layer` | Name, timing, time stretch, parent, blend mode, visibility, 3D, shy, solo, lock, label, motion blur, time remap, separate dimensions, auto-orient along path, frame blending, quality, collapse transformations, guide, adjustment, effects / audio on-off, preserve transparency, solid color and size |
 | | `replace_source` | Swap the footage, comp or solid a layer shows, keeping its timing, keyframes and effects |
 | | `link_layers` | Parent several layers to a layer, unlink them, or create a null and parent them all to it in one call |
 | | `delete_layer` | Remove a layer |
 | | `duplicate_layer` | Duplicate a layer, optionally several offset copies |
 | | `reorder_layer` | Move a layer to the top, bottom, up, down, an index, or before/after another layer |
-| | `precompose` | Precompose layers from one comp |
+| | `precompose` | Precompose layers from one comp (move all attributes, or leave them on a single footage/solid/precomp layer) |
 | Timeline | `split_layer` | Split layers at a time (Cmd/Ctrl+Shift+D) |
 | | `delete_range` | Cut a time range out of the comp, with ripple or lift (optionally rippling comp markers) |
 | | `insert_time` | Ripple insert: open a gap, splitting layers that span it, optionally moving comp markers |
@@ -45,6 +45,11 @@
 | | `add_marker`, `update_marker`, `list_markers`, `delete_marker` | Layer and comp markers with comment, duration, chapter, url, label; edit or move one in place |
 | Masks and mattes | `add_mask` | Add a rect, ellipse, polygon or bezier-path mask with mode, feather, opacity, expansion |
 | | `set_track_matte` | Use a layer as an alpha or luma track matte, or remove the matte |
+| Design | `align_layers` | Align (left, center, right, top, middle, bottom) to the comp, the selection or a layer, and distribute evenly, by visible content |
+| | `set_anchor` | Move the anchor point to the content's center, a corner or an edge without moving the layer |
+| | `add_shape` | Add another shape (rect, ellipse, star, polygon, path) to a shape layer, with dashes, caps, joins, opacity, offset and rotation |
+| | `add_layer_style` | Drop shadow, inner shadow, outer/inner glow, bevel and emboss, satin, color/gradient overlay or stroke, with parameters |
+| | `text_to_shapes` | Convert text to a shape layer of letter outlines |
 | Animate | `set_property` | Set a value, or a keyframe at `time` |
 | | `set_keyframes` | Replace all keyframes on a property, with interpolation and easing; also path keyframes (mask and shape morphs) |
 | | `edit_keyframes` | Edit single keys: add or update (value, easing, curved motion-path tangents, auto-bezier, roving), move, delete |
@@ -81,6 +86,17 @@ Every tool has a title and the four MCP annotations: `readOnlyHint` (inspection,
 - **Unknown arguments are rejected**, at any depth: `set_layer` with `colour` fails with `Unrecognized key(s) in object: 'colour'` instead of silently ignoring it. Schema errors come back as plain text (`MCP error -32602: Input validation error: ...`) and never reach After Effects.
 - **Results are compact JSON** (no indentation).
 - **Responses are capped at 25,000 characters.** A bigger result is replaced by a `BAD_ARGS` error that says how to ask for less; for `list_properties`, pass `group_path` and/or a smaller `depth`.
+
+## Layout and design
+
+- **Bounds:** `get_layer` reports `bounds.content` (the box of the text, shapes or pixels in layer space, from `sourceRectAtTime`) and `bounds.comp` (where that box sits on screen, through position, anchor, scale, rotation and parents). `comp` is null for 3D layers, whose screen position depends on the camera.
+- **Align by what you see:** `align_layers` uses those bounds, not anchor points, so text centers on its glyphs rather than its baseline. `to: "selection"` aligns to the box around all the given layers (the Align panel's default); `margin` keeps a distance from the edges; `distribute` spaces centers evenly between the two outermost layers. Animated layers keep their motion: every position key moves by the same amount.
+- **Anchor points:** `set_anchor` (default `center`) moves the anchor onto the content and moves the layer to compensate, so nothing shifts. Do it before scaling or rotating text or shapes, which otherwise pivot around their baseline or origin.
+- **Shapes:** `add_layer` creates a shape layer with one shape; `add_shape` adds more on top, each its own group (`name`, `position` offset, `rotation`, `opacity`). Strokes take `dashes` (`[dash, gap, ...]`, up to three pairs), `line_cap` and `line_join`. **Gradient colors cannot be set by scripts** in After Effects, so gradient fills are not offered (an `.ffx` preset via `apply_preset` can carry one).
+- **Layer styles:** `add_layer_style` turns a style on through the Layer > Layer Styles menu and sets `params` by name; a bad name is reported with the list of valid ones, before anything changes. The returned `path` plus `"<style>/<name>"` addresses each parameter for `set_keyframes`. Styles can be turned off (`enabled: false`) but not deleted by script.
+- **Text to shapes:** `text_to_shapes` runs Create Shapes from Text: a new shape layer of letter outlines appears above, and the text layer is turned off. Animate the outlines with the path and shape-modifier tools.
+- **Solids:** `set_layer` `solid_color` / `solid_size` change the solid's project item, so every layer using that solid changes. `guide: true` keeps a layer visible while you work but out of renders.
+- `add_layer_style` and `text_to_shapes` use After Effects menu commands: they open the comp in the viewer and change the layer selection.
 
 ## Keyframe editing
 

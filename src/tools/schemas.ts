@@ -39,3 +39,17 @@ export const Ease = z
   .describe('"easy" (easy ease) or {speed, influence}');
 export const Label = z.number().int().min(0).max(16);
 export const LightType = z.enum(["point", "spot", "parallel", "ambient"]);
+
+/** A shape-layer shape (add_layer options.shape, add_shape). Stroke extras need a stroke color. */
+export const ShapeLayerSpec = z.object({
+  type: z.enum(["rect", "ellipse", "star", "polygon", "path"]).default("rect"),
+  points: z.number().int().min(3).max(100).optional(), outer_radius: z.number().positive().optional(), inner_radius: z.number().positive().optional(),
+  vertices: Pt.array().min(2).optional(), in_tangents: Pt.array().optional(), out_tangents: Pt.array().optional(), closed: z.boolean().optional(),
+  size: z.array(z.number()).length(2).optional(), fill: Color.optional(), stroke: Color.optional(), stroke_width: z.number().positive().optional(),
+  roundness: z.number().min(0).optional(),
+  fill_opacity: z.number().min(0).max(100).optional(), stroke_opacity: z.number().min(0).max(100).optional(),
+  dashes: z.array(z.number().min(0)).min(1).max(6).optional().describe("Dash pattern [dash, gap, dash, gap, ...] in pixels, up to 3 pairs"),
+  line_cap: z.enum(["butt", "round", "square"]).optional(), line_join: z.enum(["miter", "round", "bevel"]).optional(),
+  name: z.string().optional(), position: Pt.optional().describe("Offset of the shape inside the layer, [x,y]"),
+  rotation: z.number().optional(), opacity: z.number().min(0).max(100).optional(),
+});

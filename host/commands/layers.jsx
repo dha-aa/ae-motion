@@ -13,6 +13,7 @@ C.add_layer = function (a) {
     if (!lt) fail("BAD_ARGS", "light_type must be point, spot, parallel or ambient");
   }
   if (kind === "footage" || kind === "precomp") { need(o, ["item_id"]); item = getItem(o.item_id); }
+  if (kind === "shape" && o.shape) checkShapeSpec(o.shape);
   if (kind === "solid" || kind === "adjustment") {
     col = o.color || [1, 1, 1]; size = o.size || [comp.width, comp.height];
     l = comp.layers.addSolid([col[0], col[1], col[2]], o.name || (kind === "solid" ? "Solid" : "Adjustment Layer"), size[0], size[1], 1, dur);
@@ -56,6 +57,7 @@ C.set_layer = function (a) {
   if (has(a, "auto_orient") && (l instanceof CameraLayer || l instanceof LightLayer)) fail("BAD_ARGS", "For cameras and lights use set_camera two_node / point_of_interest");
   if (has(a, "frame_blending") && !FRAMEBLEND[a.frame_blending]) fail("BAD_ARGS", "frame_blending must be off, frame_mix or pixel_motion");
   if (has(a, "quality") && !QUALITY[a.quality]) fail("BAD_ARGS", "quality must be best, draft or wireframe");
+  if ((has(a, "solid_color") || has(a, "solid_size")) && !(l.source && l.source.mainSource instanceof SolidSource)) fail("BAD_ARGS", "solid_color and solid_size need a solid (or adjustment / null) layer");
   // unlock first and lock last, so the other edits in the same call can be applied
   if (a.locked === false) l.locked = false;
   if (has(a, "name")) l.name = a.name;
@@ -75,6 +77,14 @@ C.set_layer = function (a) {
   if (has(a, "frame_blending")) { try { l.frameBlendingType = FrameBlendingType[FRAMEBLEND[a.frame_blending]]; } catch (e1) { fail("BAD_ARGS", "This layer has no frame blending (only footage and precomp layers do)"); } }
   if (has(a, "quality")) l.quality = LayerQuality[QUALITY[a.quality]];
   if (has(a, "collapse")) { try { l.collapseTransformation = a.collapse; } catch (e2) { fail("BAD_ARGS", "This layer cannot collapse transformations (only precomp and vector layers can)"); } }
+  if (has(a, "guide")) l.guideLayer = a.guide;
+  if (has(a, "adjustment")) l.adjustmentLayer = a.adjustment;
+  if (has(a, "effects")) l.effectsActive = a.effects;
+  if (has(a, "audio")) { try { l.audioEnabled = a.audio; } catch (e3) { fail("BAD_ARGS", "This layer has no audio"); } }
+  if (has(a, "preserve_transparency")) l.preserveTransparency = a.preserve_transparency;
+  // a solid's color and size live on its source item, so every layer using that solid changes
+  if (has(a, "solid_color")) l.source.mainSource.color = [a.solid_color[0], a.solid_color[1], a.solid_color[2]];
+  if (has(a, "solid_size")) { l.source.width = a.solid_size[0]; l.source.height = a.solid_size[1]; }
   if (has(a, "auto_orient")) l.autoOrient = a.auto_orient === "path" ? AutoOrientType.ALONG_PATH : AutoOrientType.NO_AUTO_ORIENT;
   if (bm !== undefined) l.blendingMode = bm;
   if (a.parent_id === null) l.parent = null; else if (par) l.parent = par;
@@ -193,8 +203,11 @@ C.reorder_layer = function (a) {
 
 C.precompose = function (a) {
   need(a, ["layer_ids", "name"]);
-  var ls = pickLayers(a.layer_ids), comp = sameComp(ls), idx = [], i;
+  var ls = pickLayers(a.layer_ids), comp = sameComp(ls), idx = [], i, move = a.move_attributes !== false;
+  // "leave all attributes" keeps transforms, effects and masks on the layer; After Effects only allows it for one layer
+  if (!move && ls.length !== 1) fail("BAD_ARGS", "move_attributes: false works on a single layer only");
+  if (!move && (!ls[0].source || ls[0] instanceof TextLayer || ls[0] instanceof ShapeLayer)) fail("BAD_ARGS", "move_attributes: false needs a layer with a source (footage, solid or precomp); text and shape layers can only move their attributes");
   for (i = 0; i < ls.length; i++) idx.push(ls[i].index);
   idx.sort(function (x, y) { return x - y; });
-  return compInfo(comp.layers.precompose(idx, a.name, true), true);
+  return compInfo(comp.layers.precompose(idx, a.name, move), true);
 };

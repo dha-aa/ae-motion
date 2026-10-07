@@ -53,9 +53,25 @@ function shapeToJson(v) {
   return { type: "path", vertices: copyPts(v.vertices), in_tangents: copyPts(v.inTangents), out_tangents: copyPts(v.outTangents), closed: v.closed };
 }
 
-// Add one shape group (rect | ellipse | star | polygon | path) with optional fill and stroke to a shape layer.
+var LINE_CAPS = { butt: 1, round: 2, square: 3 };
+var LINE_JOINS = { miter: 1, round: 2, bevel: 3 };
+
+// Check a shape spec's stroke options before anything is created (add_layer calls it before adding the layer).
+function checkShapeSpec(s) {
+  if (has(s, "line_cap") && !LINE_CAPS[s.line_cap]) fail("BAD_ARGS", "line_cap must be butt, round or square");
+  if (has(s, "line_join") && !LINE_JOINS[s.line_join]) fail("BAD_ARGS", "line_join must be miter, round or bevel");
+  if (has(s, "dashes") && (!(s.dashes instanceof Array) || s.dashes.length < 1 || s.dashes.length > 6)) fail("BAD_ARGS", "dashes must be 1 to 6 numbers: dash, gap, dash, gap and so on");
+  if ((has(s, "dashes") || has(s, "line_cap") || has(s, "line_join") || has(s, "stroke_width") || has(s, "stroke_opacity")) && !s.stroke) fail("BAD_ARGS", "Stroke options need a stroke color");
+}
+
+// Add one shape group (rect | ellipse | star | polygon | path) with optional fill and stroke to a shape layer and
+// return the group. Stroke extras: stroke_opacity, dashes [dash, gap, dash, gap] (up to 3 pairs), line_cap, line_join.
+// Group extras: name, position (offset inside the layer), rotation, opacity; fill_opacity.
 function addShapeContent(l, s) {
-  var root = l.property("ADBE Root Vectors Group"), grp = root.addProperty("ADBE Vector Group"), g = grp.property("ADBE Vectors Group"), sh, f, st;
+  var root, grp, g, sh, f, st, d, i, tg;
+  checkShapeSpec(s);
+  root = l.property("ADBE Root Vectors Group"); grp = root.addProperty("ADBE Vector Group"); g = grp.property("ADBE Vectors Group");
+  if (s.name) grp.name = s.name;
   if (s.type === "star" || s.type === "polygon") {
     sh = g.addProperty("ADBE Vector Shape - Star");
     sh.property("ADBE Vector Star Type").setValue(s.type === "star" ? 1 : 2);
@@ -71,10 +87,26 @@ function addShapeContent(l, s) {
     sh = g.addProperty("ADBE Vector Shape - Rect"); sh.property("ADBE Vector Rect Size").setValue(s.size || [100, 100]);
     if (s.roundness !== undefined) sh.property("ADBE Vector Rect Roundness").setValue(s.roundness);
   }
-  if (s.fill) { f = g.addProperty("ADBE Vector Graphic - Fill"); f.property("ADBE Vector Fill Color").setValue(rgba(s.fill)); }
+  if (s.fill) {
+    f = g.addProperty("ADBE Vector Graphic - Fill"); f.property("ADBE Vector Fill Color").setValue(rgba(s.fill));
+    if (has(s, "fill_opacity")) f.property("ADBE Vector Fill Opacity").setValue(s.fill_opacity);
+  }
   if (s.stroke) {
     st = g.addProperty("ADBE Vector Graphic - Stroke");
     st.property("ADBE Vector Stroke Color").setValue(rgba(s.stroke));
     st.property("ADBE Vector Stroke Width").setValue(s.stroke_width || 4);
+    if (has(s, "stroke_opacity")) st.property("ADBE Vector Stroke Opacity").setValue(s.stroke_opacity);
+    if (has(s, "line_cap")) st.property("ADBE Vector Stroke Line Cap").setValue(LINE_CAPS[s.line_cap]);
+    if (has(s, "line_join")) st.property("ADBE Vector Stroke Line Join").setValue(LINE_JOINS[s.line_join]);
+    if (has(s, "dashes")) {
+      // adding "Dash n" / "Gap n" activates that pair; After Effects lists all three pairs but only renders active ones
+      d = st.property("ADBE Vector Stroke Dashes");
+      for (i = 0; i < s.dashes.length; i++) d.addProperty("ADBE Vector Stroke " + (i % 2 ? "Gap " : "Dash ") + (Math.floor(i / 2) + 1)).setValue(s.dashes[i]);
+    }
   }
+  tg = grp.property("ADBE Vector Transform Group");
+  if (has(s, "position")) tg.property("ADBE Vector Position").setValue([s.position[0], s.position[1]]);
+  if (has(s, "rotation")) tg.property("ADBE Vector Rotation").setValue(s.rotation);
+  if (has(s, "opacity")) tg.property("ADBE Vector Group Opacity").setValue(s.opacity);
+  return grp;
 }

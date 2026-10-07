@@ -8,10 +8,12 @@
  *   src/tools/masks.ts     <-> host/commands/masks.jsx
  *   src/tools/animate.ts   <-> host/commands/animate.jsx, host/commands/text.jsx
  *   src/tools/scene3d.ts   <-> host/commands/scene3d.jsx
+ *   src/tools/design.ts    <-> host/commands/design.jsx    (layout, shapes, layer styles)
  *   src/tools/output.ts    <-> host/commands/output.jsx    (preview, render)
  *   src/tools/scripting.ts <-> host/commands/output.jsx    (run_jsx)
  */
 import { registerAnimateTools } from "./animate.js";
+import { registerDesignTools } from "./design.js";
 import { registerInspectTools } from "./inspect.js";
 import { registerLayerTools } from "./layers.js";
 import { registerMaskTools } from "./masks.js";
@@ -30,6 +32,7 @@ export function registerAllTools(r: ToolRegistry): void {
   registerMaskTools(r);
   registerAnimateTools(r);
   registerScene3dTools(r);
+  registerDesignTools(r);
   registerOutputTools(r);
   registerScriptingTools(r);
 }

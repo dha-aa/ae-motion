@@ -118,7 +118,7 @@ If a call fails, the error includes a code and a hint. See [Troubleshooting](#tr
 
 ## What it can do
 
-59 tools in nine groups. The full reference, with behavior notes, is in [docs/tools.md](docs/tools.md).
+64 tools in ten groups. The full reference, with behavior notes, is in [docs/tools.md](docs/tools.md).
 
 | Group | Tools |
 |---|---|
@@ -127,6 +127,7 @@ If a call fails, the error includes a code and a hint. See [Troubleshooting](#tr
 | Layers | `add_layer`, `set_layer`, `link_layers`, `replace_source`, `delete_layer`, `duplicate_layer`, `reorder_layer`, `precompose` |
 | Timeline | `split_layer`, `delete_range`, `insert_time`, `shift_layers`, `sequence_layers`, `align_to_markers`, `trim_comp`, `set_playhead`, `add_marker`, `update_marker`, `list_markers`, `delete_marker` |
 | Masks and mattes | `add_mask`, `set_track_matte` |
+| Design | `align_layers`, `set_anchor`, `add_shape`, `add_layer_style`, `text_to_shapes` |
 | Animate | `set_property`, `set_keyframes`, `edit_keyframes`, `copy_animation`, `set_expression`, `add_property`, `apply_effect`, `edit_effect`, `apply_preset`, `set_text`, `get_text`, `stagger`, `add_shape_modifier` |
 | 3D and camera | `get_camera`, `set_camera`, `camera_move`, `camera_shake`, `camera_rig`, `set_3d`, `set_light`, `set_3d_view` |
 | Preview and render | `preview_frame`, `render_start`, `render_status`, `render_cancel` |
@@ -136,7 +137,7 @@ Also: resources `ae://project` and `ae://selection`, and the prompt `motion-guid
 
 Conventions: time in seconds, sizes in pixels, colors `[r,g,b]` floats 0 to 1, scale in percent. Comps and layers are addressed by the numeric ids tools return; properties by alias (`position`, `scale`, `rotation`, `opacity`, `anchor`) or an array of match names (`list_properties` discovers them). Every mutating call is one undo step in After Effects.
 
-Example prompts: "orbit the camera 120 degrees around the product over 4 seconds", "cut 3s to 5s out of every layer and close the gap", "line up these five layers one after another with a 10 frame overlap", "make these cards 3D, rotate them 25 degrees and add a spot light with shadows".
+Example prompts: "orbit the camera 120 degrees around the product over 4 seconds", "cut 3s to 5s out of every layer and close the gap", "line up these five layers one after another with a 10 frame overlap", "make these cards 3D, rotate them 25 degrees and add a spot light with shadows", "center the title and give it a soft drop shadow", "space these icons evenly across the bottom".
 
 ## Configuration
 

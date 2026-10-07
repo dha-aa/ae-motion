@@ -17,7 +17,7 @@ export function registerInspectTools(r: ToolRegistry): void {
 
   r.bridged(
     "get_layer",
-    "Get a layer's transform values, effects, layers with expressions, marker count, masks (mode, inverted) and track matte. Values are read at `time` (default 0).",
+    "Get a layer's transform values, effects, layers with expressions, marker count, masks (mode, inverted), track matte and bounds (content: the layer-space box of its text/shapes/pixels; comp: where that box sits in the comp, null for 3D layers). Values are read at `time` (default 0).",
     { layer_id: id("Layer"), time: z.number().min(0).optional() },
     ro,
   );

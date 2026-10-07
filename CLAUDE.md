@@ -26,15 +26,16 @@ There is no lint command and no single-test runner. `npm test` runs `test/run-al
 2. `mock-host.test.mjs` — layer/timeline/comp/marker commands (incl. insert_time, align_to_markers, trim_comp, update_marker, replace_source) against a mock AE DOM.
 3. `mock-camera.test.mjs` — camera maths, rigs, shake, lights, 3D layers, linking, 3D views against a mock DOM.
 4. `mock-shapes.test.mjs` — path (shape) values for masks/shape layers, ellipse vertex order, comp motion blur.
-5. `mock-keyframes.test.mjs` — edit_keyframes, copy_animation, stagger fidelity, separate dimensions, auto-orient (models the ease/bezier and roving quirks).
-6. `aerender-discovery.test.mjs` — `findAerender` (`dist/render/aerender.js`) against fake install layouts.
-7. `server.test.mjs` — the built server over stdio with a fake bridge and fake `aerender`: render lifecycle, preview wait, path sandboxing, run_jsx gate.
+5. `mock-design.test.mjs` — bounds/align/distribute maths, anchors, switches, solids, precompose leave-attributes, style/shape validation.
+6. `mock-keyframes.test.mjs` — edit_keyframes, copy_animation, stagger fidelity, separate dimensions, auto-orient (models the ease/bezier and roving quirks).
+7. `aerender-discovery.test.mjs` — `findAerender` (`dist/render/aerender.js`) against fake install layouts.
+8. `server.test.mjs` — the built server over stdio with a fake bridge and fake `aerender`: render lifecycle, preview wait, path sandboxing, run_jsx gate.
 
 ## Layout
 
 - `src/index.ts` entry (stdio, shutdown) · `src/server.ts` `createServer(bridge)` · `src/config.ts` every env var + version · `src/errors.ts` `ErrorCode`, `AeToolError` · `src/bridge.ts` `Bridge` + `HttpBridge` · `src/sandbox.ts` · `src/resources.ts` · `src/prompts.ts`
 - `src/tools/registry.ts` — `ToolRegistry.bridged(name, desc, shape, { paths?, readOnly?, destructive?, idempotent?, openWorld?, tooLargeHint? })` (validate, sandbox `paths`, forward to the host command of the same name) and `ToolRegistry.tool(...)` for server-side logic. It makes every input schema strict at all depths (unknown keys rejected), adds a title + all four MCP annotations (non-read-only tools default to destructive), returns compact JSON and replaces results over `CHARACTER_LIMIT` (25k chars) with an error. `src/tools/schemas.ts` shared zod schemas.
-- `src/tools/<group>.ts` ↔ `host/commands/<group>.jsx`: inspect, project, layers, timeline (+markers), masks, animate (+`text.jsx`), scene3d, output (preview/render), scripting (run_jsx).
+- `src/tools/<group>.ts` ↔ `host/commands/<group>.jsx`: inspect, project, layers, timeline (+markers), masks, animate (+`text.jsx`), scene3d, design (align, anchors, add_shape, layer styles, text to shapes), output (preview/render), scripting (run_jsx).
 - `src/render/aerender.ts` (find aerender / written file), `src/render/manager.ts` (`RenderManager`).
 - `host/` — ExtendScript sources: `json.jsx` polyfill, `core/` helpers, `commands/`, `dispatch.jsx`. `scripts/build-host.mjs` wraps them in one closure (`var AEM = (function () { var C = {}; ... })()`) and writes `panel/host/host.jsx`, which is **generated and gitignored — never edit it**. New host files go in `MODULES` in the build script; top-level names must be unique across `host/` (the build checks).
 - `panel/` — the CEP extension as installed (manifest, `main.js` HTTP bridge with serial queue, `index.html`).
@@ -68,6 +69,10 @@ There is no lint command and no single-test runner. `npm test` runs `test/run-al
 - Path keyframes morph vertex i into vertex i. `boxShape` puts ellipse vertices on the diagonals, matching a rect's corners (top-left first, clockwise), so rect <-> ellipse morphs don't twist; AE's own ellipses start at the top and would.
 - A layer's motion blur switch does nothing until the comp's `motionBlur` is on too (`set_comp motion_blur`); frame blending likewise needs `comp.frameBlending` (`set_comp frame_blending`).
 - A `MarkerValue` from `keyValue` is a copy: change it, then write it back with `setValueAtTime` (`update_marker`).
+- `moveTo()` on a property invalidates that object, and menu commands can invalidate held references: read first, re-fetch after.
+- Menu commands act on the selection in the viewer (`selectOnly`); names are localized, so `findMenuCommandId(name) || id` (Create Shapes from Text 3781, Layer Styles 9000-9008: drop shadow, inner shadow, outer glow, inner glow, bevel, satin, color overlay, gradient overlay, stroke).
+- Gradient colors can't be set by script. First stroke dash lists all 3 pairs (unused ones don't render, can't be removed). Leave-attributes precompose needs one layer with a source.
+- Mock tests: arrays created outside the vm context fail the host's `instanceof Array`; build them in the context (`inner()` in mock-design).
 - Setting a key's temporal ease switches it to bezier: restore ease first, interpolation type last (`restoreKey`).
 - Roving keys re-time whenever other keys change; `replaceKeys` un-roves first and re-applies roving at the end, or old keys can't be found and get duplicated. Copy/move keys with `snapKey`/`restoreKey`/`replaceKeys` (`host/core/keys.jsx`) so no key setting is lost.
 - Layer ids / `project.layerByID` exist from AE 22.0 (manifest minimum); `getLayer` uses `layerByID` only, so mocks must define it.

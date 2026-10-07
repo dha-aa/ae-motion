@@ -35,14 +35,14 @@ src/                        MCP server (TypeScript)
     registry.ts             ToolRegistry: tool() / bridged() helpers, result helpers
     schemas.ts              shared zod schemas (ids, colors, vectors, property paths)
     index.ts                registerAllTools()
-    inspect.ts project.ts layers.ts timeline.ts masks.ts animate.ts scene3d.ts output.ts scripting.ts
+    inspect.ts project.ts layers.ts timeline.ts masks.ts animate.ts scene3d.ts design.ts output.ts scripting.ts
   render/
     aerender.ts             find aerender; find the file it actually wrote
     manager.ts              RenderManager: background aerender jobs
 
 host/                       ExtendScript sources (ES3), one closure once built
   json.jsx                  JSON polyfill (ExtendScript has none)
-  core/                     shared helpers: util, lookup, describe, keys, shapes, timing, vector, scene3d
+  core/                     shared helpers: util, lookup, describe, keys, shapes, timing, vector, scene3d, layout
   commands/                 C.<command> implementations, one file per tool group (mirrors src/tools/)
   dispatch.jsx              AEM.dispatch(): parse, undo group, run, serialise errors
 
