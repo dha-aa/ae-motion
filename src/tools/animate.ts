@@ -16,7 +16,7 @@ export function registerAnimateTools(r: ToolRegistry): void {
 
   r.bridged(
     "set_keyframes",
-    "Replace all keyframes on a property. Each key: {t, v, interp?: linear|bezier|hold, ease_in?, ease_out?}. Fails if the property has an active expression.",
+    "Replace all keyframes on a property. Each key: {t, v, interp?: linear|bezier|hold, ease_in?, ease_out?}. For path properties (ADBE Mask Shape, a shape layer's ADBE Vector Shape) v is a shape spec ({type: rect|ellipse, position?, size?}, {type: polygon, points} or {type: path, vertices, in_tangents?, out_tangents?, closed?}); keep the same vertex count across keys for a clean morph. Fails if the property has an active expression.",
     {
       layer_id: id("Layer"), path: PropPath,
       keys: z.array(z.object({ t: z.number().min(0), v: Value, interp: z.enum(["linear", "bezier", "hold"]).optional(), ease_in: Ease.optional(), ease_out: Ease.optional() })).min(1),

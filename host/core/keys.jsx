@@ -1,10 +1,18 @@
 // Values, keyframes and easing.
 
-// Check a value can be set on prop and convert it (3-value colors get an alpha).
+// The layer a property belongs to.
+function layerOf(prop) { return prop.propertyGroup(prop.propertyDepth); }
+
+// Check a value can be set on prop and convert it (3-value colors get an alpha; shape specs become Shapes).
 function coerce(prop, v) {
-  var t = prop.propertyValueType, V = PropertyValueType;
+  var t = prop.propertyValueType, V = PropertyValueType, l;
   if (t === V.TEXT_DOCUMENT) fail("BAD_ARGS", "Text properties are set with set_text");
-  if (t === V.SHAPE || t === V.NO_VALUE || t === V.CUSTOM_VALUE || t === V.MARKER) fail("BAD_ARGS", "Property type '" + vt(prop) + "' cannot be set with this tool", "Use run_jsx if AE_MCP_ALLOW_JSX=1");
+  if (t === V.SHAPE) {
+    if (!v || typeof v !== "object" || v instanceof Array) fail("BAD_ARGS", "A path property takes a shape: {type: rect|ellipse, position?, size?}, {type: polygon, points} or {type: path, vertices, in_tangents?, out_tangents?, closed?}");
+    l = layerOf(prop);
+    return shapeFromSpec(v, l.width || l.containingComp.width, l.height || l.containingComp.height);
+  }
+  if (t === V.NO_VALUE || t === V.CUSTOM_VALUE || t === V.MARKER) fail("BAD_ARGS", "Property type '" + vt(prop) + "' cannot be set with this tool", "Use run_jsx if AE_MCP_ALLOW_JSX=1");
   if (t === V.COLOR && v instanceof Array && v.length === 3) return rgba(v);
   return v;
 }
@@ -66,7 +74,8 @@ function shiftKeys(p, dt) {
 function keyVal(p, i) {
   var t = p.propertyValueType, V = PropertyValueType, v;
   if (t === V.TEXT_DOCUMENT) return p.keyValue(i).text;
-  if (t === V.SHAPE || t === V.NO_VALUE || t === V.CUSTOM_VALUE || t === V.MARKER) return undefined;
+  if (t === V.SHAPE) return shapeToJson(p.keyValue(i));
+  if (t === V.NO_VALUE || t === V.CUSTOM_VALUE || t === V.MARKER) return undefined;
   v = p.keyValue(i);
   return v instanceof Array ? copyArr(v) : v;
 }

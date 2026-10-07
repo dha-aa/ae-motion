@@ -21,9 +21,19 @@ export const PropPath = z
   .describe(
     'Alias (position|scale|rotation|opacity|anchor) or an array of match names, e.g. ["ADBE Effect Parade","ADBE Gaussian Blur 2","ADBE Gaussian Blur 2-0001"]. Use list_properties to discover paths.',
   );
+/** A mask or shape-layer path: rect / ellipse (position, size), polygon (points) or path (vertices + tangents). Same format get_keyframes returns. */
+export const ShapeSpec = z.object({
+  type: z.enum(["rect", "ellipse", "polygon", "path"]),
+  position: Pt.optional().describe("Center in layer pixels (rect/ellipse; default: layer center)"),
+  size: Pt.optional().describe("[width,height] in pixels (rect/ellipse; default: full layer)"),
+  points: Pt.array().min(3).optional().describe("Corner points in layer pixels (polygon)"),
+  vertices: Pt.array().min(2).optional().describe("Path vertices in layer pixels (path)"),
+  in_tangents: Pt.array().optional(), out_tangents: Pt.array().optional(), closed: z.boolean().optional(),
+});
+
 export const Value = z
-  .union([z.number(), z.string(), z.boolean(), z.array(z.number())])
-  .describe("Number, boolean, or number array (position [x,y], scale [x,y] in percent, color [r,g,b] 0-1)");
+  .union([z.number(), z.string(), z.boolean(), z.array(z.number()), ShapeSpec])
+  .describe("Number, boolean, number array (position [x,y], scale [x,y] in percent, color [r,g,b] 0-1), or a shape spec for path properties (mask shapes, shape-layer paths)");
 export const Ease = z
   .union([z.literal("easy"), z.object({ speed: z.number().default(0), influence: z.number().min(0.1).max(100).default(33.33) })])
   .describe('"easy" (easy ease) or {speed, influence}');

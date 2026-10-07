@@ -23,7 +23,7 @@ bash scripts/install.sh   # macOS: build + copy panel/ into the CEP folder (need
 ```bash
 D=.claude/skills/run-ae-motion/driver.mjs
 node $D status        # {"panel":"up","port":47670,...}; exit 1 if the panel is down
-node $D smoke         # comp -> solid -> shape -> eased keys -> preview PNG -> delete comp; exit 0 = all ok
+node $D smoke         # comp -> shapes -> eased keys -> preview PNG -> delete comp; exit 0 = all ok
 ```
 
 `smoke` saves its frame to `/tmp/ae-motion-shots/preview_frame-<ts>.png` (override with `SHOTS=`). **Open the PNG and look at it**: an orange rounded box centered on a dark blue background at t = 0.75 s.
@@ -87,7 +87,7 @@ Register `node <repo>/dist/index.js` with an MCP client (`claude mcp add ae-moti
 ## Test
 
 ```bash
-npm test     # build + 5 test files, no AE needed: "all 5 test files passed"
+npm test     # build + 6 test files, no AE needed: "all 6 test files passed"
 ```
 
 ## Gotchas
@@ -95,7 +95,7 @@ npm test     # build + 5 test files, no AE needed: "all 5 test files passed"
 - **`$.evalFile(host.jsx)` does not hot-reload.** It evaluates in the caller's local scope, so the global `AEM` the panel calls stays the old closure (it reports success, nothing changes). `reload-host` reads the file and assigns `$.global.AEM = eval(src + ";AEM")` instead.
 - **A reload lasts until the panel reopens.** Reopening loads the *installed* copy from the CEP folder. Run `bash scripts/install.sh` to make host/ changes stick.
 - **A Claude Code session's own ae-motion MCP tools run the server it started with.** After `npm run build`, those tools still run old code until `/mcp` reconnects. The driver has no such problem (fresh server per command).
-- **Preview PNGs are transparent where nothing is drawn**: the comp's `bg_color` is not rendered, so frames look white in a viewer. Add a full-frame solid first (smoke does) if you need to see the background.
+- **Preview PNGs are transparent where nothing is drawn**: the comp's `bg_color` is not rendered, so frames look white in a viewer. Add a full-frame layer first (smoke uses a shape) if you need to see the background.
 - **`~` is not expanded in path arguments.** `"~/x.mov"` becomes `<server cwd>/~/x.mov` (seen via `--fake`). Pass absolute paths.
 - **Unknown argument keys are rejected at any depth** (`Unrecognized key(s) in object: 'fil' at options.shape`): check spelling against `list` / the tool schema rather than retrying.
 - **The driver pretty-prints results for reading; the wire format is compact JSON.** Measure response sizes from the server, not from driver output (the 25,000-character cap applies to the compact form).
@@ -103,6 +103,7 @@ npm test     # build + 5 test files, no AE needed: "all 5 test files passed"
 - **`bridge` and `reload-host` bypass the `AE_MCP_ALLOW_JSX` gate**: run_jsx's gate lives in the server, and the host command always exists. It's a local dev tool using your own token. Don't build product features on it.
 - **Render jobs live in one server's memory**: `render_status` in a separate `call` won't find a job started by an earlier `call`. Keep `render_start` and its status checks in one `script`. (Rendering was not exercised with this driver: it needs a saved project.)
 - **Every tool call is an AE undo step and leaves items in the open project.** `smoke` deletes its comp at the end; for your own scripts, end with `delete_item ... force:true`.
+- **Solid layers leave footage items behind.** `kind: solid` creates an item in the project's Solids folder, and deleting the comp keeps it. For throwaway backgrounds use a full-frame shape (`kind: shape`, `shape: {type: rect, size: [w, h], fill}`), as `smoke` does; to clean up, `delete_item` the Solids folder id from `get_project` with `force: true`.
 
 ## Troubleshooting
 

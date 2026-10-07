@@ -34,6 +34,10 @@ C.set_comp = function (a) {
   if (has(a, "pixel_aspect")) c.pixelAspect = a.pixel_aspect;
   if (a.bg_color) c.bgColor = [a.bg_color[0], a.bg_color[1], a.bg_color[2]];
   if (has(a, "duration")) c.duration = a.duration;
+  // the comp switch: layers with motion_blur (set_layer) only render blurred while this is on
+  if (has(a, "motion_blur")) c.motionBlur = a.motion_blur;
+  if (has(a, "shutter_angle")) c.shutterAngle = a.shutter_angle;
+  if (has(a, "shutter_phase")) c.shutterPhase = a.shutter_phase;
   if (wa) {
     ws = has(wa, "start") ? wa.start : c.workAreaStart;
     wd = has(wa, "duration") ? wa.duration : c.workAreaDuration;

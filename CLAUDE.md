@@ -25,8 +25,9 @@ There is no lint command and no single-test runner. `npm test` runs `test/run-al
 1. `static-checks.mjs` — generated `host.jsx` is current and parses; ES3 lint of `host/` (reports `host/<file>:<line>`); boots `dist/index.js` and diffs `tools/list` against the `C.<name> = function` commands. `EXPECTED_TOOLS` must match the tool count.
 2. `mock-host.test.mjs` — layer/timeline/comp/marker commands against a mock AE DOM.
 3. `mock-camera.test.mjs` — camera maths, rigs, shake, lights, 3D layers, linking, 3D views against a mock DOM.
-4. `aerender-discovery.test.mjs` — `findAerender` (`dist/render/aerender.js`) against fake install layouts.
-5. `server.test.mjs` — the built server over stdio with a fake bridge and fake `aerender`: render lifecycle, preview wait, path sandboxing, run_jsx gate.
+4. `mock-shapes.test.mjs` — path (shape) values for masks/shape layers, ellipse vertex order, comp motion blur.
+5. `aerender-discovery.test.mjs` — `findAerender` (`dist/render/aerender.js`) against fake install layouts.
+6. `server.test.mjs` — the built server over stdio with a fake bridge and fake `aerender`: render lifecycle, preview wait, path sandboxing, run_jsx gate.
 
 ## Layout
 
@@ -63,6 +64,8 @@ There is no lint command and no single-test runner. `npm test` runs `test/run-al
 - 3D views: `app.findMenuCommandId(<menu item>)` + `app.executeCommand`; the active camera item is `Active Camera (<camera name>)`. Running one clears the selection. Verify new names against View > Switch 3D View.
 - `saveFrameToPng` can return before the PNG is written; `preview_frame` waits for it to stop growing.
 - Removing every time-remap key turns time remapping off; `set_keyframes` adds new keys first.
+- Path keyframes morph vertex i into vertex i. `boxShape` puts ellipse vertices on the diagonals, matching a rect's corners (top-left first, clockwise), so rect <-> ellipse morphs don't twist; AE's own ellipses start at the top and would.
+- A layer's motion blur switch does nothing until the comp's `motionBlur` is on too (`set_comp motion_blur`).
 - Layer ids / `project.layerByID` exist from AE 22.0 (manifest minimum); `getLayer` uses `layerByID` only, so mocks must define it.
 - The mock in `test/mock-host.test.mjs` models the first two quirks; keep mocks in sync when you find another.
 

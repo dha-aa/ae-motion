@@ -23,7 +23,7 @@
 | | `find_effects` | Search installed effects by name, match name or category |
 | Project | `save_project` | Save, or Save As to a path (needed before `render_start`) |
 | | `create_comp` | Create a composition and open it |
-| | `set_comp` | Change a comp's name, size, fps, duration, background, pixel aspect or work area |
+| | `set_comp` | Change a comp's name, size, fps, duration, background, pixel aspect, work area, or motion blur (switch, shutter angle, phase) |
 | | `import_footage` | Import a file or image sequence |
 | | `delete_item` | Delete a comp, footage item or folder (refuses used items unless `force`) |
 | Layers | `add_layer` | Add a solid, text (point or box), shape (rect, ellipse, star, polygon, path), null, adjustment, footage, precomp, camera or light layer; optional `position` and `three_d` place it as it is created |
@@ -42,7 +42,7 @@
 | Masks and mattes | `add_mask` | Add a rect, ellipse, polygon or bezier-path mask with mode, feather, opacity, expansion |
 | | `set_track_matte` | Use a layer as an alpha or luma track matte, or remove the matte |
 | Animate | `set_property` | Set a value, or a keyframe at `time` |
-| | `set_keyframes` | Replace all keyframes on a property, with interpolation and easing |
+| | `set_keyframes` | Replace all keyframes on a property, with interpolation and easing; also path keyframes (mask and shape morphs) |
 | | `set_expression` | Set or clear an expression and report syntax errors |
 | | `add_property` | Add a text animator, its properties and range selector (layer styles cannot be created by scripts) |
 | | `apply_effect` | Add an effect by match name and set its parameters |
@@ -75,6 +75,12 @@ Every tool has a title and the four MCP annotations: `readOnlyHint` (inspection,
 - **Unknown arguments are rejected**, at any depth: `set_layer` with `colour` fails with `Unrecognized key(s) in object: 'colour'` instead of silently ignoring it. Schema errors come back as plain text (`MCP error -32602: Input validation error: ...`) and never reach After Effects.
 - **Results are compact JSON** (no indentation).
 - **Responses are capped at 25,000 characters.** A bigger result is replaced by a `BAD_ARGS` error that says how to ask for less; for `list_properties`, pass `group_path` and/or a smaller `depth`.
+
+## Paths and motion blur
+
+- **Path properties** (a mask's `ADBE Mask Shape`, a shape layer's `ADBE Vector Shape`) take a *shape spec* as their value in `set_property` and `set_keyframes`, in the same format as `add_mask`: `{type: "rect" | "ellipse", position?, size?}` (default: the full layer), `{type: "polygon", points}`, or `{type: "path", vertices, in_tangents?, out_tangents?, closed?}`. `get_keyframes` returns path keys as `{type: "path", ...}`, which can be written back unchanged.
+- **Morphs:** keep the vertex count the same across keys. Rects and ellipses both have 4 vertices starting at the top-left, so a rect keyframe morphs into an ellipse keyframe without twisting. Example: `set_keyframes` on `["ADBE Mask Parade", 1, "ADBE Mask Shape"]` with `{t: 0, v: {type: "rect"}}` and `{t: 1, v: {type: "ellipse"}}`. The path of a shape layer created by `add_layer` is at `["ADBE Root Vectors Group", 1, "ADBE Vectors Group", 1, "ADBE Vector Shape"]`.
+- **Motion blur** needs both switches: `set_layer` `motion_blur: true` on the layer and `set_comp` `motion_blur: true` on the comp. `shutter_angle` (default 180) sets the blur length; 360 is a long, smooth blur.
 
 ## Timeline editing
 

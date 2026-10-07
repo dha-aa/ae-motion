@@ -13,7 +13,7 @@
 //                              (also reaches non-tool commands: get_selection, prepare_render)
 //   reload-host                re-evaluate panel/host/host.jsx inside AE (after `npm run build:host`),
 //                              no installer re-run or panel reopen needed for host/ changes
-//   smoke                      end-to-end: comp -> shape -> eased keys -> preview PNG -> delete comp
+//   smoke                      end-to-end: comp -> shapes -> eased keys -> preview PNG -> delete comp (leaves nothing behind)
 //
 //   --fake       start a fake panel (echoes {fake, cmd, args}) instead of talking to After Effects
 //   --allow-jsx  set AE_MCP_ALLOW_JSX=1 for the spawned server (enables run_jsx)
@@ -228,7 +228,8 @@ switch (cmd) {
     const steps = [
       { tool: "get_project" },
       { tool: "create_comp", args: { name: "ae-motion smoke", width: 640, height: 360, fps: 30, duration: 2, bg_color: [0.1, 0.1, 0.15] } },
-      { tool: "add_layer", args: { comp_id: "$1.id", kind: "solid", options: { name: "BG", color: [0.12, 0.14, 0.2] } } },
+      // a shape, not a solid: solids create a footage item that deleting the comp leaves behind
+      { tool: "add_layer", args: { comp_id: "$1.id", kind: "shape", options: { name: "BG", shape: { type: "rect", size: [640, 360], fill: [0.12, 0.14, 0.2] } } } },
       { tool: "add_layer", args: { comp_id: "$1.id", kind: "shape", options: { name: "Box", shape: { type: "rect", size: [120, 120], fill: [1, 0.4, 0.2], roundness: 16 } } } },
       { tool: "set_keyframes", args: { layer_id: "$3.id", path: "position", keys: [{ t: 0, v: [100, 180], ease_out: "easy" }, { t: 1.5, v: [540, 180], ease_in: "easy" }] } },
       { tool: "get_comp", args: { comp_id: "$1.id" } },

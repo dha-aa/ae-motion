@@ -2,18 +2,9 @@
 
 C.add_mask = function (a) {
   need(a, ["layer_id", "shape"]);
-  var l = getLayer(a.layer_id), masks = l.property("ADBE Mask Parade"), s = a.shape, W, H, m, shp, mode, cx, cy;
+  var l = getLayer(a.layer_id), masks = l.property("ADBE Mask Parade"), m, shp, mode;
   if (!masks) fail("BAD_ARGS", "Layer does not support masks");
-  W = l.width || l.containingComp.width; H = l.height || l.containingComp.height;
-  if (s.type === "rect" || s.type === "ellipse") {
-    cx = s.position ? s.position[0] : W / 2; cy = s.position ? s.position[1] : H / 2;
-    shp = boxShape(s.type, cx, cy, s.size ? s.size[0] : W, s.size ? s.size[1] : H);
-  } else if (s.type === "polygon") {
-    if (!(s.points instanceof Array) || s.points.length < 3) fail("BAD_ARGS", "polygon needs at least 3 points");
-    shp = mkShape(s.points, null, null, s.closed);
-  } else if (s.type === "path") {
-    shp = mkShape(s.vertices, s.in_tangents, s.out_tangents, s.closed);
-  } else { fail("BAD_ARGS", "shape.type must be rect, ellipse, polygon or path"); }
+  shp = shapeFromSpec(a.shape, l.width || l.containingComp.width, l.height || l.containingComp.height);
   if (has(a, "mode")) { mode = MASKMODES[a.mode]; if (!mode) fail("BAD_ARGS", "Unknown mask mode: " + a.mode); }
   m = masks.addProperty("ADBE Mask Atom");
   m.property("ADBE Mask Shape").setValue(shp);

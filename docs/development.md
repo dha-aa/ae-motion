@@ -115,6 +115,7 @@ Found in live testing; the code relies on all of these.
 | `static-checks.mjs` | `host.jsx` is up to date and parses; ES3 lint of `host/`; `tools/list` matches the host commands; `EXPECTED_TOOLS` |
 | `mock-host.test.mjs` | Layer, timeline, comp, marker and item commands against a fake After Effects DOM |
 | `mock-camera.test.mjs` | Camera maths, moves, rigs, shake, look-at, 3D layers, lights, linking and 3D views against a fake DOM |
+| `mock-shapes.test.mjs` | Path values from shape specs, the ellipse vertex order, get_keyframes round trips, comp motion blur |
 | `aerender-discovery.test.mjs` | `findAerender` against fake install layouts |
 | `server.test.mjs` | The built server end to end over stdio, with a fake bridge and a fake `aerender`: render lifecycle (failed start keeps old output, jobs stop on disconnect, the real output file is reported), `preview_frame` waiting, path sandboxing, the `run_jsx` gate. Skipped on Windows (uses a bash script) |
 

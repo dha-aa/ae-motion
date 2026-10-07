@@ -30,6 +30,7 @@ function compInfo(c, withLayers) {
     id: c.id, name: c.name, width: c.width, height: c.height, fps: c.frameRate, duration: c.duration,
     pixel_aspect: c.pixelAspect, bg_color: [c.bgColor[0], c.bgColor[1], c.bgColor[2]], num_layers: c.numLayers,
     work_area_start: c.workAreaStart, work_area_duration: c.workAreaDuration, time: c.time,
+    motion_blur: c.motionBlur, shutter_angle: c.shutterAngle, shutter_phase: c.shutterPhase,
     num_markers: safe(function () { return c.markerProperty.numKeys; })
   };
   if (withLayers) { o.layers = []; for (var i = 1; i <= c.numLayers; i++) o.layers.push(layerInfo(c.layer(i))); }
@@ -52,11 +53,12 @@ function vt(p) {
   return "custom";
 }
 
-// A property's value at time as JSON, or undefined for types that do not serialize (shapes, markers, custom).
+// A property's value at time as JSON (paths as shape specs), or undefined for types that do not serialize (markers, custom).
 function safeVal(p, time) {
   var t = p.propertyValueType, V = PropertyValueType, v;
   try {
     if (t === V.TEXT_DOCUMENT) return p.value.text;
+    if (t === V.SHAPE) return shapeToJson(p.valueAtTime(time, false));
     if (t === V.OneD || t === V.TwoD || t === V.ThreeD || t === V.COLOR || t === V.TwoD_SPATIAL || t === V.ThreeD_SPATIAL || t === V.LAYER_INDEX || t === V.MASK_INDEX) {
       v = p.canVaryOverTime ? p.valueAtTime(time, false) : p.value;
       return v instanceof Array ? copyArr(v) : v;
