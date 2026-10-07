@@ -1,6 +1,8 @@
 # AE Motion MCP
 
-An MCP server that lets Claude (or any MCP client) build, animate, preview and render motion graphics in a live Adobe After Effects project.
+An [MCP](https://modelcontextprotocol.io) server that lets Claude (or any MCP client) build, animate, preview and render motion graphics in a live Adobe After Effects project.
+
+Ask for "a 5 second lower third with an eased slide-in", and the model creates the comp, adds layers, sets keyframes, checks a preview frame and kicks off a render, all in the project you have open.
 
 ```
 MCP client --stdio--> MCP server (TypeScript) --HTTP 127.0.0.1 + token--> CEP panel in AE --> ExtendScript
@@ -8,66 +10,231 @@ MCP client --stdio--> MCP server (TypeScript) --HTTP 127.0.0.1 + token--> CEP pa
 
 The server only talks to After Effects through a `Bridge` interface (`src/bridge.ts`), so the transport can be swapped (for example for UXP) without touching the tools.
 
+## Contents
+
+- [Requirements](#requirements)
+- [Installation](#installation)
+- [Verify it works](#verify-it-works)
+- [Tools](#tools)
+- [Configuration](#configuration)
+- [Security](#security)
+- [Troubleshooting](#troubleshooting)
+- [Updating and uninstalling](#updating-and-uninstalling)
+- [Development](#development)
+
 ## Requirements
 
-- After Effects 2022 (22.0) or later, Windows or macOS
-- Node.js 18+
+- After Effects 2022 (22.0) or later, on macOS or Windows
+- Node.js 18 or later (uses the built-in `fetch`)
+- An MCP client such as Claude Code or Claude Desktop
 
-## Install
+## Installation
 
-macOS: `bash scripts/install.sh`
-Windows (PowerShell): `./scripts/install.ps1`
+### 1. Get the code and run the installer
 
-The installer copies the panel into the CEP extensions folder, enables unsigned panels (`PlayerDebugMode`), and runs `npm install && npm run build`.
+```bash
+git clone https://github.com/dha-aa/ae-motion.git
+cd ae-motion
+```
 
-Then:
+macOS:
 
-1. In After Effects enable **Scripting & Expressions > Allow Scripts to Write Files and Access Network**.
-2. Restart After Effects. Open **Window > Extensions > AE Motion MCP** and keep it open (dock it so it loads on startup).
-3. Register the server:
-   - Claude Code: `claude mcp add ae-motion -- node /absolute/path/to/ae-motion-mcp/dist/index.js`
-   - Claude Desktop: add `{"mcpServers":{"ae-motion":{"command":"node","args":["/absolute/path/to/ae-motion-mcp/dist/index.js"]}}}` to the config file.
-4. Ask: "get the project info".
+```bash
+bash scripts/install.sh
+```
 
-## Tools (23)
+Windows (PowerShell):
 
-| Group | Tools |
-|---|---|
-| Inspect | `get_project`, `get_comp`, `get_layer`, `list_properties`, `find_effects` |
-| Build | `create_comp`, `import_footage`, `add_layer`, `set_layer`, `delete_layer`, `precompose` |
-| Animate | `set_property`, `set_keyframes`, `set_expression`, `apply_effect`, `apply_preset`, `set_text`, `stagger` |
-| Preview/render | `preview_frame`, `render_start`, `render_status`, `render_cancel` |
-| Escape hatch | `run_jsx` (disabled unless `AE_MCP_ALLOW_JSX=1`) |
+```powershell
+./scripts/install.ps1
+```
 
-Resources: `ae://project`, `ae://selection`. Prompt: `motion-guide`.
+The installer does three things:
 
-Conventions: time in seconds, sizes in pixels, colors `[r,g,b]` 0-1, scale in percent. Comps and layers are addressed by the ids tools return. Properties by alias (`position`, `scale`, `rotation`, `opacity`, `anchor`) or match-name arrays. Every mutating tool call is one undo step. Errors are `{error:{code,message,hint}}` with codes `NOT_FOUND`, `BAD_ARGS`, `AE_ERROR`, `BRIDGE_DOWN`, `TIMEOUT`, `FORBIDDEN`, `UNSUPPORTED`, `EXISTS`.
+1. Copies `panel/` into the CEP extensions folder
+   - macOS: `~/Library/Application Support/Adobe/CEP/extensions/com.aemotion.mcp`
+   - Windows: `%APPDATA%\Adobe\CEP\extensions\com.aemotion.mcp`
+2. Enables unsigned CEP panels (`PlayerDebugMode`, CSXS 9 to 12). This is a per-user setting that CEP requires for any panel that isn't signed by Adobe.
+3. Runs `npm install && npm run build` to produce `dist/index.js`.
 
-## Environment variables
+<details>
+<summary>Prefer to install by hand?</summary>
+
+1. Copy the contents of `panel/` into the extensions folder above, in a folder named `com.aemotion.mcp`.
+2. Enable unsigned panels.
+   - macOS: `for v in 9 10 11 12; do defaults write com.adobe.CSXS.$v PlayerDebugMode 1; done`
+   - Windows: for each of 9 to 12, `reg add "HKCU\Software\Adobe\CSXS.<v>" /v PlayerDebugMode /t REG_SZ /d 1 /f`
+3. In the repo folder run `npm install && npm run build`.
+
+</details>
+
+### 2. Allow scripts in After Effects
+
+Open the preferences, go to **Scripting & Expressions**, and enable **Allow Scripts to Write Files and Access Network**.
+
+- macOS: **After Effects > Settings**
+- Windows: **Edit > Preferences**
+
+### 3. Open the panel
+
+Restart After Effects, then open **Window > Extensions > AE Motion MCP** and keep it open. Docking it in a workspace makes it load on startup.
+
+The panel starts a small server on `127.0.0.1` (port 47670, or the next free port up to 47690) and writes its port and a random token to `~/.ae-motion-mcp/bridge.json`. The MCP server reads that file to find it. If the panel is closed, every tool returns `BRIDGE_DOWN`.
+
+### 4. Register the server with your client
+
+Use the **absolute path** to `dist/index.js`.
+
+**Claude Code**
+
+```bash
+claude mcp add ae-motion -- node /absolute/path/to/ae-motion/dist/index.js
+```
+
+**Claude Desktop**: add this to `claude_desktop_config.json` (macOS: `~/Library/Application Support/Claude/`, Windows: `%APPDATA%\Claude\`) and restart the app.
+
+```json
+{
+  "mcpServers": {
+    "ae-motion": {
+      "command": "node",
+      "args": ["/absolute/path/to/ae-motion/dist/index.js"]
+    }
+  }
+}
+```
+
+**Other clients**: any client that can launch a stdio MCP server works with `node /absolute/path/to/ae-motion/dist/index.js`.
+
+To set [environment variables](#configuration), add an `env` object next to `args` in the JSON above, or pass `--env KEY=value` to `claude mcp add` (before the server name).
+
+## Verify it works
+
+1. The panel status line shows `127.0.0.1:<port>`, and `~/.ae-motion-mcp/bridge.json` exists.
+2. In your client, ask: **"get the project info"**. You should get the project's comps, footage and the After Effects version.
+3. Then try something visible: "create a 1920x1080 comp at 30 fps, 5 seconds, with a white solid background, and show me frame 0".
+
+If a call fails, the error includes a code and a hint. See [Troubleshooting](#troubleshooting).
+
+## Tools
+
+23 tools, grouped by what they do. Time is in seconds, sizes in pixels, colors are `[r,g,b]` floats from 0 to 1, and scale is in percent. Comps and layers are addressed by the numeric ids the tools return. Properties are addressed by alias (`position`, `scale`, `rotation`, `opacity`, `anchor`) or by an array of match names; use `list_properties` to discover paths.
+
+| Group | Tool | What it does |
+|---|---|---|
+| Inspect | `get_project` | Project items, active comp id, AE version, project path |
+| | `get_comp` | Comp settings and its layers |
+| | `get_layer` | Transform values, effects, expressions, marker count |
+| | `list_properties` | Walk a layer's property tree (names, match names, values, keyframe counts) |
+| | `find_effects` | Search installed effects by name, match name or category |
+| Build | `create_comp` | Create a composition and open it |
+| | `import_footage` | Import a file or image sequence |
+| | `add_layer` | Add a solid, text, shape, null, adjustment, footage, precomp or camera layer |
+| | `set_layer` | Name, timing, parent, blend mode, visibility |
+| | `delete_layer` | Remove a layer |
+| | `precompose` | Precompose layers from one comp |
+| Animate | `set_property` | Set a value, or a keyframe at `time` |
+| | `set_keyframes` | Replace all keyframes on a property, with interpolation and easing |
+| | `set_expression` | Set or clear an expression and report syntax errors |
+| | `apply_effect` | Add an effect by match name and set its parameters |
+| | `apply_preset` | Apply an `.ffx` animation preset |
+| | `set_text` | Text content, font, size, color, tracking, justification |
+| | `stagger` | Offset existing keyframes across layers |
+| Preview and render | `preview_frame` | Render one frame to PNG and return it as an image |
+| | `render_start` | Save the project and start a background `aerender` job |
+| | `render_status` | State, percent and log tail of a render job |
+| | `render_cancel` | Cancel a running render job |
+| Escape hatch | `run_jsx` | Run arbitrary ExtendScript (disabled unless `AE_MCP_ALLOW_JSX=1`) |
+
+Resources: `ae://project`, `ae://selection`. Prompt: `motion-guide` (conventions and the recommended build loop).
+
+A good build loop is: `get_project`, `create_comp`, `add_layer` (background first), `set_keyframes` with easing, `preview_frame` at key moments, adjust, then `render_start` and poll `render_status`. Prefer `set_keyframes` over many `set_property` calls, use `stagger` for repeated elements, and call `find_effects` rather than guessing effect names.
+
+Errors come back as `{error:{code,message,hint}}` with codes `NOT_FOUND`, `BAD_ARGS`, `AE_ERROR`, `BRIDGE_DOWN`, `TIMEOUT`, `FORBIDDEN`, `UNSUPPORTED` and `EXISTS`.
+
+## Configuration
+
+All settings are environment variables on the MCP server process. The one exception is `AE_MCP_BRIDGE_FILE`, which must also be set for the panel's environment if you change it.
 
 | Variable | Effect |
 |---|---|
-| `AE_MCP_ALLOWED_DIRS` | Folders (OS path-delimiter separated) tools may read/write. Default: home folder. The temp folder is always allowed. |
+| `AE_MCP_ALLOWED_DIRS` | Folders (separated by the OS path delimiter, `:` or `;`) that tools may read from and write to. Default: your home folder. The temp folder is always allowed. |
 | `AE_MCP_ALLOW_JSX` | Set to `1` to enable `run_jsx`. |
 | `AE_AERENDER` | Full path to `aerender` if auto-detection fails. |
-| `AE_MCP_BRIDGE_FILE` | Override the bridge file (default `~/.ae-motion-mcp/bridge.json`); set it for both the panel's environment and the server if you change it. |
+| `AE_MCP_BRIDGE_FILE` | Override the bridge file (default `~/.ae-motion-mcp/bridge.json`). |
+
+## Security
+
+- The panel only listens on `127.0.0.1` and every request needs the random token stored in the bridge file, which is created readable by your user only.
+- File paths passed to tools (`import_footage`, `apply_preset`, render output) must be inside `AE_MCP_ALLOWED_DIRS`.
+- `run_jsx` can execute anything After Effects can, so it is off unless you opt in.
+- Installing the panel turns on `PlayerDebugMode` for CEP, which lets this user load any unsigned panel. Turn it back off if you uninstall (see below).
 
 ## Behavior notes
 
-- Commands run one at a time in AE. Calls over 30 s return `TIMEOUT` but may still finish in AE; inspect before retrying.
-- `render_start` saves the project and runs `aerender` in the background. The project must have been saved once. `.mp4` output needs an H.264 output-module template (Adobe Media Encoder) that you name in `om_template`.
+- Commands run one at a time in After Effects. A call that takes longer than 30 seconds returns `TIMEOUT` but may still finish in AE, so inspect the project before retrying.
+- Every mutating tool call is one undo step. If a tool fails midway, partial changes stay in that undo group, so undo once to revert.
+- `render_start` saves the project and runs `aerender` in the background. The project must have been saved at least once. If the output file already exists you must pass `overwrite: true`; the old file is only removed once the render is actually about to start, so a failed start keeps it. `.mp4` output needs an H.264 output-module template (Adobe Media Encoder) that you name in `om_template`.
+- Running renders are stopped when the MCP client disconnects or the server is terminated.
 - `preview_frame` uses `comp.saveFrameToPng`; on versions without it you get `UNSUPPORTED`.
 - `stagger` does not preserve spatial tangents on position keyframes.
-- If a mutating tool fails midway, partial changes stay in its single undo group; undo once to revert.
 
-## Verification status
+## Troubleshooting
 
-This was written without access to After Effects and its dependencies could not be installed in the build environment, so it has **not been run end to end**. Syntax checks were run on the panel and host scripts. First-run checklist: `get_project`, then `create_comp` + `add_layer` + `set_keyframes`, then `preview_frame`, then `render_start`. Likely first fixes, if any, are in `panel/host/host.jsx` (AE DOM details such as effect match names or `saveFrameToPng` availability).
+| Symptom | Cause and fix |
+|---|---|
+| `BRIDGE_DOWN`: Bridge file not found | The panel isn't open. Open **Window > Extensions > AE Motion MCP** and keep it open. |
+| `BRIDGE_DOWN`: rejected the token (stale bridge file) | After Effects was restarted or the panel reloaded. Close and reopen the panel. |
+| `BRIDGE_DOWN`: Cannot reach the After Effects panel | After Effects isn't running, or the panel is closed. Check the status line in the panel. |
+| The panel isn't in the **Window > Extensions** menu | Re-run the installer, make sure `PlayerDebugMode` is set for your CSXS version, then fully restart After Effects. |
+| Panel status shows "Cannot write bridge file" | `~/.ae-motion-mcp/` can't be created or written by your user. Fix the folder permissions, or point `AE_MCP_BRIDGE_FILE` somewhere writable (for both the panel and the server). |
+| `preview_frame` or `import_footage` fail with a scripting permission error | Enable **Allow Scripts to Write Files and Access Network** in After Effects (see [Installation](#2-allow-scripts-in-after-effects)). |
+| `FORBIDDEN`: path outside the allowed folders | Add the folder to `AE_MCP_ALLOWED_DIRS`. |
+| `FORBIDDEN`: `run_jsx` is disabled | Set `AE_MCP_ALLOW_JSX=1` in the server's environment. |
+| `TIMEOUT` | The command may still be running. Check the panel, inspect state, then retry. A modal dialog open in After Effects will also block commands. |
+| `AE_ERROR`: aerender not found | Set `AE_AERENDER` to the full path of the `aerender` executable. |
+| `BAD_ARGS`: Project has never been saved | Save the project once in After Effects, then call `render_start` again. |
+| `EXISTS` on `render_start` | The output file exists. Pass `overwrite: true` or choose another path. |
+| `UNSUPPORTED` on `preview_frame` | Your After Effects version has no `saveFrameToPng`. Update After Effects. |
+| Changes to the server don't show up | Run `npm run build`, then restart the MCP server from your client. |
 
-## Layout
+Panel logs are in `~/Library/Logs/CSXS/` on macOS and `%TEMP%` (`csxs*.log`) on Windows.
+
+## Updating and uninstalling
+
+**Update:** `git pull`, run the installer again (it replaces the installed panel and rebuilds), restart After Effects, and restart the MCP server from your client.
+
+**Uninstall:**
+
+1. Remove the server from your client (`claude mcp remove ae-motion`, or delete the entry from the Claude Desktop config).
+2. Delete the installed panel folder (see [Installation](#1-get-the-code-and-run-the-installer)).
+3. Delete `~/.ae-motion-mcp/`.
+4. Optional: turn unsigned panels back off.
+   - macOS: `for v in 9 10 11 12; do defaults delete com.adobe.CSXS.$v PlayerDebugMode; done`
+   - Windows: delete the `PlayerDebugMode` value under `HKCU\Software\Adobe\CSXS.9` to `CSXS.12`.
+
+## Development
+
+```bash
+npm install
+npm run build     # compile src/ to dist/
+npm start         # run the server on stdio (normally launched by your client)
+```
+
+Layout:
 
 ```
 src/        MCP server (index.ts tools, bridge.ts, render.ts, sandbox.ts)
-panel/      CEP panel (manifest, HTTP bridge, host/host.jsx ExtendScript)
+panel/      CEP panel (manifest, HTTP bridge in main.js, host/host.jsx ExtendScript)
 scripts/    install.sh, install.ps1
 ```
+
+After editing `panel/`, re-run the installer to copy it into the extensions folder and reopen the panel. After Effects DOM details (effect match names, `saveFrameToPng` availability) live in `panel/host/host.jsx`, which is the first place to look when a tool behaves differently on a new After Effects version.
+
+### Test status
+
+Checked on macOS with After Effects 26.3: the server builds and starts, the panel bridge connects, and the inspect tools and `preview_frame` work against a real project. The render job lifecycle (start, failed start keeps the old output, jobs stop when the client disconnects) is covered by a test against a fake bridge and a fake `aerender`. The build and animate tools and real `aerender` renders follow the same path but have not been verified end to end, and neither has the Windows installer. Issues and fixes are welcome.
+
+## License
+
+MIT
