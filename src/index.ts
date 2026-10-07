@@ -38,6 +38,9 @@ function bridged(name: string, description: string, shape: z.ZodRawShape, pathAr
 // ---------- shared schemas ----------
 const id = (what: string) => z.number().int().describe(`${what} id (from get_project / get_comp)`);
 const Color = z.array(z.number().min(0).max(1)).min(3).max(4).describe("[r,g,b] floats 0-1");
+const Pt = z.array(z.number()).length(2).describe("[x,y]");
+const Time = z.number().min(0);
+const LayerIds = z.array(z.number().int()).min(1).describe("Layer ids, all from the same comp");
 const PropPath = z
   .union([z.string(), z.array(z.union([z.string(), z.number()])).min(1)])
   .describe('Alias (position|scale|rotation|opacity|anchor) or an array of match names, e.g. ["ADBE Effect Parade","ADBE Gaussian Blur 2","ADBE Gaussian Blur 2-0001"]. Use list_properties to discover paths.');
@@ -48,7 +51,7 @@ const Ease = z
 
 // ---------- inspect ----------
 bridged("get_project", "List project items (comps, footage, folders), the active comp id, AE version and project path.", {});
-bridged("get_comp", "Get composition settings and its layers (id, name, kind, in/out, parent).", { comp_id: id("Comp") });
+bridged("get_comp", "Get composition settings (size, fps, duration, work area, playhead time, marker count) and its layers (id, name, kind, in/out/start, parent, flags).", { comp_id: id("Comp") });
 bridged("get_layer", "Get a layer's transform values, effects, layers with expressions and marker count. Values are read at `time` (default 0).", { layer_id: id("Layer"), time: z.number().min(0).optional() });
 bridged(
   "list_properties",
@@ -65,26 +68,30 @@ bridged("create_comp", "Create a composition and open it in the viewer.", {
 bridged("import_footage", "Import a file (or an image sequence) into the project. Path must be inside the allowed folders.", { path: z.string(), as: z.enum(["footage", "sequence"]).optional() }, ["path"]);
 bridged(
   "add_layer",
-  "Add a layer. kind: solid | text | shape | null | adjustment | footage | precomp | camera. options: name, color, size, duration, text, item_id (footage/precomp), center (camera), start/in/out, shape {type: rect|ellipse, size, fill, stroke, stroke_width, roundness}.",
+  "Add a layer. kind: solid | text | shape | null | adjustment | footage | precomp | camera | light. options: name, color, size, duration, text, item_id (footage/precomp), center (camera/light), light_type (point|spot|parallel|ambient), start/in/out, shape {type: rect|ellipse|star|polygon|path, size, fill, stroke, stroke_width, roundness, points, outer_radius, inner_radius (star/polygon), vertices/in_tangents/out_tangents/closed (path)}.",
   {
     comp_id: id("Comp"),
-    kind: z.enum(["solid", "text", "shape", "null", "adjustment", "footage", "precomp", "camera"]),
+    kind: z.enum(["solid", "text", "shape", "null", "adjustment", "footage", "precomp", "camera", "light"]),
     options: z
       .object({
         name: z.string().optional(), color: Color.optional(), size: z.array(z.number()).length(2).optional(), duration: z.number().positive().optional(),
-        text: z.string().optional(), item_id: z.number().int().optional(), center: z.array(z.number()).min(2).max(3).optional(),
+        text: z.string().optional(), item_id: z.number().int().optional(), center: z.array(z.number()).min(2).max(3).optional(), light_type: z.enum(["point", "spot", "parallel", "ambient"]).optional(),
         start: z.number().optional(), in: z.number().optional(), out: z.number().optional(),
         shape: z.object({
-          type: z.enum(["rect", "ellipse"]).default("rect"), size: z.array(z.number()).length(2).optional(), fill: Color.optional(),
+          type: z.enum(["rect", "ellipse", "star", "polygon", "path"]).default("rect"),
+          points: z.number().int().min(3).max(100).optional(), outer_radius: z.number().positive().optional(), inner_radius: z.number().positive().optional(),
+          vertices: Pt.array().min(2).optional(), in_tangents: Pt.array().optional(), out_tangents: Pt.array().optional(), closed: z.boolean().optional(), size: z.array(z.number()).length(2).optional(), fill: Color.optional(),
           stroke: Color.optional(), stroke_width: z.number().positive().optional(), roundness: z.number().min(0).optional(),
         }).optional(),
       })
       .default({}),
   }
 );
-bridged("set_layer", "Edit layer name, timing (start/in/out in seconds), parent (parent_id, or null to unparent), blend mode name (e.g. ADD, SCREEN, MULTIPLY) or visibility.", {
+bridged("set_layer", "Edit a layer: name, timing (start/in/out in seconds), time stretch (percent; 200 = half speed, negative reverses), parent (parent_id, or null to unparent), blend mode name (e.g. ADD, SCREEN, MULTIPLY), visibility, and flags: three_d, shy, solo, locked, label (0-16), motion_blur, time_remap.", {
   layer_id: id("Layer"), name: z.string().optional(), start: z.number().optional(), in: z.number().optional(), out: z.number().optional(),
   parent_id: z.number().int().nullable().optional(), blend_mode: z.string().optional(), enabled: z.boolean().optional(),
+  stretch: z.number().refine((n) => n !== 0, "stretch cannot be 0").optional(), three_d: z.boolean().optional(), shy: z.boolean().optional(), solo: z.boolean().optional(),
+  locked: z.boolean().optional(), label: z.number().int().min(0).max(16).optional(), motion_blur: z.boolean().optional(), time_remap: z.boolean().optional(),
 });
 bridged("delete_layer", "Delete a layer.", { layer_id: id("Layer") });
 bridged("precompose", "Precompose layers from the same comp into a new comp.", { layer_ids: z.array(z.number().int()).min(1), name: z.string() });
@@ -110,6 +117,89 @@ bridged("set_text", "Set text content and basic styling on a text layer. font is
 });
 bridged("stagger", "Offset existing keyframes of one property across layers: layer i is shifted by i * offset_seconds. Spatial tangents are not preserved.", {
   layer_ids: z.array(z.number().int()).min(2), path: PropPath, offset_seconds: z.number(), order: z.enum(["forward", "reverse"]).optional(),
+});
+
+// ---------- project and composition ----------
+bridged(
+  "save_project",
+  "Save the project. With path it does Save As (.aep or .aepx, inside the allowed folders; pass overwrite to replace an existing file). Without path it saves in place, which needs a project that has been saved once. render_start needs a saved project.",
+  { path: z.string().optional(), overwrite: z.boolean().optional() },
+  ["path"]
+);
+bridged("set_comp", "Change composition settings. Only the fields you pass change: name, width, height, fps, duration, bg_color, pixel_aspect and work_area ({start, duration} in seconds, must fit inside the comp).", {
+  comp_id: id("Comp"), name: z.string().optional(), width: z.number().int().min(1).max(30000).optional(), height: z.number().int().min(1).max(30000).optional(),
+  fps: z.number().min(1).max(120).optional(), duration: z.number().positive().optional(), bg_color: Color.optional(), pixel_aspect: z.number().positive().optional(),
+  work_area: z.object({ start: z.number().min(0).optional(), duration: z.number().positive().optional() }).optional(),
+});
+bridged("delete_item", "Delete a project item (comp, footage or folder) by id. Refuses items that are used in comps, and non-empty folders, unless force is true (force also deletes the layers that use the item).", { item_id: id("Item"), force: z.boolean().optional() });
+
+// ---------- layers: duplicate and reorder ----------
+bridged("duplicate_layer", "Duplicate a layer (the copy sits above the original). count makes several copies; offset_seconds shifts copy N later in time by N * offset_seconds.", {
+  layer_id: id("Layer"), count: z.number().int().min(1).max(50).optional(), name: z.string().optional(), offset_seconds: z.number().optional(),
+});
+bridged("reorder_layer", "Change a layer's stacking order. Pass exactly one of: to (top | bottom | up | down), index (1 = top), before_layer_id, after_layer_id. Before means above in the stack.", {
+  layer_id: id("Layer"), to: z.enum(["top", "bottom", "up", "down"]).optional(), index: z.number().int().min(1).optional(),
+  before_layer_id: z.number().int().optional(), after_layer_id: z.number().int().optional(),
+});
+
+// ---------- timeline editing ----------
+bridged("split_layer", "Split layers at a comp time, like Edit > Split Layer (Cmd/Ctrl+Shift+D). Each layer keeps its first part; a copy above it holds the second part. Times snap to whole frames unless snap is false. Fails if the time is outside any layer or a layer is locked, and then changes nothing.", {
+  layer_ids: LayerIds, time: Time, snap: z.boolean().optional(),
+});
+bridged("shift_layers", "Move layers in time by offset_seconds (positive = later). Keyframes and in/out points move with the layer.", { layer_ids: LayerIds, offset_seconds: z.number() });
+bridged("sequence_layers", "Place layers one after another in the given order (like Animation > Keyframe Assistant > Sequence Layers). overlap is the seconds each layer overlaps the previous one. start sets where the first layer begins (default: where it already is).", {
+  layer_ids: z.array(z.number().int()).min(2).describe("Layer ids in playback order, all from the same comp"), overlap: z.number().min(0).optional(), start: z.number().optional(),
+});
+bridged("delete_range", "Remove a time range from a comp's layers. Layers fully inside are deleted, layers crossing an edge are trimmed, layers spanning the range are split and the middle removed. ripple (default true) closes the gap by moving later material earlier; ripple false leaves the gap (a lift). layer_ids limits the edit (default: all unlocked layers). shorten_comp also shortens the comp duration when rippling. Times snap to frames. Markers are not moved.", {
+  comp_id: id("Comp"), start: Time, end: Time, ripple: z.boolean().optional(), layer_ids: z.array(z.number().int()).min(1).optional(), shorten_comp: z.boolean().optional(),
+});
+bridged("set_playhead", "Move a comp's current-time indicator (playhead) to a time in seconds. Snaps to a whole frame unless snap is false.", { comp_id: id("Comp"), time: Time, snap: z.boolean().optional() });
+
+// ---------- masks and mattes ----------
+const MaskShape = z.object({
+  type: z.enum(["rect", "ellipse", "polygon", "path"]),
+  position: Pt.optional().describe("Center in layer pixels (rect/ellipse; default: layer center)"),
+  size: Pt.optional().describe("[width,height] in pixels (rect/ellipse; default: full layer)"),
+  points: Pt.array().min(3).optional().describe("Corner points in layer pixels (polygon)"),
+  vertices: Pt.array().min(2).optional().describe("Path vertices in layer pixels (path)"),
+  in_tangents: Pt.array().optional(), out_tangents: Pt.array().optional(), closed: z.boolean().optional(),
+});
+bridged(
+  "add_mask",
+  "Add a mask to a layer. shape: rect or ellipse (position and size in layer pixels, default full layer), polygon (points) or path (vertices with optional tangents). mode: add | subtract | intersect | lighten | darken | difference | none. Returns the mask's property path; animate its ADBE Mask Shape, ADBE Mask Feather, ADBE Mask Opacity or ADBE Mask Offset with set_keyframes using that path plus the match name.",
+  {
+    layer_id: id("Layer"), shape: MaskShape, mode: z.enum(["add", "subtract", "intersect", "lighten", "darken", "difference", "none"]).optional(), inverted: z.boolean().optional(),
+    feather: z.union([z.number().min(0), Pt]).optional(), opacity: z.number().min(0).max(100).optional(), expansion: z.number().optional(), name: z.string().optional(),
+  }
+);
+bridged("set_track_matte", "Use one layer as the track matte of another. matte_layer_id is the layer that acts as the matte, or null to remove the matte. type: alpha (default) | alpha_inverted | luma | luma_inverted.", {
+  layer_id: id("Layer"), matte_layer_id: z.number().int().nullable().describe("Matte layer id, or null to remove the matte"),
+  type: z.enum(["alpha", "alpha_inverted", "luma", "luma_inverted"]).optional(),
+});
+
+// ---------- markers ----------
+const MarkerTarget = {
+  layer_id: z.number().int().optional().describe("Layer id (omit for a comp marker)"),
+  comp_id: z.number().int().optional().describe("Comp id (omit for a layer marker)"),
+};
+bridged("add_marker", "Add a marker to a layer (layer_id) or a comp (comp_id) at a time. Optional comment, duration in seconds, chapter, url and label color (0-16).", {
+  ...MarkerTarget, time: Time, comment: z.string().optional(), duration: z.number().min(0).optional(), chapter: z.string().optional(), url: z.string().optional(),
+  label: z.number().int().min(0).max(16).optional(),
+});
+bridged("list_markers", "List the markers of a layer (layer_id) or a comp (comp_id): index, time, comment, duration, chapter, url, label.", { ...MarkerTarget });
+bridged("delete_marker", "Delete a marker from a layer (layer_id) or a comp (comp_id), by index (1-based, from list_markers) or by time (must be within 0.05 s of a marker).", {
+  ...MarkerTarget, index: z.number().int().min(1).optional(), time: Time.optional(),
+});
+
+// ---------- shapes, keyframes, effects ----------
+bridged(
+  "add_shape_modifier",
+  "Add a modifier to a shape layer's group: trim_paths (ADBE Vector Trim Start / End / Offset), repeater (ADBE Vector Repeater Copies / Offset, plus a Transform group) or round_corners (ADBE Vector RoundCorner Radius). params maps a property name or match name to a value. group_index is the 1-based shape group (default 1). Returns the modifier's property path and property names, ready for set_keyframes and list_properties.",
+  { layer_id: id("Layer"), modifier: z.enum(["trim_paths", "repeater", "round_corners"]), group_index: z.number().int().min(1).optional(), params: z.record(Value).optional() }
+);
+bridged("get_keyframes", "Read all keyframes of one property: time, value, in/out interpolation and temporal ease, plus any active expression. Use list_properties to find the path.", { layer_id: id("Layer"), path: PropPath });
+bridged("edit_effect", "Remove, enable or disable an effect on a layer by its 1-based index (see get_layer for the list).", {
+  layer_id: id("Layer"), effect_index: z.number().int().min(1), action: z.enum(["remove", "enable", "disable"]),
 });
 
 // ---------- preview ----------
