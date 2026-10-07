@@ -33,3 +33,8 @@ Thumbs.db
 
 # compiled host/*.ts (tsconfig.host.json)
 build/
+
+# After Effects projects and autosaves (keep them out of the repo)
+*.aep
+*.aepx
+Adobe After Effects Auto-Save/
