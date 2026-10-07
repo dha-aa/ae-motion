@@ -1,3 +1,4 @@
+// @ts-nocheck -- the fake After Effects DOM here is deliberately loose (untyped fakes patched per test); these tests are checked by running them.
 // Logic tests for path (shape) values and comp motion blur in panel/host/host.jsx, against a minimal fake After Effects DOM:
 // mask and path keyframes from shape specs, the ellipse vertex order (rect <-> ellipse morphs without twisting),
 // round-tripping through get_keyframes, and set_comp's motion blur settings. See "Tests" in docs/development.md.

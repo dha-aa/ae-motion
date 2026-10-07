@@ -3,11 +3,11 @@ name: run-ae-motion
 description: Build, run, test and drive the ae-motion MCP server against a live After Effects (or a fake bridge without AE). Use when asked to start or smoke-test ae-motion, call one of its MCP tools, take a preview screenshot of a comp, hot-reload host.jsx changes into After Effects, or check that a tool change works end to end.
 ---
 
-ae-motion is an MCP stdio server (`dist/index.js`) that drives After Effects through a CEP panel. Agents drive it with **`.claude/skills/run-ae-motion/driver.mjs`**: a small MCP client that spawns a fresh server per command, calls tools, saves returned images as PNGs, talks to the panel's bridge directly, and hot-reloads the host script into a running AE. All paths are relative to the repo root; run the driver from there.
+ae-motion is an MCP stdio server (`dist/index.js`) that drives After Effects through a CEP panel. Agents drive it with **`.claude/skills/run-ae-motion/driver.ts`**: a small MCP client that spawns a fresh server per command, calls tools, saves returned images as PNGs, talks to the panel's bridge directly, and hot-reloads the host script into a running AE. All paths are relative to the repo root; run the driver from there.
 
 ## Prerequisites
 
-- Node 18+ (verified on Node 24, macOS).
+- Node 22.18+ (runs the `.ts` driver, scripts and tests directly; verified on Node 24, macOS).
 - For real runs: After Effects 22+ with the panel installed and open (**Window > Extensions > AE Motion MCP**), and "Allow Scripts to Write Files and Access Network" enabled. Without AE, use `--fake` (server layer only).
 
 ## Build
@@ -21,7 +21,7 @@ bash scripts/install.sh   # macOS: build + copy panel/ into the CEP folder (need
 ## Run (agent path)
 
 ```bash
-D=.claude/skills/run-ae-motion/driver.mjs
+D=.claude/skills/run-ae-motion/driver.ts
 node $D status        # {"panel":"up","port":47670,...}; exit 1 if the panel is down
 node $D smoke         # comp -> shapes -> eased keys -> preview PNG -> delete comp; exit 0 = all ok
 ```
@@ -74,8 +74,8 @@ node $D call <tool> '{...}'        # every driver command spawns a fresh dist/in
 ### Host logic without After Effects
 
 ```bash
-node test/mock-host.test.mjs       # 33/33: layers, timeline, markers, comps against a fake AE DOM
-node test/mock-camera.test.mjs     # 23/23: camera maths, rigs, shake, lights, 3D views
+node test/mock-host.test.ts       # 50/50: layers, timeline, markers, comps against a fake AE DOM
+node test/mock-camera.test.ts     # 23/23: camera maths, rigs, shake, lights, 3D views
 ```
 
 Add a case there for host logic that needs no real AE behavior.

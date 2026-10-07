@@ -7,13 +7,19 @@ import { fileURLToPath } from "node:url";
 import fs from "node:fs";
 import path from "node:path";
 import { spawn } from "node:child_process";
+import type { AddressInfo } from "node:net";
+import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
+
+/** A JSON-RPC reply from the server; `result` is a CallToolResult for tools/call. */
+type RpcReply = { id?: number; result?: CallToolResult; error?: { code: number; message: string } };
+type Json = Record<string, any>; // tool payloads and forwarded args are free-form JSON
 
 if (process.platform === "win32") { console.log("SKIP  render tests (need bash)"); process.exit(0); }
 const DIR = fs.mkdtempSync(path.join(os.tmpdir(), "ae-motion-render-"));
 const SERVER = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "dist", "index.js");
 const TOKEN = "testtoken";
 let prepareOk = true;
-const received = {}; // command -> args of the last call the fake bridge received
+const received: Record<string, Json> = {}; // command -> args of the last call the fake bridge received
 
 const bridge = http.createServer((req, res) => {
   let body = "";
@@ -36,19 +42,19 @@ const bridge = http.createServer((req, res) => {
     res.end(JSON.stringify({ ok: true, result: {} }));
   });
 });
-await new Promise((r) => bridge.listen(0, "127.0.0.1", r));
-fs.writeFileSync(path.join(DIR, "bridge.json"), JSON.stringify({ port: bridge.address().port, token: TOKEN }));
+await new Promise<void>((r) => bridge.listen(0, "127.0.0.1", () => r()));
+fs.writeFileSync(path.join(DIR, "bridge.json"), JSON.stringify({ port: (bridge.address() as AddressInfo).port, token: TOKEN }));
 
 const fake = path.join(DIR, "aerender");
 fs.writeFileSync(fake, `#!/bin/bash\necho $$ > ${DIR}/aerender.pid\nif [ "$FAKE_MODE" = "write" ]; then\n  while [ "$1" != "-output" ]; do shift; done\n  out="$2"; echo "PROGRESS: finished"; printf data > "\${out%.*}.mp4"; exit 0\nfi\nexec sleep 300\n`, { mode: 0o755 });
 
-function startServer(extraEnv = {}) {
+function startServer(extraEnv: Record<string, string> = {}) {
   const p = spawn("node", [SERVER], {
     env: { ...process.env, AE_MCP_BRIDGE_FILE: path.join(DIR, "bridge.json"), AE_AERENDER: fake, AE_MCP_ALLOWED_DIRS: DIR, ...extraEnv },
     stdio: ["pipe", "pipe", "pipe"],
   });
   let buf = "";
-  const waiters = new Map();
+  const waiters = new Map<number, (reply: RpcReply) => void>();
   p.stdout.on("data", (d) => {
     buf += d;
     let i;
@@ -58,19 +64,19 @@ function startServer(extraEnv = {}) {
       if (!line.trim()) continue;
       try {
         const j = JSON.parse(line);
-        if (j.id !== undefined && waiters.has(j.id)) { waiters.get(j.id)(j); waiters.delete(j.id); }
+        if (j.id !== undefined && waiters.has(j.id)) { waiters.get(j.id)!(j); waiters.delete(j.id); }
       } catch {}
     }
   });
   let nextId = 1;
-  const call = (method, params) =>
+  const call = (method: string, params: Json): Promise<RpcReply> =>
     new Promise((resolve, reject) => {
       const id = nextId++;
       waiters.set(id, resolve);
       p.stdin.write(JSON.stringify({ jsonrpc: "2.0", id, method, params }) + "\n");
       setTimeout(() => reject(new Error("timeout " + method)), 15000);
     });
-  const exited = new Promise((r) => p.on("exit", (code, sig) => r({ code, sig })));
+  const exited = new Promise<{ code: number | null; sig: NodeJS.Signals | null }>((r) => p.on("exit", (code, sig) => r({ code, sig })));
   const init = async () => {
     await call("initialize", { protocolVersion: "2024-11-05", capabilities: {}, clientInfo: { name: "t", version: "0" } });
     p.stdin.write(JSON.stringify({ jsonrpc: "2.0", method: "notifications/initialized" }) + "\n");
@@ -78,9 +84,11 @@ function startServer(extraEnv = {}) {
   return { p, call, exited, init };
 }
 
-const alive = (pid) => { try { process.kill(pid, 0); return true; } catch { return false; } };
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-const results = [];
+const alive = (pid: number): boolean => { try { process.kill(pid, 0); return true; } catch { return false; } };
+const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
+/** First text block of a tool result. */
+const textOf = (r: RpcReply): string => { const c = r.result?.content?.[0]; return c && c.type === "text" ? c.text : ""; };
+const results: [name: string, pass: boolean][] = [];
 
 // Phase A: a render that cannot start (project never saved) must not destroy the existing output file.
 {
@@ -90,7 +98,7 @@ const results = [];
   const s = startServer();
   await s.init();
   const r = await s.call("tools/call", { name: "render_start", arguments: { comp_id: 1, output_path: out, overwrite: true } });
-  const text = r.result?.content?.[0]?.text ?? "";
+  const text = textOf(r);
   results.push(["A: failed start is reported as an error", r.result?.isError === true && text.includes("never been saved")]);
   results.push(["A: existing output survives a failed start", fs.existsSync(out)]);
   s.p.stdin.end();
@@ -131,12 +139,12 @@ const results = [];
   await s.init();
   const out = path.join(DIR, "c.mov");
   const r = await s.call("tools/call", { name: "render_start", arguments: { comp_id: 1, output_path: out } });
-  const job = JSON.parse(r.result.content[0].text).job_id;
-  let st = {};
+  const job = JSON.parse(textOf(r)).job_id;
+  let st: Json = {};
   for (let i = 0; i < 50 && st.state !== "done"; i++) {
     await sleep(100);
     const sr = await s.call("tools/call", { name: "render_status", arguments: { job_id: job } });
-    st = JSON.parse(sr.result.content[0].text);
+    st = JSON.parse(textOf(sr));
   }
   results.push(["C: job finishes", st.state === "done"]);
   results.push(["C: status reports the file actually written (.mp4)", typeof st.output_path === "string" && st.output_path.endsWith(".mp4") && st.output_exists === true]);
@@ -165,8 +173,8 @@ const results = [];
 {
   const s = startServer();
   await s.init();
-  const callTool = (name, args) => s.call("tools/call", { name, arguments: args });
-  const errCode = (r) => { try { return JSON.parse(r.result.content[0].text).error.code; } catch { return undefined; } };
+  const callTool = (name: string, args: Json) => s.call("tools/call", { name, arguments: args });
+  const errCode = (r: RpcReply): string | undefined => { try { return JSON.parse(textOf(r)).error.code; } catch { return undefined; } };
 
   await callTool("add_property", { layer_id: 1, match_name: "ADBE Text Animator", group_path: ["ADBE Text Properties", "ADBE Text Animators"] });
   results.push(["E: add_property forwards match_name unchanged (it is not a path)", received.add_property?.match_name === "ADBE Text Animator"]);
@@ -192,8 +200,8 @@ const results = [];
 {
   const s = startServer();
   await s.init();
-  const callTool = (name, args) => s.call("tools/call", { name, arguments: args });
-  const text = (r) => r.result?.content?.[0]?.text ?? "";
+  const callTool = (name: string, args: Json) => s.call("tools/call", { name, arguments: args });
+  const text = textOf;
 
   delete received.set_layer;
   const typo = await callTool("set_layer", { layer_id: 1, colour: 5 });
@@ -207,7 +215,7 @@ const results = [];
   results.push(["F: schema defaults still apply under strict validation", received.add_layer?.options?.shape?.type === "rect"]);
 
   const big = await callTool("list_properties", { layer_id: 1 });
-  let body = {};
+  let body: Json = {};
   try { body = JSON.parse(text(big)); } catch {}
   results.push(["F: an over-limit response becomes an error with the tool's hint", big.result?.isError === true && /over the 25000 limit/.test(body.error?.message ?? "") && /group_path/.test(body.error?.hint ?? "")]);
 

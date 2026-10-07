@@ -1,3 +1,4 @@
+// @ts-nocheck -- the fake After Effects DOM here is deliberately loose (untyped fakes patched per test); these tests are checked by running them.
 // Logic tests for the design commands in panel/host/host.jsx (bounds, align_layers, set_anchor, layer switches,
 // solids, precompose "leave attributes", add_layer_style and add_shape validation) against a fake After Effects DOM.
 // The geometry is checked against hand-computed transforms; see "Tests" in docs/development.md.

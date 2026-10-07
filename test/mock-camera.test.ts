@@ -1,3 +1,4 @@
+// @ts-nocheck -- the fake After Effects DOM here is deliberately loose (untyped fakes patched per test); these tests are checked by running them.
 // Logic tests for the 3D camera, light and 3D layer commands in panel/host/host.jsx against a minimal fake After Effects DOM.
 // They check the camera maths and the bookkeeping (keys, expressions, rigs). They cannot prove After Effects accepts the calls;
 // see "Test status" in the README.

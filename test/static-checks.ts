@@ -5,18 +5,20 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
 import { spawn, execFileSync } from "node:child_process";
+import type { Tool } from "@modelcontextprotocol/sdk/types.js";
+import { buildHost, HOST_DIR, HOST_OUT, HOST_SOURCES } from "../scripts/build-host.ts";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const { buildHost, HOST_DIR, HOST_OUT, HOST_SOURCES } = await import(pathToFileURL(path.join(ROOT, "scripts", "build-host.mjs")).href);
+
 
 const EXPECTED_TOOLS = 64; // update when adding or removing a tool
 const SERVER_ONLY_TOOLS = new Set(["render_start", "render_status", "render_cancel"]); // implemented in TypeScript, no host command
 const HOST_ONLY_COMMANDS = new Set(["get_selection", "prepare_render"]); // used by a resource / render_start, not tools
 
 let bad = 0;
-const report = (ok, msg) => { console.log((ok ? "PASS  " : "FAIL  ") + msg); if (!ok) bad++; };
+const report = (ok: boolean, msg: string): void => { console.log((ok ? "PASS  " : "FAIL  ") + msg); if (!ok) bad++; };
 
 // 1. built file is current and parses
 const host = fs.readFileSync(HOST_OUT, "utf8");
@@ -24,18 +26,18 @@ report(host === buildHost(), "panel/host/host.jsx is up to date with host/ (run 
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), "ae-motion-static-"));
 const checkFile = path.join(TMP, "host_check.js");
 fs.writeFileSync(checkFile, host);
-try { execFileSync(process.execPath, ["--check", checkFile]); report(true, "host.jsx parses"); } catch (e) { report(false, "host.jsx syntax: " + e.message); }
+try { execFileSync(process.execPath, ["--check", checkFile]); report(true, "host.jsx parses"); } catch (e) { report(false, "host.jsx syntax: " + (e instanceof Error ? e.message : String(e))); }
 fs.rmSync(TMP, { recursive: true, force: true });
 
 // 2. ES3 lint, per source file
-const banned = [
+const banned: [RegExp, string][] = [
   [/=>/, "arrow function"], [/\blet\s/, "let"], [/\bconst\s/, "const"], [/`/, "template literal"],
   [/\.(forEach|map|filter|reduce|some|every)\(/, "ES5 array method"],
   [/Object\.keys|Array\.isArray|\.trim\(\)|\.includes\(|\.startsWith\(|\.endsWith\(|\.padStart\(|\.repeat\(/, "ES5+/ES6 helper"],
   [/\.\.\./, "spread"], [/[\u2028\u2029]/, "raw line/paragraph separator (use \\u2028 / \\u2029)"],
 ];
 let lintHits = 0;
-const indexOfUses = [];
+const indexOfUses: string[] = [];
 for (const rel of HOST_SOURCES) {
   fs.readFileSync(path.join(HOST_DIR, rel), "utf8").split("\n").forEach((ln, i) => {
     for (const [re, what] of banned) if (re.test(ln)) { console.log(`      host/${rel}:${i + 1}: ${what}: ${ln.trim().slice(0, 100)}`); lintHits++; }
@@ -51,14 +53,14 @@ for (const u of indexOfUses) console.log("        " + u);
 const srv = spawn(process.execPath, [path.join(ROOT, "dist", "index.js")], { stdio: ["pipe", "pipe", "pipe"] });
 let out = "";
 srv.stdout.on("data", (d) => (out += d));
-const send = (o) => srv.stdin.write(JSON.stringify(o) + "\n");
+const send = (o: object): boolean => srv.stdin.write(JSON.stringify(o) + "\n");
 send({ jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2024-11-05", capabilities: {}, clientInfo: { name: "t", version: "0" } } });
 send({ jsonrpc: "2.0", method: "notifications/initialized" });
 send({ jsonrpc: "2.0", id: 2, method: "tools/list" });
 await new Promise((r) => setTimeout(r, 1500));
 srv.stdin.end();
 const msgs = out.split("\n").filter(Boolean).map((l) => JSON.parse(l));
-const tools = msgs.find((m) => m.id === 2).result.tools;
+const tools: Tool[] = msgs.find((m: { id?: number }) => m.id === 2).result.tools;
 const names = tools.map((t) => t.name);
 report(names.length === EXPECTED_TOOLS, `tools/list returns ${names.length} tools (expected ${EXPECTED_TOOLS})`);
 const cmds = new Set([...host.matchAll(/C\.(\w+) = function/g)].map((m) => m[1]));
@@ -68,8 +70,8 @@ const extra = [...cmds].filter((c) => !names.includes(c) && !HOST_ONLY_COMMANDS.
 report(extra.length === 0, `no host commands without a tool${extra.length ? " (" + extra.join(", ") + ")" : ""}`);
 const badSchema = tools.filter((t) => !t.inputSchema || t.inputSchema.type !== "object").map((t) => t.name);
 report(badSchema.length === 0, "all tools have object input schemas");
-const ANNOTATIONS = ["readOnlyHint", "destructiveHint", "idempotentHint", "openWorldHint"];
-const unannotated = tools.filter((t) => !t.title || !t.annotations || ANNOTATIONS.some((k) => typeof t.annotations[k] !== "boolean")).map((t) => t.name);
+const ANNOTATIONS: string[] = ["readOnlyHint", "destructiveHint", "idempotentHint", "openWorldHint"];
+const unannotated = tools.filter((t) => !t.title || !t.annotations || ANNOTATIONS.some((k) => typeof (t.annotations as Record<string, unknown>)[k] !== "boolean")).map((t) => t.name);
 report(unannotated.length === 0, `every tool has a title and all four annotations${unannotated.length ? " (" + unannotated.join(", ") + ")" : ""}`);
 const loose = tools.filter((t) => t.inputSchema.additionalProperties !== false).map((t) => t.name);
 report(loose.length === 0, `every input schema rejects unknown keys${loose.length ? " (" + loose.join(", ") + ")" : ""}`);

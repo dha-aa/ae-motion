@@ -15,7 +15,7 @@ Three processes cooperate. The MCP server never touches After Effects directly; 
 
 | Piece | Source | Runs in | Job |
 |---|---|---|---|
-| MCP server | `src/` (TypeScript, built to `dist/`) | Node 18+, launched by the MCP client | Tool schemas, validation, path sandbox, render jobs, preview wait |
+| MCP server | `src/` (TypeScript, built to `dist/`) | Node 22.18+, launched by the MCP client | Tool schemas, validation, path sandbox, render jobs, preview wait |
 | CEP panel | `panel/main.js`, `panel/index.html`, `panel/CSXS/manifest.xml` | After Effects' CEP runtime (Node enabled) | HTTP bridge, auth token, serial command queue, status UI |
 | Host script | `host/` (ES3), built to `panel/host/host.jsx` | After Effects' ExtendScript engine | The actual After Effects DOM work |
 
@@ -49,10 +49,10 @@ host/                       ExtendScript sources (ES3), one closure once built
 panel/                      the CEP extension that gets installed into After Effects
   CSXS/manifest.xml         extension manifest (AE 22.0+, CSXS 9)
   index.html, main.js       status UI and the HTTP bridge
-  host/host.jsx             GENERATED from host/ by scripts/build-host.mjs (gitignored)
+  host/host.jsx             GENERATED from host/ by scripts/build-host.ts (gitignored)
 
 scripts/
-  build-host.mjs            concatenates host/ into panel/host/host.jsx
+  build-host.ts             concatenates host/ into panel/host/host.jsx (run by Node directly)
   install.sh, install.ps1   build, copy panel/ into the CEP folder, enable unsigned panels
 
 test/                       runs without After Effects (see docs/development.md)

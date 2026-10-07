@@ -1,3 +1,4 @@
+// @ts-nocheck -- the fake After Effects DOM here is deliberately loose (untyped fakes patched per test); these tests are checked by running them.
 // Logic tests for the keyframe editor in panel/host/host.jsx (edit_keyframes, copy_animation, stagger, separate
 // dimensions, auto-orient) against a fake After Effects DOM. The fake property models two After Effects behaviors
 // found in live testing: setting a temporal ease switches a key to bezier, and roving keys re-time themselves

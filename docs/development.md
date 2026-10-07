@@ -6,13 +6,13 @@
 npm install
 npm run build        # clean, then build panel/host/host.jsx (from host/) and dist/ (from src/)
 npm test             # build, then run every test in test/ (no After Effects needed)
-npm run typecheck    # tsc --noEmit
+npm run typecheck    # tsc --noEmit for src/, plus tsconfig.tools.json for scripts/ and test/
 npm start            # run the server on stdio (normally your MCP client launches it)
 ```
 
 | Script | Does |
 |---|---|
-| `build:host` | `node scripts/build-host.mjs`: concatenate `host/` into `panel/host/host.jsx` |
+| `build:host` | `node scripts/build-host.ts`: concatenate `host/` into `panel/host/host.jsx` |
 | `build:server` | `tsc`: compile `src/` into `dist/` |
 | `clean` | remove `dist/` |
 
@@ -24,6 +24,15 @@ What a change needs before you can see it in After Effects:
 | `host/` or `panel/` | `npm run build`, re-run the installer (copies `panel/` into the CEP folder), close and reopen the panel |
 
 `panel/host/host.jsx` is generated and gitignored. Edit the files in `host/`, never the generated file.
+
+## Which files are TypeScript, and why
+
+| Files | Language | Why |
+|---|---|---|
+| `src/` | TypeScript, compiled by `tsc` to `dist/` | The published entry point (`bin`, MCP client configs) is `dist/index.js`; `tsc` also type-checks. |
+| `test/`, `scripts/`, `.claude/skills/run-ae-motion/driver.ts` | TypeScript, run directly by Node | Node 22.18+ strips types at load time, so there is no build step. Only erasable syntax is allowed (no `enum`, `namespace` or `constructor(public x)`), imports use the `.ts` extension, and type-only imports use `import type`; `tsconfig.tools.json` enforces this and type-checks them (`npm run typecheck`). The mock-DOM tests (`test/mock-*.test.ts`) are `// @ts-nocheck`: their After Effects fakes are deliberately loose. |
+| `host/*.jsx` | ExtendScript (ES3 JavaScript) | Runs inside After Effects' ExtendScript engine, which predates ES5; TypeScript can no longer target it. |
+| `panel/main.js` | JavaScript | Loaded directly by the CEP panel's own (older) Node, without a build step. |
 
 ## Adding a tool
 
@@ -62,9 +71,9 @@ A tool has two halves with the same name: a schema on the server and a command i
    - Raise errors with `fail(code, message, hint)`; give a hint that tells the model what to do next.
    - Return plain JSON (copy After Effects arrays with `copyArr`).
    - If the command changes nothing undoable, add it to `READONLY` in `host/dispatch.jsx`.
-   - A new host file must be added to `MODULES` in `scripts/build-host.mjs`. Top-level names must be unique across `host/`; the build fails on a duplicate.
+   - A new host file must be added to `MODULES` in `scripts/build-host.ts`. Top-level names must be unique across `host/`; the build fails on a duplicate.
 
-3. **Tests**: bump `EXPECTED_TOOLS` in `test/static-checks.mjs`, and add logic tests to `test/mock-host.test.mjs` or `test/mock-camera.test.mjs` when the command has real logic.
+3. **Tests**: bump `EXPECTED_TOOLS` in `test/static-checks.ts`, and add logic tests to `test/mock-host.test.ts` or `test/mock-camera.test.ts` when the command has real logic.
 
 4. **Docs**: add the tool to the table in `docs/tools.md` and the group list in `README.md`.
 
@@ -82,7 +91,7 @@ After Effects runs `host.jsx` in ExtendScript, an ES3 engine:
 - No built-in `JSON`; `host/json.jsx` provides `JSON.stringify` and `JSON.parse`.
 - Declare all `var`s at the top of the function. Function-scoped `var` is the only scope there is.
 
-`test/static-checks.mjs` lints `host/` for these, comments included, and reports `host/<file>:<line>`.
+`test/static-checks.ts` lints `host/` for these, comments included, and reports `host/<file>:<line>`.
 
 ## After Effects quirks
 
@@ -109,28 +118,28 @@ Found in live testing; the code relies on all of these.
 - Gradient colors (`ADBE Vector Grad Colors`) have no settable value from scripts.
 - Adding the first stroke dash lists all three dash/gap pairs plus the offset (defaults 10); pairs that were never added do not render. They cannot be removed.
 - "Leave all attributes" precompose needs a single layer with a source (not text or shape layers).
-- In mock tests, arrays passed into the vm context must be created there: the host's `v instanceof Array` is false for arrays from another realm (see `inner()` in `test/mock-design.test.mjs`).
+- In mock tests, arrays passed into the vm context must be created there: the host's `v instanceof Array` is false for arrays from another realm (see `inner()` in `test/mock-design.test.ts`).
 - Setting a key's temporal ease switches it to bezier, so `restoreKey` sets the ease first and the interpolation type last.
 - Roving keys re-time themselves whenever any other key changes, so code that rewrites keys (`replaceKeys`) turns roving off first and restores it at the end. After Effects may also rescale a roving key's tangents.
 
-`test/mock-host.test.mjs` models the first two; keep the mocks in sync when you find another.
+`test/mock-host.test.ts` models the first two; keep the mocks in sync when you find another.
 
 ## Tests
 
-`npm test` runs `test/run-all.mjs`, which runs each file below and fails if any fails. Run one directly with `node test/<file>` after `npm run build`.
+`npm test` runs `test/run-all.ts`, which runs each file below and fails if any fails. Run one directly with `node test/<file>` after `npm run build`.
 
 | File | Checks |
 |---|---|
-| `static-checks.mjs` | `host.jsx` is up to date and parses; ES3 lint of `host/`; `tools/list` matches the host commands; `EXPECTED_TOOLS` |
-| `mock-host.test.mjs` | Layer, timeline (split, delete/insert time, align to markers, trim comp), comp, marker, item and replace-source commands against a fake After Effects DOM |
-| `mock-camera.test.mjs` | Camera maths, moves, rigs, shake, look-at, 3D layers, lights, linking and 3D views against a fake DOM |
-| `mock-shapes.test.mjs` | Path values from shape specs, the ellipse vertex order, get_keyframes round trips, comp motion blur |
-| `mock-design.test.mjs` | Bounds and alignment maths (rotation, scale, parents, animated and separated position), anchor points, layer switches, solids, precompose leave-attributes, layer style and shape validation |
-| `mock-keyframes.test.mjs` | `edit_keyframes`, `copy_animation`, `stagger` fidelity, separate dimensions, auto-orient; the fake property models the ease-switches-to-bezier and roving re-time behaviors |
-| `aerender-discovery.test.mjs` | `findAerender` against fake install layouts |
-| `server.test.mjs` | The built server end to end over stdio, with a fake bridge and a fake `aerender`: render lifecycle (failed start keeps old output, jobs stop on disconnect, the real output file is reported), `preview_frame` waiting, path sandboxing, the `run_jsx` gate. Skipped on Windows (uses a bash script) |
+| `static-checks.ts` | `host.jsx` is up to date and parses; ES3 lint of `host/`; `tools/list` matches the host commands; `EXPECTED_TOOLS` |
+| `mock-host.test.ts` | Layer, timeline (split, delete/insert time, align to markers, trim comp), comp, marker, item and replace-source commands against a fake After Effects DOM |
+| `mock-camera.test.ts` | Camera maths, moves, rigs, shake, look-at, 3D layers, lights, linking and 3D views against a fake DOM |
+| `mock-shapes.test.ts` | Path values from shape specs, the ellipse vertex order, get_keyframes round trips, comp motion blur |
+| `mock-design.test.ts` | Bounds and alignment maths (rotation, scale, parents, animated and separated position), anchor points, layer switches, solids, precompose leave-attributes, layer style and shape validation |
+| `mock-keyframes.test.ts` | `edit_keyframes`, `copy_animation`, `stagger` fidelity, separate dimensions, auto-orient; the fake property models the ease-switches-to-bezier and roving re-time behaviors |
+| `aerender-discovery.test.ts` | `findAerender` against fake install layouts |
+| `server.test.ts` | The built server end to end over stdio, with a fake bridge and a fake `aerender`: render lifecycle (failed start keeps old output, jobs stop on disconnect, the real output file is reported), `preview_frame` waiting, path sandboxing, the `run_jsx` gate. Skipped on Windows (uses a bash script) |
 
-CI (`.github/workflows/ci.yml`) runs `npm test` on macOS, Linux and Windows with Node 18 and 22.
+CI (`.github/workflows/ci.yml`) runs `npm run typecheck` and `npm test` on macOS, Linux and Windows with Node 22 and 24.
 
 A green `npm test` doesn't prove a change works in real After Effects: the mocks only know the behavior already seen there.
 

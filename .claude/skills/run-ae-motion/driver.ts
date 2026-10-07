@@ -2,7 +2,7 @@
 // Agent driver for ae-motion-mcp: a tiny MCP client that spawns dist/index.js over stdio and calls tools,
 // plus raw access to the After Effects panel bridge. Run from the repo root after `npm run build`.
 //
-//   node .claude/skills/run-ae-motion/driver.mjs [--fake] [--allow-jsx] <command> [...]
+//   node .claude/skills/run-ae-motion/driver.ts [--fake] [--allow-jsx] <command> [...]
 //
 //   status                     is the AE panel reachable? (reads the bridge file, GET /health)
 //   list                       tool names (+ resources, prompts)
@@ -24,22 +24,28 @@ import fs from "node:fs";
 import http from "node:http";
 import os from "node:os";
 import path from "node:path";
+import type { AddressInfo } from "node:net";
+import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
+
+type Json = Record<string, any>; // free-form tool args and results
+type Rpc = { id?: number; result?: any; error?: unknown };
+type Server = { ready: Promise<void>; request: (method: string, params?: Json) => Promise<any>; close: () => void };
 
 const ROOT = process.cwd();
 const SERVER = path.join(ROOT, "dist", "index.js");
 const SHOTS = process.env.SHOTS || "/tmp/ae-motion-shots";
 
 let argv = process.argv.slice(2);
-const flag = (f) => { const i = argv.indexOf(f); if (i < 0) return false; argv.splice(i, 1); return true; };
+const flag = (f: string): boolean => { const i = argv.indexOf(f); if (i < 0) return false; argv.splice(i, 1); return true; };
 const FAKE = flag("--fake");
 const ALLOW_JSX = flag("--allow-jsx");
 const [cmd, ...rest] = argv;
 
-const die = (msg) => { console.error(msg); process.exit(1); };
-const print = (o) => console.log(typeof o === "string" ? o : JSON.stringify(o, null, 2));
+const die = (msg: string): never => { console.error(msg); process.exit(1); };
+const print = (o: unknown): void => console.log(typeof o === "string" ? o : JSON.stringify(o, null, 2));
 
 // ---------- bridge (fake or real) ----------
-let fakeServer = null;
+let fakeServer: http.Server | null = null;
 let bridgeFile = process.env.AE_MCP_BRIDGE_FILE || path.join(os.homedir(), ".ae-motion-mcp", "bridge.json");
 
 async function startFakeBridge() {
@@ -58,17 +64,17 @@ async function startFakeBridge() {
       res.end(JSON.stringify({ ok: true, result: { fake: true, cmd, args } }));
     });
   });
-  await new Promise((r) => fakeServer.listen(0, "127.0.0.1", r));
+  await new Promise<void>((r) => fakeServer!.listen(0, "127.0.0.1", () => r()));
   bridgeFile = path.join(dir, "bridge.json");
-  fs.writeFileSync(bridgeFile, JSON.stringify({ port: fakeServer.address().port, token }));
+  fs.writeFileSync(bridgeFile, JSON.stringify({ port: (fakeServer.address() as AddressInfo).port, token }));
 }
 
-function bridgeInfo() {
+function bridgeInfo(): { port: number; token: string } {
   try { return JSON.parse(fs.readFileSync(bridgeFile, "utf8")); }
-  catch { die(`No bridge file at ${bridgeFile}: open After Effects > Window > Extensions > AE Motion MCP (or use --fake)`); }
+  catch { return die(`No bridge file at ${bridgeFile}: open After Effects > Window > Extensions > AE Motion MCP (or use --fake)`); }
 }
 
-async function rawBridge(command, args = {}, timeoutMs = 60000) {
+async function rawBridge(command: string, args: Json = {}, timeoutMs = 60000): Promise<Json> {
   const { port, token } = bridgeInfo();
   const r = await fetch(`http://127.0.0.1:${port}/cmd`, {
     method: "POST", headers: { "content-type": "application/json", "x-ae-token": token },
@@ -79,13 +85,13 @@ async function rawBridge(command, args = {}, timeoutMs = 60000) {
 }
 
 // ---------- MCP client over stdio ----------
-function startServer() {
+function startServer(): Server {
   if (!fs.existsSync(SERVER)) die(`${SERVER} not found: run \`npm run build\` from the repo root first`);
-  const env = { ...process.env, AE_MCP_BRIDGE_FILE: bridgeFile };
+  const env: NodeJS.ProcessEnv = { ...process.env, AE_MCP_BRIDGE_FILE: bridgeFile };
   if (ALLOW_JSX) env.AE_MCP_ALLOW_JSX = "1";
   const p = spawn(process.execPath, [SERVER], { env, stdio: ["pipe", "pipe", "inherit"] });
   let buf = "", nextId = 1;
-  const waiters = new Map();
+  const waiters = new Map<number, (m: Rpc) => void>();
   p.stdout.on("data", (d) => {
     buf += d;
     let i;
@@ -93,26 +99,26 @@ function startServer() {
       const line = buf.slice(0, i); buf = buf.slice(i + 1);
       if (!line.trim()) continue;
       const msg = JSON.parse(line);
-      if (msg.id !== undefined && waiters.has(msg.id)) { waiters.get(msg.id)(msg); waiters.delete(msg.id); }
+      if (msg.id !== undefined && waiters.has(msg.id)) { waiters.get(msg.id)!(msg); waiters.delete(msg.id); }
     }
   });
-  const request = (method, params = {}) => new Promise((resolve, reject) => {
+  const request = (method: string, params: Json = {}): Promise<any> => new Promise((resolve, reject) => {
     const id = nextId++;
     const t = setTimeout(() => reject(new Error(`timeout waiting for ${method}`)), 120000);
     waiters.set(id, (m) => { clearTimeout(t); m.error ? reject(new Error(JSON.stringify(m.error))) : resolve(m.result); });
     p.stdin.write(JSON.stringify({ jsonrpc: "2.0", id, method, params }) + "\n");
   });
   const ready = request("initialize", { protocolVersion: "2024-11-05", capabilities: {}, clientInfo: { name: "ae-motion-driver", version: "1" } })
-    .then(() => p.stdin.write(JSON.stringify({ jsonrpc: "2.0", method: "notifications/initialized" }) + "\n"));
+    .then(() => { p.stdin.write(JSON.stringify({ jsonrpc: "2.0", method: "notifications/initialized" }) + "\n"); });
   const close = () => { p.stdin.end(); setTimeout(() => p.kill(), 2000).unref(); };
   return { ready, request, close };
 }
 
 /** Call a tool; returns {isError, value} where value is the parsed JSON text. Images are saved to SHOTS. */
-async function callTool(srv, tool, args = {}) {
-  const r = await srv.request("tools/call", { name: tool, arguments: args });
-  let value = null;
-  const images = [];
+async function callTool(srv: Server, tool: string, args: Json = {}): Promise<{ isError: boolean; value: any }> {
+  const r: CallToolResult = await srv.request("tools/call", { name: tool, arguments: args });
+  let value: any = null;
+  const images: string[] = [];
   for (const c of r.content || []) {
     if (c.type === "text") { try { value = JSON.parse(c.text); } catch { value = c.text; } }
     if (c.type === "image") {
@@ -127,23 +133,25 @@ async function callTool(srv, tool, args = {}) {
 }
 
 // "$2.layers.0.id" -> results[2].layers[0].id
-function substitute(v, results) {
+function substitute(v: unknown, results: unknown[]): unknown {
   if (typeof v === "string" && /^\$\d+(\.|$)/.test(v)) {
     const [n, ...keys] = v.slice(1).split(".");
-    return keys.reduce((o, k) => (o == null ? o : o[k]), results[+n]);
+    return keys.reduce<any>((o, k) => (o == null ? o : o[k]), results[+n]);
   }
   if (Array.isArray(v)) return v.map((x) => substitute(x, results));
   if (v && typeof v === "object") return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, substitute(x, results)]));
   return v;
 }
 
-async function runScript(lines) {
+type Step = { tool: string; args?: Json; allowError?: boolean };
+
+async function runScript(lines: Step[]): Promise<number> {
   const srv = startServer();
   await srv.ready;
-  const results = [];
+  const results: unknown[] = [];
   let failed = false;
   for (const [i, step] of lines.entries()) {
-    const args = substitute(step.args || {}, results);
+    const args = substitute(step.args || {}, results) as Json;
     const { isError, value } = await callTool(srv, step.tool, args);
     results.push(value);
     console.log(`--- [${i}] ${step.tool} ${isError ? "ERROR" : "ok"}`);
@@ -154,7 +162,7 @@ async function runScript(lines) {
   return failed ? 1 : 0;
 }
 
-const parseJson = (s, what) => { if (!s) return {}; try { return JSON.parse(s); } catch { die(`${what} is not valid JSON: ${s}`); } };
+const parseJson = (s: string | undefined, what: string): any => { if (!s) return {}; try { return JSON.parse(s); } catch { die(`${what} is not valid JSON: ${s}`); } };
 
 // ---------- commands ----------
 let code = 0;
@@ -168,16 +176,20 @@ switch (cmd) {
       const r = await fetch(`http://127.0.0.1:${port}/health`, { headers: { "x-ae-token": token }, signal: AbortSignal.timeout(3000) });
       print({ panel: r.status === 200 ? "up" : `http ${r.status}`, port, bridge_file: bridgeFile });
       code = r.status === 200 ? 0 : 1;
-    } catch (e) { print({ panel: "unreachable", port, error: String(e.cause?.code || e.message) }); code = 1; }
+    } catch (e) {
+      const err = e as { cause?: { code?: string }; message?: string };
+      print({ panel: "unreachable", port, error: String(err.cause?.code || err.message) });
+      code = 1;
+    }
     break;
   }
   case "list": {
     const srv = startServer();
     await srv.ready;
     const tools = (await srv.request("tools/list")).tools;
-    const resources = (await srv.request("resources/list")).resources.map((r) => r.uri);
-    const prompts = (await srv.request("prompts/list")).prompts.map((p) => p.name);
-    print({ count: tools.length, tools: tools.map((t) => t.name), resources, prompts });
+    const resources = (await srv.request("resources/list")).resources.map((r: { uri: string }) => r.uri);
+    const prompts = (await srv.request("prompts/list")).prompts.map((p: { name: string }) => p.name);
+    print({ count: tools.length, tools: tools.map((t: { name: string }) => t.name), resources, prompts });
     srv.close();
     break;
   }
@@ -240,8 +252,8 @@ switch (cmd) {
     break;
   }
   default:
-    die("usage: driver.mjs [--fake] [--allow-jsx] status | list | call <tool> [json] | script <file|-> | bridge <cmd> [json] | reload-host | smoke");
+    die("usage: driver.ts [--fake] [--allow-jsx] status | list | call <tool> [json] | script <file|-> | bridge <cmd> [json] | reload-host | smoke");
 }
 
-if (fakeServer) fakeServer.close();
+(fakeServer as http.Server | null)?.close(); // assigned inside startFakeBridge, which narrowing cannot see
 process.exit(code);

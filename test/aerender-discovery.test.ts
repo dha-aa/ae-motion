@@ -9,9 +9,10 @@ const { findAerender } = await import(pathToFileURL(path.join(ROOT, "dist", "ren
 const exe = process.platform === "win32" ? "aerender.exe" : "aerender";
 const tmp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "ae-motion-aerender-")));
 const saved = process.env.AE_AERENDER;
-const results = [];
-const t = (name, fn) => { try { fn(); results.push([name, true]); } catch (e) { results.push([name, false, e.message]); } };
-const touch = (p) => { fs.mkdirSync(path.dirname(p), { recursive: true }); fs.writeFileSync(p, "#!/bin/sh\n"); };
+const results: [name: string, pass: boolean, msg?: string][] = [];
+const errText = (e: unknown): string => (e instanceof Error ? e.message : String(e));
+const t = (name: string, fn: () => void): void => { try { fn(); results.push([name, true]); } catch (e) { results.push([name, false, errText(e)]); } };
+const touch = (p: string): void => { fs.mkdirSync(path.dirname(p), { recursive: true }); fs.writeFileSync(p, "#!/bin/sh\n"); };
 
 t("finds aerender next to the .app bundle when AE reports a folder inside it (macOS layout)", () => {
   delete process.env.AE_AERENDER;
@@ -39,7 +40,7 @@ t("AE_AERENDER wins over everything", () => {
 
 t("a bogus reported folder does not crash the search", () => {
   delete process.env.AE_AERENDER;
-  try { findAerender("/tmp00000001"); } catch (e) { if (!/aerender not found/.test(e.message)) throw e; }
+  try { findAerender("/tmp00000001"); } catch (e) { if (!/aerender not found/.test(errText(e))) throw e; }
 });
 
 if (saved === undefined) delete process.env.AE_AERENDER; else process.env.AE_AERENDER = saved;

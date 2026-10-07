@@ -1,5 +1,5 @@
 // JSON polyfill. ExtendScript has no built-in JSON object, so define the two functions the bridge needs.
-// This file sits outside the AEM closure (it is emitted before it by scripts/build-host.mjs).
+// This file sits outside the AEM closure (it is emitted before it by scripts/build-host.ts).
 if (typeof JSON !== "object") { JSON = {}; }
 (function () {
   function q(s) {

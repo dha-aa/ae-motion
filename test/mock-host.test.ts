@@ -1,3 +1,4 @@
+// @ts-nocheck -- the fake After Effects DOM here is deliberately loose (untyped fakes patched per test); these tests are checked by running them.
 // Logic tests for panel/host/host.jsx (timeline, reorder, markers, comp and item tools) against a minimal fake After Effects DOM.
 // They cannot check real After Effects behavior; see "Test status" in the README.
 import fs from "node:fs";

@@ -28,22 +28,22 @@
   ],
   "scripts": {
     "build": "npm run clean && npm run build:host && npm run build:server",
-    "build:host": "node scripts/build-host.mjs",
+    "build:host": "node scripts/build-host.ts",
     "build:server": "tsc",
     "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\"",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.tools.json",
     "start": "node dist/index.js",
-    "test": "npm run build && node test/run-all.mjs"
+    "test": "npm run build && node test/run-all.ts"
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=22.18"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.12.0",
     "zod": "^3.25.0"
   },
   "devDependencies": {
-    "@types/node": "^20.19.43",
+    "@types/node": "^22.20.5",
     "typescript": "^5.4.0"
   }
 }

@@ -25,7 +25,7 @@ MCP client --stdio--> MCP server (Node) --HTTP 127.0.0.1 + token--> CEP panel in
 ## Requirements
 
 - After Effects 2022 (22.0) or later, on macOS or Windows
-- Node.js 18 or later
+- Node.js 22.18 or later (the build and tests run TypeScript directly through Node's type stripping)
 - An MCP client such as Claude Code or Claude Desktop
 
 ## Installation
@@ -175,6 +175,7 @@ All settings are environment variables on the MCP server process. The one except
 | `EXISTS` on `render_start` | The output file exists. Pass `overwrite: true` or choose another path. |
 | `UNSUPPORTED` on `preview_frame` | Your After Effects version has no `saveFrameToPng`. Update After Effects. |
 | `AE_ERROR` with hint "ExtendScript line N" | N is a line of the installed `panel/host/host.jsx`; the `// ---- host/<file> ----` banners there show which source file it came from. Please open an issue. |
+| `Unknown file extension ".ts"` during install or `npm test` | Your Node.js is older than 22.18, which cannot run `.ts` files directly. Update Node.js (`node --version` to check). |
 | Changes to the server don't show up | Run `npm run build`, then restart the MCP server from your client. Changes under `host/` or `panel/` also need the installer re-run and the panel reopened. |
 
 Panel logs are in `~/Library/Logs/CSXS/` on macOS and `%TEMP%` (`csxs*.log`) on Windows.

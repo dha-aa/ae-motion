@@ -3,7 +3,7 @@
  *
  * - {@link ToolRegistry.bridged}: the common case. Validate args with zod, sandbox any path arguments, forward
  *   to the host command of the same name and return its result. The host must define `C.<name>`
- *   (test/static-checks.mjs enforces this).
+ *   (test/static-checks.ts enforces this).
  * - {@link ToolRegistry.tool}: for tools with server-side logic (preview, render, run_jsx).
  *
  * Every tool gets:
