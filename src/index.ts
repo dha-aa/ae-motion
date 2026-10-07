@@ -52,7 +52,7 @@ const Ease = z
 // ---------- inspect ----------
 bridged("get_project", "List project items (comps, footage, folders), the active comp id, AE version and project path.", {});
 bridged("get_comp", "Get composition settings (size, fps, duration, work area, playhead time, marker count) and its layers (id, name, kind, in/out/start, parent, flags).", { comp_id: id("Comp") });
-bridged("get_layer", "Get a layer's transform values, effects, layers with expressions and marker count. Values are read at `time` (default 0).", { layer_id: id("Layer"), time: z.number().min(0).optional() });
+bridged("get_layer", "Get a layer's transform values, effects, layers with expressions, marker count, masks (mode, inverted) and track matte. Values are read at `time` (default 0).", { layer_id: id("Layer"), time: z.number().min(0).optional() });
 bridged(
   "list_properties",
   "Walk a layer's property tree and return names, match names, value types, values, keyframe counts and expressions. Use it to find property paths before set_property / set_keyframes.",
@@ -166,10 +166,10 @@ const MaskShape = z.object({
 });
 bridged(
   "add_mask",
-  "Add a mask to a layer. shape: rect or ellipse (position and size in layer pixels, default full layer), polygon (points) or path (vertices with optional tangents). mode: add | subtract | intersect | lighten | darken | difference | none. Returns the mask's property path; animate its ADBE Mask Shape, ADBE Mask Feather, ADBE Mask Opacity or ADBE Mask Offset with set_keyframes using that path plus the match name.",
+  "Add a mask to a layer. shape: rect or ellipse (position and size in layer pixels, default full layer), polygon (points) or path (vertices with optional tangents). mode: add | subtract | intersect | lighten | darken | difference | none. feather is a uniform blur in pixels (feather_xy sets x and y separately). Returns the mask's property path; animate its ADBE Mask Shape, ADBE Mask Feather, ADBE Mask Opacity or ADBE Mask Offset with set_keyframes using that path plus the match name.",
   {
     layer_id: id("Layer"), shape: MaskShape, mode: z.enum(["add", "subtract", "intersect", "lighten", "darken", "difference", "none"]).optional(), inverted: z.boolean().optional(),
-    feather: z.union([z.number().min(0), Pt]).optional(), opacity: z.number().min(0).max(100).optional(), expansion: z.number().optional(), name: z.string().optional(),
+    feather: z.number().min(0).optional(), feather_xy: Pt.optional(), opacity: z.number().min(0).max(100).optional(), expansion: z.number().optional(), name: z.string().optional(),
   }
 );
 bridged("set_track_matte", "Use one layer as the track matte of another. matte_layer_id is the layer that acts as the matte, or null to remove the matte. type: alpha (default) | alpha_inverted | luma | luma_inverted.", {
@@ -216,11 +216,11 @@ tool("preview_frame", "Render a single frame of a comp to a PNG and return it as
 // ---------- render (async via aerender) ----------
 tool(
   "render_start",
-  "Save the project and start a background aerender job. Returns a job_id; poll render_status. om_template / rs_template are After Effects output-module / render-settings template names. The project must have been saved once.",
+  "Save the project and start a background aerender job. Returns a job_id; poll render_status. om_template / rs_template are After Effects output-module / render-settings template names. The project must have been saved once. After Effects picks the file extension from the output module, so the file can differ from output_path; render_status reports the file actually written.",
   { comp_id: id("Comp"), output_path: z.string(), om_template: z.string().optional(), rs_template: z.string().optional(), overwrite: z.boolean().optional() },
   async (a) => text(await renders.start(a))
 );
-tool("render_status", "Get state (running|done|failed|canceled), percent and a log tail for a render job.", { job_id: z.string() }, async (a) => text(renders.status(a.job_id)));
+tool("render_status", "Get state (running|done|failed|canceled), percent, a log tail and the file actually written (its extension can differ from the requested output_path) for a render job.", { job_id: z.string() }, async (a) => text(renders.status(a.job_id)));
 tool("render_cancel", "Cancel a running render job.", { job_id: z.string() }, async (a) => text(renders.cancel(a.job_id)));
 
 // ---------- escape hatch (off by default) ----------

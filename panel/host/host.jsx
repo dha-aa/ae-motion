@@ -260,6 +260,16 @@ var AEM = (function () {
     o.effects = []; fx = l.property("ADBE Effect Parade");
     if (fx) for (i = 1; i <= fx.numProperties; i++) { eff = fx.property(i); o.effects.push({ index: i, name: eff.name, match_name: eff.matchName, enabled: eff.enabled }); }
     try { o.num_markers = l.property("ADBE Marker").numKeys; } catch (e2) { o.num_markers = 0; }
+    o.masks = safe(function () {
+      var ms = l.property("ADBE Mask Parade"), out = [], k, m;
+      if (!ms) return out;
+      for (k = 1; k <= ms.numProperties; k++) { m = ms.property(k); out.push({ index: k, name: m.name, mode: maskModeName(m.maskMode), inverted: m.inverted, locked: m.locked }); }
+      return out;
+    });
+    o.track_matte = safe(function () {
+      if (!l.hasTrackMatte) return null;
+      return { type: matteTypeName(l.trackMatteType), matte_layer_id: safe(function () { return l.trackMatteLayer.id; }) };
+    });
     return o;
   };
   C.list_properties = function (a) {
@@ -319,7 +329,7 @@ var AEM = (function () {
     } else { fail("BAD_ARGS", "Unknown layer kind: " + kind); }
     if (o.name) l.name = o.name;
     if (has(o, "start")) l.startTime = o.start;
-    if (has(o, "in")) l.inPoint = o["in"];
+    if (has(o, "in")) setIn(l, o["in"]);
     if (has(o, "out")) l.outPoint = o.out;
     return layerInfo(l);
   };
@@ -341,7 +351,7 @@ var AEM = (function () {
     if (has(a, "motion_blur")) l.motionBlur = a.motion_blur;
     if (has(a, "time_remap")) { if (!l.canSetTimeRemapEnabled) fail("BAD_ARGS", "This layer cannot use time remapping"); l.timeRemapEnabled = a.time_remap; }
     if (has(a, "start")) l.startTime = a.start;
-    if (has(a, "in")) l.inPoint = a["in"];
+    if (has(a, "in")) setIn(l, a["in"]);
     if (has(a, "out")) l.outPoint = a.out;
     if (has(a, "enabled")) l.enabled = a.enabled;
     if (bm !== undefined) l.blendingMode = bm;
@@ -478,7 +488,7 @@ var AEM = (function () {
     app.project.save();
     return {
       project_path: app.project.file.fsName, comp_name: comp.name,
-      total_frames: Math.round(comp.duration * comp.frameRate), fps: comp.frameRate, aerender_dir: new Folder(app.path).fsName
+      total_frames: Math.round(comp.duration * comp.frameRate), fps: comp.frameRate, aerender_dir: appDir()
     };
   };
   // ---------- helpers: editing, timeline, shapes ----------
@@ -487,6 +497,12 @@ var AEM = (function () {
   var MATTES = { alpha: "ALPHA", alpha_inverted: "ALPHA_INVERTED", luma: "LUMA", luma_inverted: "LUMA_INVERTED" };
   var MODIFIERS = { trim_paths: "ADBE Vector Filter - Trim", repeater: "ADBE Vector Filter - Repeater", round_corners: "ADBE Vector Filter - RC" };
 
+  // app.path is a Folder object in After Effects; new Folder(app.path) does not give the install folder.
+  function appDir() {
+    var p = app.path;
+    if (p && typeof p === "object" && p.fsName) return p.fsName;
+    return new Folder(String(p)).fsName;
+  }
   function safe(fn) { try { return fn(); } catch (e) { return undefined; } }
   function snapT(comp, t) { var fd = comp.frameDuration; return Math.round(t / fd) * fd; }
   function layersOf(comp) { var out = [], i; for (i = 1; i <= comp.numLayers; i++) out.push(comp.layer(i)); return out; }
@@ -513,13 +529,21 @@ var AEM = (function () {
     var i0 = l.inPoint, o0 = l.outPoint;
     l.startTime = l.startTime + dt;
     if (Math.abs(l.inPoint - (i0 + dt)) > 1e-5 || Math.abs(l.outPoint - (o0 + dt)) > 1e-5) {
-      if (dt > 0) { l.outPoint = o0 + dt; l.inPoint = i0 + dt; } else { l.inPoint = i0 + dt; l.outPoint = o0 + dt; }
+      l.inPoint = i0 + dt; l.outPoint = o0 + dt;
     }
   }
+  // In After Effects, setting inPoint can move outPoint too (the layer keeps its length), so put outPoint back.
+  function setIn(l, t) {
+    var o = l.outPoint;
+    l.inPoint = t;
+    if (Math.abs(l.outPoint - o) > 1e-6) l.outPoint = o;
+  }
+  function maskModeName(mode) { var k; for (k in MASKMODES) { if (MASKMODES.hasOwnProperty(k) && MaskMode[MASKMODES[k]] === mode) return k; } return "unknown"; }
+  function matteTypeName(t) { var k; for (k in MATTES) { if (MATTES.hasOwnProperty(k) && TrackMatteType[MATTES[k]] === t) return k; } return "none"; }
   function splitAt(l, t) {
     var d = l.duplicate();
     l.outPoint = t;
-    d.inPoint = t;
+    setIn(d, t);
     return d;
   }
   function zeros(n) { var o = [], i; for (i = 0; i < n; i++) o.push([0, 0]); return o; }
@@ -695,13 +719,13 @@ var AEM = (function () {
       if (li >= s - EPS && lo <= e + EPS) { res.deleted.push(l.id); l.remove(); continue; }
       if (li < s - EPS && lo > e + EPS) {
         d = splitAt(l, s);
-        d.inPoint = e;
+        setIn(d, e);
         res.split.push({ first: l.id, second: d.id });
         if (ripple) { shiftLayer(d, -span); res.shifted.push(d.id); }
         continue;
       }
       if (li < s - EPS) { l.outPoint = s; res.trimmed.push(l.id); continue; }
-      l.inPoint = e; res.trimmed.push(l.id);
+      setIn(l, e); res.trimmed.push(l.id);
       if (ripple) { shiftLayer(l, -span); res.shifted.push(l.id); }
     }
     if (ripple && a.shorten_comp) { comp.duration = Math.max(comp.frameDuration, comp.duration - span); res.comp_duration = comp.duration; }
@@ -735,7 +759,8 @@ var AEM = (function () {
     m.property("ADBE Mask Shape").setValue(shp);
     if (mode) m.maskMode = MaskMode[mode];
     if (has(a, "inverted")) m.inverted = a.inverted;
-    if (has(a, "feather")) m.property("ADBE Mask Feather").setValue(a.feather instanceof Array ? a.feather : [a.feather, a.feather]);
+    if (has(a, "feather_xy")) m.property("ADBE Mask Feather").setValue(a.feather_xy);
+    else if (has(a, "feather")) m.property("ADBE Mask Feather").setValue([a.feather, a.feather]);
     if (has(a, "opacity")) m.property("ADBE Mask Opacity").setValue(a.opacity);
     if (has(a, "expansion")) m.property("ADBE Mask Offset").setValue(a.expansion);
     if (a.name) m.name = a.name;

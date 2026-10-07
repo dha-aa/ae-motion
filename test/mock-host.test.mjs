@@ -23,7 +23,9 @@ class FakeProp {
   nearestKeyIndex(t) { let best = 1, bd = Infinity; this.keys.forEach((k, i) => { const d = Math.abs(k.t - t); if (d < bd) { bd = d; best = i + 1; } }); return best; }
 }
 
-function makeWorld({ startShiftsInOut = true } = {}) {
+// startShiftsInOut: changing startTime moves in/out too (true in real After Effects).
+// inKeepsDuration: setting inPoint moves outPoint so the layer keeps its length (also true in real After Effects, observed on solids).
+function makeWorld({ startShiftsInOut = true, inKeepsDuration = true } = {}) {
   let nextId = 100;
   const world = { items: [] };
   class Item { constructor() { this.id = nextId++; this.name = "item"; this.usedIn = []; } remove() { world.items = world.items.filter((i) => i !== this); } }
@@ -48,7 +50,8 @@ function makeWorld({ startShiftsInOut = true } = {}) {
       this.shy = false; this.solo = false; this.label = 0; this.parent = null; this.nullLayer = false; this.adjustmentLayer = false; this.source = null; this.stretch = 100;
       this.marker = new FakeProp();
     }
-    get inPoint() { return this._in; } set inPoint(v) { this._in = v; }
+    get inPoint() { return this._in; }
+    set inPoint(v) { if (inKeepsDuration) { const len = this._out - this._in; this._in = v; this._out = v + len; } else { this._in = v; } }
     get outPoint() { return this._out; } set outPoint(v) { this._out = v; }
     get startTime() { return this._start; }
     set startTime(v) { const d = v - this._start; this._start = v; if (startShiftsInOut) { this._in += d; this._out += d; } }
@@ -90,11 +93,11 @@ function t(name, fn) {
 const ok = (r, m = "") => assert.equal(r.ok, true, `${m} ${JSON.stringify(r.error)}`);
 const fails = (r, code, m = "") => { assert.equal(r.ok, false, m + " should fail"); if (code) assert.equal(r.error.code, code, m + " " + JSON.stringify(r.error)); };
 
-for (const mode of [true, false]) {
-  const tag = mode ? "start moves in/out" : "start leaves in/out";
+for (const [shifts, keeps] of [[true, true], [true, false], [false, true], [false, false]]) {
+  const tag = (shifts ? "start moves in/out" : "start leaves in/out") + ", " + (keeps ? "in keeps length" : "in leaves out");
 
   t(`split_layer splits at a frame-snapped time (${tag})`, () => {
-    const w = makeWorld({ startShiftsInOut: mode }); const c = w.comp(); const A = w.layer(c, "A", 0, 10);
+    const w = makeWorld({ startShiftsInOut: shifts, inKeepsDuration: keeps }); const c = w.comp(); const A = w.layer(c, "A", 0, 10);
     const r = w.call("split_layer", { layer_ids: [A.id], time: 4.04 }); ok(r);
     near(r.result.time, 121 / 30, "snapped time");
     assert.equal(c.numLayers, 2);
@@ -103,7 +106,7 @@ for (const mode of [true, false]) {
   });
 
   t(`split_layer is all-or-nothing and respects locks (${tag})`, () => {
-    const w = makeWorld({ startShiftsInOut: mode }); const c = w.comp(); const A = w.layer(c, "A", 0, 10); const B = w.layer(c, "B", 5, 8);
+    const w = makeWorld({ startShiftsInOut: shifts, inKeepsDuration: keeps }); const c = w.comp(); const A = w.layer(c, "A", 0, 10); const B = w.layer(c, "B", 5, 8);
     fails(w.call("split_layer", { layer_ids: [A.id, B.id], time: 2 }), "BAD_ARGS", "time outside B");
     assert.equal(c.numLayers, 2, "no partial change");
     A.locked = true;
@@ -112,7 +115,7 @@ for (const mode of [true, false]) {
   });
 
   t(`delete_range ripple handles every overlap case (${tag})`, () => {
-    const w = makeWorld({ startShiftsInOut: mode }); const c = w.comp();
+    const w = makeWorld({ startShiftsInOut: shifts, inKeepsDuration: keeps }); const c = w.comp();
     const A = w.layer(c, "A", 0, 10), B = w.layer(c, "B", 3.5, 4.5), C = w.layer(c, "C", 4, 8), D = w.layer(c, "D", 6, 9), E = w.layer(c, "E", 0, 2), F = w.layer(c, "F", 1, 4), G = w.layer(c, "G", 0, 10);
     G.locked = true;
     const r = w.call("delete_range", { comp_id: c.id, start: 3, end: 5 }); ok(r);
@@ -127,7 +130,7 @@ for (const mode of [true, false]) {
   });
 
   t(`delete_range without ripple leaves the gap (${tag})`, () => {
-    const w = makeWorld({ startShiftsInOut: mode }); const c = w.comp();
+    const w = makeWorld({ startShiftsInOut: shifts, inKeepsDuration: keeps }); const c = w.comp();
     const A = w.layer(c, "A", 0, 10), C = w.layer(c, "C", 4, 8), D = w.layer(c, "D", 6, 9);
     const r = w.call("delete_range", { comp_id: c.id, start: 3, end: 5, ripple: false }); ok(r);
     near(A.outPoint, 3); const second = c._layers.find((l) => l.id === r.result.split[0].second); near(second.inPoint, 5); near(second.outPoint, 10);
@@ -136,13 +139,13 @@ for (const mode of [true, false]) {
   });
 
   t(`shift_layers moves in/out together (${tag})`, () => {
-    const w = makeWorld({ startShiftsInOut: mode }); const c = w.comp(); const A = w.layer(c, "A", 2, 5);
+    const w = makeWorld({ startShiftsInOut: shifts, inKeepsDuration: keeps }); const c = w.comp(); const A = w.layer(c, "A", 2, 5);
     ok(w.call("shift_layers", { layer_ids: [A.id], offset_seconds: 1.5 })); near(A.inPoint, 3.5); near(A.outPoint, 6.5);
     ok(w.call("shift_layers", { layer_ids: [A.id], offset_seconds: -3 })); near(A.inPoint, 0.5); near(A.outPoint, 3.5);
   });
 
   t(`sequence_layers chains layers with overlap (${tag})`, () => {
-    const w = makeWorld({ startShiftsInOut: mode }); const c = w.comp();
+    const w = makeWorld({ startShiftsInOut: shifts, inKeepsDuration: keeps }); const c = w.comp();
     const L1 = w.layer(c, "1", 0, 2), L2 = w.layer(c, "2", 5, 8), L3 = w.layer(c, "3", 9, 10);
     ok(w.call("sequence_layers", { layer_ids: [L1.id, L2.id, L3.id], overlap: 0.5 }));
     near(L1.inPoint, 0); near(L1.outPoint, 2); near(L2.inPoint, 1.5); near(L2.outPoint, 4.5); near(L3.inPoint, 4); near(L3.outPoint, 5);
@@ -218,6 +221,12 @@ t("set_playhead snaps and validates; get_comp reports timeline fields", () => {
   fails(w.call("set_playhead", { comp_id: c.id, time: 99 }), "BAD_ARGS");
   const g = w.call("get_comp", { comp_id: c.id }); ok(g);
   assert.ok("work_area_start" in g.result && "work_area_duration" in g.result && "time" in g.result && "num_markers" in g.result);
+});
+
+t("set_layer in/out only changes what you pass", () => {
+  const w = makeWorld(); const c = w.comp(); const a = w.layer(c, "a", 0, 10);
+  ok(w.call("set_layer", { layer_id: a.id, in: 3 })); near(a.inPoint, 3); near(a.outPoint, 10, "out unchanged when only in is set");
+  ok(w.call("set_layer", { layer_id: a.id, out: 6 })); near(a.inPoint, 3); near(a.outPoint, 6);
 });
 
 t("set_layer flags and stretch validation", () => {
