@@ -2,13 +2,36 @@
   "name": "ae-motion-mcp",
   "version": "1.0.0",
   "description": "MCP server for building, animating, previewing and rendering motion graphics in Adobe After Effects",
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "after-effects",
+    "motion-graphics",
+    "extendscript",
+    "cep"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/dha-aa/ae-motion.git"
+  },
   "type": "module",
   "main": "dist/index.js",
   "bin": {
     "ae-motion-mcp": "dist/index.js"
   },
+  "files": [
+    "dist",
+    "panel",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
-    "build": "tsc",
+    "build": "npm run clean && npm run build:host && npm run build:server",
+    "build:host": "node scripts/build-host.mjs",
+    "build:server": "tsc",
+    "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\"",
+    "typecheck": "tsc --noEmit",
     "start": "node dist/index.js",
     "test": "npm run build && node test/run-all.mjs"
   },
@@ -22,6 +45,5 @@
   "devDependencies": {
     "@types/node": "^20.19.43",
     "typescript": "^5.4.0"
-  },
-  "license": "MIT"
+  }
 }

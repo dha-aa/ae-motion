@@ -5,7 +5,7 @@ import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const { findAerender } = await import(pathToFileURL(path.join(ROOT, "dist", "render.js")).href);
+const { findAerender } = await import(pathToFileURL(path.join(ROOT, "dist", "render", "aerender.js")).href);
 const exe = process.platform === "win32" ? "aerender.exe" : "aerender";
 const tmp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "ae-motion-aerender-")));
 const saved = process.env.AE_AERENDER;

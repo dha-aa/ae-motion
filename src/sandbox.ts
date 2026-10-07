@@ -1,10 +1,18 @@
+/**
+ * Filesystem sandbox for tool arguments that are paths (imports, presets, project and render output).
+ *
+ * A path is allowed when it resolves (following symlinks of the part that exists) inside one of
+ * {@link allowedDirs} or the OS temp folder. Tools opt in per argument via `paths` in the tool registry.
+ */
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { AeToolError } from "./bridge.js";
+import { allowedDirs } from "./config.js";
+import { AeToolError } from "./errors.js";
 
 const norm = (p: string) => (process.platform === "win32" ? p.toLowerCase() : p);
 
+/** Resolve p through realpath for the longest existing prefix; the missing tail is appended as-is. */
 function realish(p: string): string {
   let cur = path.resolve(p);
   const rest: string[] = [];
@@ -18,12 +26,10 @@ function realish(p: string): string {
 }
 
 function roots(): string[] {
-  const env = process.env.AE_MCP_ALLOWED_DIRS;
-  const base = env ? env.split(path.delimiter).filter(Boolean) : [os.homedir()];
-  return [...base, os.tmpdir()].map((r) => norm(realish(r)));
+  return [...allowedDirs(), os.tmpdir()].map((r) => norm(realish(r)));
 }
 
-/** Returns the resolved path, or throws FORBIDDEN if it is outside the allowlist. */
+/** Returns the resolved path, or throws FORBIDDEN if it is outside the allowed folders. */
 export function assertAllowed(p: string): string {
   const resolved = realish(p);
   const n = norm(resolved);

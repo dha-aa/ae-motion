@@ -128,7 +128,8 @@ function makeWorld() {
   const AutoOrientType = { CAMERA_OR_POINT_OF_INTEREST: 4212, NO_AUTO_ORIENT: 4213 };
   const LightType = { POINT: 1, SPOT: 2, PARALLEL: 3, AMBIENT: 4 };
   const app = {
-    project: { get numItems() { return world.items.length; }, item(i) { return world.items[i - 1]; }, itemByID(id) { return world.items.find((x) => x.id === id) || null; }, file: null, activeItem: null },
+    project: { get numItems() { return world.items.length; }, item(i) { return world.items[i - 1]; }, itemByID(id) { return world.items.find((x) => x.id === id) || null; },
+      layerByID(id) { for (const c of world.items) for (let j = 1; j <= (c.numLayers || 0); j++) if (c.layer(j).id === id) return c.layer(j); return null; }, file: null, activeItem: null },
     beginUndoGroup() {}, endUndoGroup() {},
     findMenuCommandId(n) { return world.noMenu ? 0 : (MENU[n] || 0); }, executeCommand(id) { world.executed.push(id); },
   };
