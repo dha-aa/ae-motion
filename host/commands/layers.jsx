@@ -1,4 +1,7 @@
-// Layer commands: add, edit, link, delete, duplicate, reorder, precompose. (src/tools/layers.ts)
+// Layer commands: add, edit, link, delete, duplicate, reorder, precompose, replace source. (src/tools/layers.ts)
+
+var FRAMEBLEND = { off: "NO_FRAME_BLEND", frame_mix: "FRAME_MIX", pixel_motion: "PIXEL_MOTION" };
+var QUALITY = { best: "BEST", draft: "DRAFT", wireframe: "WIREFRAME" };
 
 C.add_layer = function (a) {
   need(a, ["comp_id", "kind"]);
@@ -51,6 +54,8 @@ C.set_layer = function (a) {
   if (has(a, "parent_id")) par = getLayer(a.parent_id);
   if (has(a, "auto_orient") && a.auto_orient !== "path" && a.auto_orient !== "off") fail("BAD_ARGS", "auto_orient must be path or off");
   if (has(a, "auto_orient") && (l instanceof CameraLayer || l instanceof LightLayer)) fail("BAD_ARGS", "For cameras and lights use set_camera two_node / point_of_interest");
+  if (has(a, "frame_blending") && !FRAMEBLEND[a.frame_blending]) fail("BAD_ARGS", "frame_blending must be off, frame_mix or pixel_motion");
+  if (has(a, "quality") && !QUALITY[a.quality]) fail("BAD_ARGS", "quality must be best, draft or wireframe");
   // unlock first and lock last, so the other edits in the same call can be applied
   if (a.locked === false) l.locked = false;
   if (has(a, "name")) l.name = a.name;
@@ -67,6 +72,9 @@ C.set_layer = function (a) {
   if (has(a, "enabled")) l.enabled = a.enabled;
   // separated position is addressed as x_position / y_position / z_position (ADBE Position_0/1/2)
   if (has(a, "separate_dimensions")) tp(l, "ADBE Position").dimensionsSeparated = a.separate_dimensions;
+  if (has(a, "frame_blending")) { try { l.frameBlendingType = FrameBlendingType[FRAMEBLEND[a.frame_blending]]; } catch (e1) { fail("BAD_ARGS", "This layer has no frame blending (only footage and precomp layers do)"); } }
+  if (has(a, "quality")) l.quality = LayerQuality[QUALITY[a.quality]];
+  if (has(a, "collapse")) { try { l.collapseTransformation = a.collapse; } catch (e2) { fail("BAD_ARGS", "This layer cannot collapse transformations (only precomp and vector layers can)"); } }
   if (has(a, "auto_orient")) l.autoOrient = a.auto_orient === "path" ? AutoOrientType.ALONG_PATH : AutoOrientType.NO_AUTO_ORIENT;
   if (bm !== undefined) l.blendingMode = bm;
   if (a.parent_id === null) l.parent = null; else if (par) l.parent = par;
@@ -124,6 +132,18 @@ C.link_layers = function (a) {
   }
   for (i = 0; i < layers.length; i++) out.push(layerInfo(layers[i]));
   return { parent: par ? layerInfo(par) : null, created_null: made !== null, layers: out };
+};
+
+// Swap the footage / precomp / solid a layer shows, keeping its timing, keyframes and effects.
+C.replace_source = function (a) {
+  need(a, ["layer_id", "item_id"]);
+  var l = getLayer(a.layer_id), it = getItem(a.item_id);
+  if (!l.source || l instanceof TextLayer || l instanceof ShapeLayer) fail("BAD_ARGS", "Layer " + l.id + " has no source to replace (only footage, precomp, solid and null layers do)");
+  if (!(it instanceof FootageItem || it instanceof CompItem)) fail("BAD_ARGS", "Item " + it.id + " is not footage or a composition");
+  if (it === l.containingComp) fail("BAD_ARGS", "A comp cannot contain itself");
+  try { l.replaceSource(it, a.fix_expressions !== false); }
+  catch (e) { fail("BAD_ARGS", "After Effects refused the replacement: " + (e.message || e), "A precomp cannot contain the comp it is placed in"); }
+  return layerInfo(l);
 };
 
 C.delete_layer = function (a) {

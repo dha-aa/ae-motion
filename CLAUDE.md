@@ -23,7 +23,7 @@ npm run typecheck   # tsc --noEmit
 
 There is no lint command and no single-test runner. `npm test` runs `test/run-all.mjs`; run one file with `node test/<file>` after `npm run build`:
 1. `static-checks.mjs` — generated `host.jsx` is current and parses; ES3 lint of `host/` (reports `host/<file>:<line>`); boots `dist/index.js` and diffs `tools/list` against the `C.<name> = function` commands. `EXPECTED_TOOLS` must match the tool count.
-2. `mock-host.test.mjs` — layer/timeline/comp/marker commands against a mock AE DOM.
+2. `mock-host.test.mjs` — layer/timeline/comp/marker commands (incl. insert_time, align_to_markers, trim_comp, update_marker, replace_source) against a mock AE DOM.
 3. `mock-camera.test.mjs` — camera maths, rigs, shake, lights, 3D layers, linking, 3D views against a mock DOM.
 4. `mock-shapes.test.mjs` — path (shape) values for masks/shape layers, ellipse vertex order, comp motion blur.
 5. `mock-keyframes.test.mjs` — edit_keyframes, copy_animation, stagger fidelity, separate dimensions, auto-orient (models the ease/bezier and roving quirks).
@@ -66,7 +66,8 @@ There is no lint command and no single-test runner. `npm test` runs `test/run-al
 - `saveFrameToPng` can return before the PNG is written; `preview_frame` waits for it to stop growing.
 - Removing every time-remap key turns time remapping off; `set_keyframes` adds new keys first.
 - Path keyframes morph vertex i into vertex i. `boxShape` puts ellipse vertices on the diagonals, matching a rect's corners (top-left first, clockwise), so rect <-> ellipse morphs don't twist; AE's own ellipses start at the top and would.
-- A layer's motion blur switch does nothing until the comp's `motionBlur` is on too (`set_comp motion_blur`).
+- A layer's motion blur switch does nothing until the comp's `motionBlur` is on too (`set_comp motion_blur`); frame blending likewise needs `comp.frameBlending` (`set_comp frame_blending`).
+- A `MarkerValue` from `keyValue` is a copy: change it, then write it back with `setValueAtTime` (`update_marker`).
 - Setting a key's temporal ease switches it to bezier: restore ease first, interpolation type last (`restoreKey`).
 - Roving keys re-time whenever other keys change; `replaceKeys` un-roves first and re-applies roving at the end, or old keys can't be found and get duplicated. Copy/move keys with `snapKey`/`restoreKey`/`replaceKeys` (`host/core/keys.jsx`) so no key setting is lost.
 - Layer ids / `project.layerByID` exist from AE 22.0 (manifest minimum); `getLayer` uses `layerByID` only, so mocks must define it.

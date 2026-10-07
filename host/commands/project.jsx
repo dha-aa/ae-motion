@@ -38,6 +38,8 @@ C.set_comp = function (a) {
   if (has(a, "motion_blur")) c.motionBlur = a.motion_blur;
   if (has(a, "shutter_angle")) c.shutterAngle = a.shutter_angle;
   if (has(a, "shutter_phase")) c.shutterPhase = a.shutter_phase;
+  // likewise the comp switch for layer frame blending (set_layer frame_blending)
+  if (has(a, "frame_blending")) c.frameBlending = a.frame_blending;
   if (wa) {
     ws = has(wa, "start") ? wa.start : c.workAreaStart;
     wd = has(wa, "duration") ? wa.duration : c.workAreaDuration;

@@ -35,8 +35,24 @@ export function registerTimelineTools(r: ToolRegistry): void {
     "Remove a time range from a comp's layers. Layers fully inside are deleted, layers crossing an edge are trimmed, layers spanning the range are split and the middle removed. ripple (default true) closes the gap by moving later material earlier; ripple false leaves the gap (a lift). layer_ids limits the edit (default: all unlocked layers). shorten_comp also shortens the comp duration when rippling. Times snap to frames. Markers are not moved.",
     {
       comp_id: id("Comp"), start: Time, end: Time, ripple: z.boolean().optional(), layer_ids: z.array(z.number().int()).min(1).optional(),
-      shorten_comp: z.boolean().optional(),
+      shorten_comp: z.boolean().optional(), move_markers: z.boolean().optional().describe("Also ripple comp markers: delete those inside the range, move later ones earlier (needs ripple)"),
     },
+  );
+
+  r.bridged(
+    "insert_time",
+    "Ripple insert, the counterpart of delete_range: open a gap of duration seconds at comp time at. Layers starting at or after it move later, layers spanning it are split there and their second part moves. extend_comp (default true) lengthens the comp by the same amount. layer_ids limits the edit (default: all unlocked layers). move_markers also moves comp markers at or after the point (layer markers always move with their layer). Times snap to frames unless snap is false.",
+    {
+      comp_id: id("Comp"), at: Time, duration: z.number().positive(), layer_ids: z.array(z.number().int()).min(1).optional(),
+      extend_comp: z.boolean().optional(), move_markers: z.boolean().optional(), snap: z.boolean().optional(),
+    },
+  );
+
+  r.bridged(
+    "trim_comp",
+    "Trim a comp to its work area (to: work_area) or to the span of its layers (to: layers), like Composition > Trim Comp to Work Area: every layer (locked ones too) and the comp markers move so the range starts at 0, markers outside it are removed, and the duration and work area become the range.",
+    { comp_id: id("Comp"), to: z.enum(["work_area", "layers"]) },
+    { idempotent: true },
   );
 
   r.bridged(
@@ -54,6 +70,26 @@ export function registerTimelineTools(r: ToolRegistry): void {
       url: z.string().optional(), label: Label.optional(),
     },
     { destructive: false },
+  );
+
+  r.bridged(
+    "update_marker",
+    "Change an existing marker on a layer (layer_id) or comp (comp_id), found by index (1-based, from list_markers) or time (within 0.05 s). Only the fields you pass change: comment, duration, chapter, url, label (0-16); to_time moves it.",
+    {
+      ...MarkerTarget, index: z.number().int().min(1).optional(), time: Time.optional(), to_time: Time.optional(),
+      comment: z.string().optional(), duration: z.number().min(0).optional(), chapter: z.string().optional(), url: z.string().optional(), label: Label.optional(),
+    },
+    { idempotent: true },
+  );
+
+  r.bridged(
+    "align_to_markers",
+    "Move layers so layer i starts (in point) on marker from_index + i, in the order given, e.g. to cut shots to beat markers. Uses the comp's markers, or a layer's markers with marker_layer_id (e.g. an audio layer). trim_to_next shortens each layer that runs past the next marker so it ends there. Keyframes move with their layers.",
+    {
+      layer_ids: z.array(z.number().int()).min(1).describe("Layer ids in order, all from the same comp"), marker_layer_id: z.number().int().optional(),
+      from_index: z.number().int().min(1).optional(), trim_to_next: z.boolean().optional(),
+    },
+    { idempotent: true },
   );
 
   r.bridged(

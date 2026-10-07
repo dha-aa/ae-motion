@@ -64,6 +64,7 @@ function makeWorld({ startShiftsInOut = true, inKeepsDuration = true } = {}) {
     moveToBeginning() { this.comp._layers.splice(this.index - 1, 1); this.comp._layers.unshift(this); }
     moveToEnd() { this.comp._layers.splice(this.index - 1, 1); this.comp._layers.push(this); }
     property(n) { return n === "ADBE Marker" ? this.marker : undefined; }
+    replaceSource(item, fix) { this.source = item; this.fixedExpressions = fix; }
   }
   class Stub {}
   const app = {
@@ -77,7 +78,8 @@ function makeWorld({ startShiftsInOut = true, inKeepsDuration = true } = {}) {
     beginUndoGroup() {}, endUndoGroup() {},
   };
   class MarkerValue { constructor(c) { this.comment = c; this.duration = 0; this.chapter = ""; this.url = ""; this.label = 0; } }
-  const ctx = { app, CompItem, FolderItem, FootageItem, TextLayer: Stub, ShapeLayer: Stub, CameraLayer: Stub, LightLayer: Stub, SolidSource: Stub, MarkerValue, console };
+  const ctx = { app, CompItem, FolderItem, FootageItem, TextLayer: Stub, ShapeLayer: Stub, CameraLayer: Stub, LightLayer: Stub, SolidSource: Stub, MarkerValue, console,
+    FrameBlendingType: { NO_FRAME_BLEND: 1, FRAME_MIX: 2, PIXEL_MOTION: 3 }, LayerQuality: { BEST: 1, DRAFT: 2, WIREFRAME: 3 } };
   vm.createContext(ctx);
   vm.runInContext(SRC, ctx);
   const call = (cmd, args = {}) => JSON.parse(ctx.AEM.dispatch(JSON.stringify({ cmd, args })));
@@ -235,6 +237,96 @@ t("set_layer flags and stretch validation", () => {
   fails(w.call("set_layer", { layer_id: a.id, stretch: 0 }), "BAD_ARGS");
   ok(w.call("set_layer", { layer_id: a.id, shy: true, solo: true, label: 5, locked: true })); assert.equal(a.shy, true); assert.equal(a.label, 5); assert.equal(a.locked, true);
   ok(w.call("set_layer", { layer_id: a.id, locked: false, name: "renamed" })); assert.equal(a.locked, false); assert.equal(a.name, "renamed");
+});
+
+// ---------- insert_time, align_to_markers, trim_comp, update_marker, replace_source ----------
+const marks = (c) => c.markerProperty.keys.map((k) => [+k.t.toFixed(4), k.v.comment]);
+for (const [shifts, keeps] of [[true, true], [true, false], [false, true], [false, false]]) {
+  const tag = (shifts ? "start moves in/out" : "start leaves in/out") + ", " + (keeps ? "in keeps length" : "in leaves out");
+
+  t(`insert_time opens a gap: shifts later layers, splits spanning ones, extends the comp, moves markers (${tag})`, () => {
+    const w = makeWorld({ startShiftsInOut: shifts, inKeepsDuration: keeps }); const c = w.comp();
+    const before = w.layer(c, "before", 0, 1), span = w.layer(c, "span", 1, 4), after = w.layer(c, "after", 5, 8);
+    ok(w.call("add_marker", { comp_id: c.id, time: 0.5, comment: "early" }));
+    ok(w.call("add_marker", { comp_id: c.id, time: 6, comment: "late" }));
+    const r = w.call("insert_time", { comp_id: c.id, at: 2, duration: 1.5, move_markers: true }); ok(r);
+    near(before.inPoint, 0); near(before.outPoint, 1, "before untouched");
+    near(span.inPoint, 1); near(span.outPoint, 2, "first part ends at the insert point");
+    const second = c._layers.find((l) => l.id === r.result.split[0].second);
+    near(second.inPoint, 3.5, "second part starts after the gap"); near(second.outPoint, 5.5);
+    near(after.inPoint, 6.5); near(after.outPoint, 9.5);
+    near(c.duration, 11.5, "comp extended");
+    assert.deepEqual(marks(c), [[0.5, "early"], [7.5, "late"]]);
+  });
+
+  t(`align_to_markers puts in points on markers and trims to the next (${tag})`, () => {
+    const w = makeWorld({ startShiftsInOut: shifts, inKeepsDuration: keeps }); const c = w.comp();
+    const a = w.layer(c, "a", 0, 3), b = w.layer(c, "b", 0, 1);
+    for (const tm of [1, 2.5, 6]) ok(w.call("add_marker", { comp_id: c.id, time: tm }));
+    ok(w.call("align_to_markers", { layer_ids: [a.id, b.id], trim_to_next: true }));
+    near(a.inPoint, 1); near(a.outPoint, 2.5, "a trimmed at the next marker");
+    near(b.inPoint, 2.5); near(b.outPoint, 3.5, "b is shorter than the gap: untouched length");
+  });
+
+  t(`trim_comp to work_area moves everything to start at 0 and drops markers outside (${tag})`, () => {
+    const w = makeWorld({ startShiftsInOut: shifts, inKeepsDuration: keeps }); const c = w.comp();
+    const a = w.layer(c, "a", 1, 5), locked = w.layer(c, "locked", 3, 9); locked.locked = true;
+    ok(w.call("add_marker", { comp_id: c.id, time: 1, comment: "out" }));
+    ok(w.call("add_marker", { comp_id: c.id, time: 3, comment: "in" }));
+    ok(w.call("set_comp", { comp_id: c.id, work_area: { start: 2, duration: 4 } }));
+    const r = w.call("trim_comp", { comp_id: c.id, to: "work_area" }); ok(r);
+    near(a.inPoint, -1); near(a.outPoint, 3);
+    near(locked.inPoint, 1, "locked layers move too"); assert.equal(locked.locked, true, "and stay locked");
+    near(c.duration, 4); near(c.workAreaStart, 0); near(c.workAreaDuration, 4);
+    assert.deepEqual(marks(c), [[1, "in"]]);
+    assert.equal(r.result.markers_removed, 1);
+  });
+}
+
+t("trim_comp to layers uses the span of all layers", () => {
+  const w = makeWorld(); const c = w.comp(); w.layer(c, "a", 2, 4); w.layer(c, "b", 3, 7);
+  const r = w.call("trim_comp", { comp_id: c.id, to: "layers" }); ok(r);
+  assert.deepEqual(r.result.removed_range, [2, 7]); near(c.duration, 5);
+  fails(w.call("trim_comp", { comp_id: w.comp().id, to: "layers" }), "BAD_ARGS");
+});
+
+t("delete_range move_markers removes markers inside the range and pulls later ones in", () => {
+  const w = makeWorld(); const c = w.comp(); w.layer(c, "a", 0, 10);
+  for (const [tm, cm] of [[1, "keep"], [3, "gone"], [6, "pulled"]]) ok(w.call("add_marker", { comp_id: c.id, time: tm, comment: cm }));
+  const r = w.call("delete_range", { comp_id: c.id, start: 2, end: 4, move_markers: true }); ok(r);
+  assert.deepEqual(marks(c), [[1, "keep"], [4, "pulled"]]);
+  assert.deepEqual(r.result.markers, { moved: 1, removed: 1 });
+  ok(w.call("add_marker", { comp_id: c.id, time: 8, comment: "stays" }));
+  ok(w.call("delete_range", { comp_id: c.id, start: 2, end: 3 }));
+  assert.ok(marks(c).some((m) => m[0] === 8), "markers stay put without move_markers");
+});
+
+t("update_marker edits fields in place, moves with to_time, refuses collisions", () => {
+  const w = makeWorld(); const c = w.comp();
+  ok(w.call("add_marker", { comp_id: c.id, time: 1, comment: "a" }));
+  ok(w.call("add_marker", { comp_id: c.id, time: 2, comment: "b" }));
+  const r = w.call("update_marker", { comp_id: c.id, index: 1, comment: "A", label: 4, to_time: 1.5 }); ok(r);
+  assert.equal(r.result.comment, "A"); assert.equal(r.result.label, 4); near(r.result.time, 1.5);
+  assert.deepEqual(marks(c), [[1.5, "A"], [2, "b"]]);
+  fails(w.call("update_marker", { comp_id: c.id, time: 1.5, to_time: 2 }), "EXISTS");
+  fails(w.call("update_marker", { comp_id: c.id, time: 9 }), "NOT_FOUND");
+});
+
+t("replace_source swaps the item, refuses non-AV items and the layer's own comp", () => {
+  const w = makeWorld(); const c = w.comp(); const other = w.comp("other");
+  const footage = new w.FootageItem(); w.world.items.push(footage);
+  const folder = new w.FolderItem(); w.world.items.push(folder);
+  const l = w.layer(c, "shot", 0, 5); l.source = footage;
+  ok(w.call("replace_source", { layer_id: l.id, item_id: other.id })); assert.equal(l.source, other); assert.equal(l.fixedExpressions, true);
+  fails(w.call("replace_source", { layer_id: l.id, item_id: folder.id }), "BAD_ARGS");
+  fails(w.call("replace_source", { layer_id: l.id, item_id: c.id }), "BAD_ARGS");
+});
+
+t("set_layer frame_blending / quality / collapse map to After Effects enums", () => {
+  const w = makeWorld(); const c = w.comp(); const l = w.layer(c, "shot", 0, 5);
+  ok(w.call("set_layer", { layer_id: l.id, frame_blending: "pixel_motion", quality: "draft", collapse: true }));
+  assert.equal(l.frameBlendingType, 3); assert.equal(l.quality, 2); assert.equal(l.collapseTransformation, true);
+  fails(w.call("set_layer", { layer_id: l.id, frame_blending: "blurry" }), "BAD_ARGS");
 });
 
 for (const [name, pass, msg] of results) console.log((pass ? "PASS" : "FAIL") + "  " + name + (pass ? "" : "\n      " + msg));

@@ -11,7 +11,7 @@ import { spawn, execFileSync } from "node:child_process";
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const { buildHost, HOST_DIR, HOST_OUT, HOST_SOURCES } = await import(pathToFileURL(path.join(ROOT, "scripts", "build-host.mjs")).href);
 
-const EXPECTED_TOOLS = 54; // update when adding or removing a tool
+const EXPECTED_TOOLS = 59; // update when adding or removing a tool
 const SERVER_ONLY_TOOLS = new Set(["render_start", "render_status", "render_cancel"]); // implemented in TypeScript, no host command
 const HOST_ONLY_COMMANDS = new Set(["get_selection", "prepare_render"]); // used by a resource / render_start, not tools
 

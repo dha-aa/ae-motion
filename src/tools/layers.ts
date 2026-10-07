@@ -32,13 +32,14 @@ export function registerLayerTools(r: ToolRegistry): void {
 
   r.bridged(
     "set_layer",
-    "Edit a layer: name, timing (start/in/out in seconds), time stretch (percent; 200 = half speed, negative reverses), parent (parent_id, or null to unparent), blend mode name (e.g. ADD, SCREEN, MULTIPLY), visibility, and flags: three_d, shy, solo, locked, label (0-16), motion_blur (renders only with set_comp motion_blur on), time_remap, separate_dimensions (position becomes x_position / y_position / z_position, each with its own keys and easing), auto_orient (path: rotate along the motion path, or off).",
+    "Edit a layer: name, timing (start/in/out in seconds), time stretch (percent; 200 = half speed, negative reverses), parent (parent_id, or null to unparent), blend mode name (e.g. ADD, SCREEN, MULTIPLY), visibility, and flags: three_d, shy, solo, locked, label (0-16), motion_blur (renders only with set_comp motion_blur on), time_remap, separate_dimensions (position becomes x_position / y_position / z_position, each with its own keys and easing), auto_orient (path: rotate along the motion path, or off), frame_blending (off | frame_mix | pixel_motion; smooths slowed-down footage, renders only with set_comp frame_blending on), quality (best | draft | wireframe), collapse (collapse transformations / continuously rasterize, precomp and vector layers).",
     {
       layer_id: id("Layer"), name: z.string().optional(), start: z.number().optional(), in: z.number().optional(), out: z.number().optional(),
       parent_id: z.number().int().nullable().optional(), blend_mode: z.string().optional(), enabled: z.boolean().optional(),
       stretch: z.number().refine((n) => n !== 0, "stretch cannot be 0").optional(), three_d: z.boolean().optional(), shy: z.boolean().optional(), solo: z.boolean().optional(),
       locked: z.boolean().optional(), label: Label.optional(), motion_blur: z.boolean().optional(), time_remap: z.boolean().optional(),
       separate_dimensions: z.boolean().optional(), auto_orient: z.enum(["path", "off"]).optional(),
+      frame_blending: z.enum(["off", "frame_mix", "pixel_motion"]).optional(), quality: z.enum(["best", "draft", "wireframe"]).optional(), collapse: z.boolean().optional(),
     },
     { idempotent: true },
   );
@@ -50,6 +51,13 @@ export function registerLayerTools(r: ToolRegistry): void {
       layer_ids: LayerIds, parent_id: z.number().int().nullable().optional(),
       new_null: z.object({ name: z.string().optional(), position: V3.optional(), three_d: z.boolean().optional() }).optional(), jump: z.boolean().optional(),
     },
+  );
+
+  r.bridged(
+    "replace_source",
+    "Swap the footage, comp or solid a layer shows for another project item (like Alt/Option-dragging onto it), keeping the layer's timing, keyframes, masks and effects. fix_expressions (default true) updates expressions that referred to the old source. Works on footage, precomp, solid and null layers.",
+    { layer_id: id("Layer"), item_id: id("Footage or comp item"), fix_expressions: z.boolean().optional() },
+    { idempotent: true },
   );
 
   r.bridged("delete_layer", "Delete a layer.", { layer_id: id("Layer") }, { idempotent: true });

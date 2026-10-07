@@ -1,6 +1,6 @@
 # Tool reference
 
-54 tools, grouped the same way as the source (`src/tools/<group>.ts` on the server, `host/commands/<group>.jsx` in After Effects). Every tool's full argument schema and description is served by the MCP `tools/list` call, so your client always sees the current details. This page gives the overview and the behavior you can't read off a schema.
+59 tools, grouped the same way as the source (`src/tools/<group>.ts` on the server, `host/commands/<group>.jsx` in After Effects). Every tool's full argument schema and description is served by the MCP `tools/list` call, so your client always sees the current details. This page gives the overview and the behavior you can't read off a schema.
 
 ## Conventions
 
@@ -27,18 +27,22 @@
 | | `import_footage` | Import a file or image sequence |
 | | `delete_item` | Delete a comp, footage item or folder (refuses used items unless `force`) |
 | Layers | `add_layer` | Add a solid, text (point or box), shape (rect, ellipse, star, polygon, path), null, adjustment, footage, precomp, camera or light layer; optional `position` and `three_d` place it as it is created |
-| | `set_layer` | Name, timing, time stretch, parent, blend mode, visibility, 3D, shy, solo, lock, label, motion blur, time remap, separate dimensions, auto-orient along path |
+| | `set_layer` | Name, timing, time stretch, parent, blend mode, visibility, 3D, shy, solo, lock, label, motion blur, time remap, separate dimensions, auto-orient along path, frame blending, quality, collapse transformations |
+| | `replace_source` | Swap the footage, comp or solid a layer shows, keeping its timing, keyframes and effects |
 | | `link_layers` | Parent several layers to a layer, unlink them, or create a null and parent them all to it in one call |
 | | `delete_layer` | Remove a layer |
 | | `duplicate_layer` | Duplicate a layer, optionally several offset copies |
 | | `reorder_layer` | Move a layer to the top, bottom, up, down, an index, or before/after another layer |
 | | `precompose` | Precompose layers from one comp |
 | Timeline | `split_layer` | Split layers at a time (Cmd/Ctrl+Shift+D) |
-| | `delete_range` | Cut a time range out of the comp, with ripple or lift |
+| | `delete_range` | Cut a time range out of the comp, with ripple or lift (optionally rippling comp markers) |
+| | `insert_time` | Ripple insert: open a gap, splitting layers that span it, optionally moving comp markers |
 | | `shift_layers` | Move layers in time |
 | | `sequence_layers` | Place layers end to end, with optional overlap |
+| | `align_to_markers` | Start layers on consecutive comp or layer markers, optionally trimming each at the next (cut to a beat) |
+| | `trim_comp` | Trim the comp to its work area or to its layers |
 | | `set_playhead` | Move the current-time indicator |
-| | `add_marker`, `list_markers`, `delete_marker` | Layer and comp markers with comment, duration, chapter, url, label |
+| | `add_marker`, `update_marker`, `list_markers`, `delete_marker` | Layer and comp markers with comment, duration, chapter, url, label; edit or move one in place |
 | Masks and mattes | `add_mask` | Add a rect, ellipse, polygon or bezier-path mask with mode, feather, opacity, expansion |
 | | `set_track_matte` | Use a layer as an alpha or luma track matte, or remove the matte |
 | Animate | `set_property` | Set a value, or a keyframe at `time` |
@@ -99,9 +103,14 @@ Every tool has a title and the four MCP annotations: `readOnlyHint` (inspection,
 The timeline tools work like the editing commands in the After Effects timeline. All times are comp seconds and snap to whole frames unless a tool has `snap: false`.
 
 - **Cut:** `split_layer` splits one or more layers at a time, like Cmd/Ctrl+Shift+D. The first part stays on the original layer; a copy above it holds the second part.
-- **Remove a section:** `delete_range` takes out `start` to `end`. Layers inside the range are deleted, layers crossing an edge are trimmed, and layers spanning the range are split with the middle removed. With `ripple` (the default) later material moves earlier to close the gap; `ripple: false` leaves the gap. `shorten_comp` also shortens the comp when rippling.
+- **Remove a section:** `delete_range` takes out `start` to `end`. Layers inside the range are deleted, layers crossing an edge are trimmed, and layers spanning the range are split with the middle removed. With `ripple` (the default) later material moves earlier to close the gap; `ripple: false` leaves the gap. `shorten_comp` also shortens the comp when rippling, and `move_markers` deletes comp markers inside the range and pulls later ones in.
+- **Make room:** `insert_time` is the reverse: it opens a gap of `duration` at `at`, moving later layers and splitting layers that span the point, lengthens the comp (`extend_comp`, default on) and with `move_markers` moves later comp markers too.
+- **Cut to a beat:** put markers on the beats (`add_marker`, or use an audio layer's markers with `marker_layer_id`), then `align_to_markers` starts layer *i* on marker *i*; `trim_to_next` ends each layer at the following marker.
+- **Swap shots:** `replace_source` changes what a layer shows without touching its timing, keyframes or effects.
+- **Tidy up:** `trim_comp` with `to: work_area` (like Composition > Trim Comp to Work Area) or `to: layers` moves everything so the range starts at 0 and sets the duration to it.
 - **Arrange:** `shift_layers` moves layers in time, `sequence_layers` places them end to end (with optional `overlap`), and `reorder_layer` changes stacking order.
-- **Navigate and mark:** `set_playhead` moves the current-time indicator; `add_marker`, `list_markers` and `delete_marker` manage layer and comp markers; `set_comp` can set the work area.
+- **Navigate and mark:** `set_playhead` moves the current-time indicator; `add_marker`, `update_marker`, `list_markers` and `delete_marker` manage layer and comp markers; `set_comp` can set the work area.
+- **Speed changes:** time stretch (`set_layer stretch`, 200 = half speed) or time remapping, plus `frame_blending: "pixel_motion"` (or `frame_mix`) for smooth slow motion. Like motion blur, frame blending also needs the comp switch: `set_comp frame_blending: true`.
 
 ## 3D cameras
 
@@ -118,7 +127,7 @@ The camera tools use After Effects' coordinates: x to the right, y **down**, z i
 - `render_start` saves the project and runs `aerender` in the background. The project must have been saved at least once. If the output file already exists you must pass `overwrite: true`; the old file is only removed once the render is about to start, so a failed start keeps it. After Effects takes the file extension from the output module, so the file can differ from `output_path` (on After Effects 26.3 the default output module turned a `.mov` request into `.mp4`); `render_status` reports the file that was actually written. For a specific format, name an output-module template in `om_template`. Canceling a render can leave a partial temp file next to the output.
 - Running renders are stopped when the MCP client disconnects or the server is terminated. Job state is kept in memory, so restarting the server forgets old job ids.
 - `preview_frame` uses `comp.saveFrameToPng`; on versions without it you get `UNSUPPORTED`. After Effects can keep writing the PNG for a moment after it returns (heavy 3D frames), so the server waits up to 10 seconds for the file. PNGs are written to `<temp>/ae-motion-mcp/`.
-- `split_layer` and `delete_range` check everything first where they can, and skip or refuse locked layers. `delete_range` does not move markers.
+- `split_layer`, `delete_range` and `insert_time` check everything first where they can, and skip or refuse locked layers (`trim_comp` moves locked layers too and re-locks them). Layer markers always move with their layer; comp markers move only with `move_markers`.
 - A layer used as a track matte is hidden by After Effects (its `enabled` flag becomes false), as in the timeline UI, and stays hidden after the matte is removed (turn it back on with `set_layer` `enabled: true`).
 - `set_track_matte` uses `setTrackMatte` on After Effects 23 and later. Older versions need the matte layer directly above the target (use `reorder_layer`).
 - `delete_item` refuses items that are used in comps, or non-empty folders, unless `force` is true.

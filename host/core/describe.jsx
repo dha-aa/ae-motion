@@ -30,7 +30,7 @@ function compInfo(c, withLayers) {
     id: c.id, name: c.name, width: c.width, height: c.height, fps: c.frameRate, duration: c.duration,
     pixel_aspect: c.pixelAspect, bg_color: [c.bgColor[0], c.bgColor[1], c.bgColor[2]], num_layers: c.numLayers,
     work_area_start: c.workAreaStart, work_area_duration: c.workAreaDuration, time: c.time,
-    motion_blur: c.motionBlur, shutter_angle: c.shutterAngle, shutter_phase: c.shutterPhase,
+    motion_blur: c.motionBlur, shutter_angle: c.shutterAngle, shutter_phase: c.shutterPhase, frame_blending: c.frameBlending,
     num_markers: safe(function () { return c.markerProperty.numKeys; })
   };
   if (withLayers) { o.layers = []; for (var i = 1; i <= c.numLayers; i++) o.layers.push(layerInfo(c.layer(i))); }
