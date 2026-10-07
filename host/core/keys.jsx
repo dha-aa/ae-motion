@@ -114,14 +114,18 @@ function replaceKeys(p, keys, dt) {
 // Move every key on p by dt seconds, keeping all key settings.
 function shiftKeys(p, dt) { replaceKeys(p, snapAll(p), dt); }
 
-// A key as JSON for get_keyframes / edit_keyframes (the same field names edit_keyframes accepts).
+function nonZero(v) { var i; for (i = 0; i < v.length; i++) if (Math.abs(v[i]) > 1e-9) return true; return false; }
+
+// A key as JSON for get_keyframes / edit_keyframes (the same field names edit_keyframes accepts). Spatial fields that
+// are zero or false are left out.
 function keyInfo(p, i) {
   var k = { index: i, t: p.keyTime(i), v: keyVal(p, i), interp_in: interpName(p.keyInInterpolationType(i)), interp_out: interpName(p.keyOutInterpolationType(i)) };
   try { k.ease_in = easeList(p.keyInTemporalEase(i)); k.ease_out = easeList(p.keyOutTemporalEase(i)); } catch (e1) {}
+  // spatial settings only when they say something (zero tangents and false flags are the common case)
   if (p.isSpatial) {
-    try { k.spatial_in = copyArr(p.keyInSpatialTangent(i)); k.spatial_out = copyArr(p.keyOutSpatialTangent(i)); } catch (e2) {}
-    try { k.auto_bezier = p.keySpatialAutoBezier(i); k.continuous = p.keySpatialContinuous(i); } catch (e3) {}
-    try { k.roving = p.keyRoving(i); } catch (e4) {}
+    try { if (nonZero(p.keyInSpatialTangent(i)) || nonZero(p.keyOutSpatialTangent(i))) { k.spatial_in = copyArr(p.keyInSpatialTangent(i)); k.spatial_out = copyArr(p.keyOutSpatialTangent(i)); } } catch (e2) {}
+    try { if (p.keySpatialAutoBezier(i)) k.auto_bezier = true; if (p.keySpatialContinuous(i)) k.continuous = true; } catch (e3) {}
+    try { if (p.keyRoving(i)) k.roving = true; } catch (e4) {}
   }
   return k;
 }

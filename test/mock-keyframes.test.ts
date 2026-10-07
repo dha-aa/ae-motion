@@ -115,10 +115,13 @@ t("set creates a key with the current value, updates values, and sets motion-pat
     { action: "set", t: 1, v: [100, -80], spatial_in: [-60, 0], spatial_out: [60, 0] },
   ] }));
   assert.equal(r.num_keys, 4);
-  assert.deepEqual(r.keys[2].v.slice(0, 2), [100, -80], "value updated (After Effects itself pads [x,y] on a 3D position)");
-  assert.deepEqual(r.keys[2].spatial_in, [-60, 0, 0], "tangent padded to the property's dimensions");
-  assert.deepEqual(r.keys[2].spatial_out, [60, 0, 0]);
-  assert.equal(r.keys[2].auto_bezier, false);
+  assert.deepEqual(r.edits.map((e) => e.index), [2, 3], "indices are the keys' final ones");
+  assert.equal(r.keys.length, 2, "only the edited keys are returned");
+  assert.deepEqual(r.keys[1].v.slice(0, 2), [100, -80], "value updated (After Effects itself pads [x,y] on a 3D position)");
+  assert.deepEqual(r.keys[1].spatial_in, [-60, 0, 0], "tangent padded to the property's dimensions");
+  assert.deepEqual(r.keys[1].spatial_out, [60, 0, 0]);
+  assert.equal(r.keys[1].auto_bezier, undefined, "false flags are left out");
+  assert.equal(r.keys[0].spatial_in, undefined, "zero tangents are left out");
 });
 
 t("a key within half a frame of t is matched; farther away it is not", () => {
@@ -135,7 +138,7 @@ t("move keeps every setting (a linear key stays linear) and refuses to land on a
   threeKeys(w, l);
   ok(w.call("edit_keyframes", { layer_id: l.id, path: "position", edits: [{ action: "set", t: 2, spatial_in: [-10, 5] }] }));
   const r = ok(w.call("edit_keyframes", { layer_id: l.id, path: "position", edits: [{ action: "move", t: 2, to: 2.5 }] }));
-  const k = r.keys[2];
+  const k = r.keys[0];
   near(k.t, 2.5);
   assert.equal(k.interp_in, "linear", "restoring the ease must not turn the key bezier");
   assert.deepEqual(k.spatial_in, [-10, 5, 0]);
@@ -146,7 +149,9 @@ t("easing via set switches only that key to bezier", () => {
   const w = makeWorld(), l = w.layer("A");
   threeKeys(w, l);
   const r = ok(w.call("edit_keyframes", { layer_id: l.id, path: "position", edits: [{ action: "set", index: 1, ease_out: "easy" }] }));
-  assert.deepEqual(r.keys.map((k) => k.interp_out), ["bezier", "linear", "linear"]);
+  assert.deepEqual(r.keys.map((k) => k.interp_out), ["bezier"]);
+  const all = ok(w.call("get_keyframes", { layer_id: l.id, path: "position" }));
+  assert.deepEqual(all.keys.map((k) => k.interp_out), ["bezier", "linear", "linear"]);
 });
 
 t("roving: refused on the first and last key, allowed between", () => {
@@ -154,7 +159,7 @@ t("roving: refused on the first and last key, allowed between", () => {
   threeKeys(w, l);
   fails(w.call("edit_keyframes", { layer_id: l.id, path: "position", edits: [{ action: "set", index: 1, roving: true }] }), "BAD_ARGS");
   const r = ok(w.call("edit_keyframes", { layer_id: l.id, path: "position", edits: [{ action: "set", index: 2, roving: true }] }));
-  assert.equal(r.keys[1].roving, true);
+  assert.equal(r.keys[0].roving, true);
 });
 
 t("spatial fields on a non-spatial property are refused", () => {

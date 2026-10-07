@@ -10,7 +10,7 @@
  * - strict input validation: unknown keys are rejected (at any depth) instead of silently dropped, so a typo
  *   like `colour` fails loudly rather than "succeeding" without effect;
  * - a title and the four MCP annotations (see {@link ToolOptions});
- * - compact JSON output, capped at {@link CHARACTER_LIMIT} characters;
+ * - compact JSON output with numbers rounded to 6 significant digits, capped at {@link CHARACTER_LIMIT} characters;
  * - error handling: anything thrown becomes an MCP error result `{error: {code, message, hint}}`.
  */
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
@@ -55,9 +55,17 @@ export interface BridgedOptions extends ToolOptions {
 
 type Args<S extends z.ZodRawShape> = z.objectOutputType<S, z.ZodTypeAny>;
 
+/**
+ * Round non-integers to 6 significant digits: After Effects reports float noise (0.21999999880791 for 0.22), and
+ * every digit costs tokens. 6 digits keep sub-pixel positions and frame times exact enough.
+ */
+function roundNumbers(_key: string, v: unknown): unknown {
+  return typeof v === "number" && !Number.isInteger(v) && Number.isFinite(v) ? Number(v.toPrecision(6)) : v;
+}
+
 /** A compact JSON text result. Compact rather than pretty-printed: indentation roughly doubles the size. */
 export function json(value: unknown, isError = false): CallToolResult {
-  return { content: [{ type: "text", text: JSON.stringify(value) }], isError };
+  return { content: [{ type: "text", text: JSON.stringify(value, roundNumbers) }], isError };
 }
 
 export function errorResult(error: ToolErrorBody): CallToolResult {
@@ -97,10 +105,10 @@ export function deepStrict(schema: z.ZodTypeAny): z.ZodTypeAny {
   return schema;
 }
 
-function annotationsFor(name: string, o: ToolOptions): ToolAnnotations {
+// The title goes on the tool itself only: repeating it inside the annotations costs tokens for nothing.
+function annotationsFor(o: ToolOptions): ToolAnnotations {
   const readOnly = o.readOnly ?? false;
   return {
-    title: o.title ?? titleFromName(name),
     readOnlyHint: readOnly,
     destructiveHint: readOnly ? false : (o.destructive ?? true),
     idempotentHint: o.idempotent ?? readOnly,
@@ -133,8 +141,7 @@ export class ToolRegistry {
         return errorResult(toErrorBody(e));
       }
     };
-    const annotations = annotationsFor(name, opts);
-    const config = { title: annotations.title, description, inputSchema: deepStrict(z.object(shape)), annotations };
+    const config = { title: opts.title ?? titleFromName(name), description, inputSchema: deepStrict(z.object(shape)), annotations: annotationsFor(opts) };
     // The SDK's generic callback type does not line up with zod's inferred output type; the shape is the same.
     this.server.registerTool(name, config as any, handler as any);
   }
@@ -154,4 +161,22 @@ export class ToolRegistry {
       opts,
     );
   }
+}
+
+type ListHandler = (request: unknown, extra: unknown) => Promise<{ tools: { inputSchema?: Record<string, unknown> }[] }>;
+
+/**
+ * Drop the "$schema" header the SDK puts on every tool's input schema (~60 characters per tool, on every request).
+ * The SDK builds tools/list itself, so this wraps its handler; if the SDK's internals change, it does nothing
+ * (test/static-checks.ts fails if the headers come back).
+ */
+export function slimToolList(server: McpServer): void {
+  const handlers = (server.server as unknown as { _requestHandlers?: Map<string, ListHandler> })._requestHandlers;
+  const original = handlers?.get("tools/list");
+  if (!handlers || !original) return;
+  handlers.set("tools/list", async (request, extra) => {
+    const res = await original(request, extra);
+    for (const t of res.tools) if (t.inputSchema) delete t.inputSchema.$schema;
+    return res;
+  });
 }

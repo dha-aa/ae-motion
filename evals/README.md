@@ -19,7 +19,7 @@ The answers come from a fixed project, `fixtures/rocket_launch.aep`: an 8-second
 | 9 | mask properties | 170 |
 | 10 | layer blend mode (`blend_mode` in layer info) | ADD |
 
-Question 10 checks that blend modes are reported: `get_layer` / `get_comp` include each layer's `blend_mode` (and `motion_blur`).
+Question 10 checks that blend modes are reported: `get_layer` / `get_comp` include a layer's `blend_mode` (and `motion_blur`) when it is not the default (`NORMAL`, off).
 
 ## Running
 

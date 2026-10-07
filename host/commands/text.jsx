@@ -68,7 +68,7 @@ C.get_text = function (a) {
 // Attributes After Effects refuses are reported in "skipped" instead of failing the whole call.
 C.set_text = function (a) {
   need(a, ["layer_id"]);
-  var prop = textProp(a), doc, k, skipped = {}, hasKeys = prop.numKeys > 0, rb;
+  var prop = textProp(a), doc, k, skipped = {}, hasKeys = prop.numKeys > 0, rb, out;
   doc = has(a, "time") ? prop.valueAtTime(a.time, false) : prop.value;
   if (has(a, "text")) doc.text = a.text;
   if (a.font) doc.font = a.font;
@@ -108,7 +108,10 @@ C.set_text = function (a) {
   if (has(a, "time")) prop.setValueAtTime(a.time, doc);
   else if (hasKeys) fail("BAD_ARGS", "Source text is animated; pass time to set the text at a time");
   else prop.setValue(doc);
+  // read back only the fields that were set (get_text returns everything); skipped lists what After Effects refused
   rb = readText(has(a, "time") ? prop.valueAtTime(a.time, false) : prop.value);
-  rb.skipped = skipped;
-  return rb;
+  out = {};
+  for (k in a) { if (a.hasOwnProperty(k) && rb.hasOwnProperty(k)) out[k] = rb[k]; }
+  for (k in skipped) { if (skipped.hasOwnProperty(k)) { out.skipped = skipped; break; } }
+  return out;
 };

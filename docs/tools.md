@@ -8,6 +8,8 @@
 - Comps, layers and project items are addressed by the numeric ids the tools return (`get_project`, `get_comp`).
 - Properties are addressed by alias (`position`, `scale`, `rotation`, `opacity`, `anchor`) or by an array of match names and 1-based indexes, e.g. `["ADBE Effect Parade", "ADBE Gaussian Blur 2", "ADBE Gaussian Blur 2-0001"]`. Use `list_properties` to discover paths.
 - Coordinates: x to the right, y **down**, z into the screen.
+- Results leave out default values to save tokens. Layer info includes `parent_id`, `enabled: false`, `locked`, `shy`, `solo`, `three_d`, `motion_blur`, `stretch` and `blend_mode` only when they differ from the defaults (no parent, enabled, off, 100, `NORMAL`). Keys include spatial tangents and `roving` / `auto_bezier` / `continuous` only when non-zero or true. `set_text` reads back only the fields you set (plus `skipped`), and `edit_keyframes` returns only the keys it set or moved; `get_text` / `get_keyframes` return everything.
+- `AE_MCP_TOOLSETS` limits which tool groups are loaded (see the README's Configuration). With `core`, the groups below other than project, layers, animate, output and inspect are absent.
 - Every mutating call is one undo step in After Effects. If a tool fails midway, its partial changes stay in that undo group, so undo once to revert.
 - A good build loop: `get_project`, `create_comp`, `add_layer` (background first), `set_keyframes` with easing, `preview_frame` at key moments, adjust, then `render_start` and poll `render_status`. Prefer `set_keyframes` over many `set_property` calls, use `stagger` for repeated elements, and call `find_effects` rather than guessing effect match names.
 

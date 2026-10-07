@@ -5,10 +5,16 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 export const RUN_JSX_RULE =
   "run_jsx is a last resort: use a dedicated tool whenever one exists (list_properties / add_property / set_property reach almost any property), and only fall back to run_jsx for something no tool covers.";
 
-/** Sent to clients at connect time (MCP server instructions). */
+/**
+ * Sent to clients at connect time (MCP server instructions). The conventions live here, once, instead of in every
+ * tool's field descriptions (which are repeated in the tool list on every request).
+ */
 export const SERVER_INSTRUCTIONS = [
-  "Controls a live Adobe After Effects project. Time in seconds, sizes in pixels, colors [r,g,b] 0-1, scale in percent; comps and layers by the numeric ids tools return.",
-  "Start with get_project; check results with preview_frame. The motion-guide prompt has the recommended build loop.",
+  "Controls a live Adobe After Effects project. Start with get_project; check results with preview_frame. The motion-guide prompt has the recommended build loop.",
+  "Units: time in seconds, sizes and positions in pixels, colors [r,g,b] 0-1, scale in percent, angles in degrees. Coordinates: x right, y DOWN, z into the screen (a camera in front of the comp has negative z).",
+  "Ids: comps, layers and items are numeric ids from get_project / get_comp (project-wide, not layer indexes).",
+  'Properties: an alias (position, scale, rotation, opacity, anchor; x_position / y_position / z_position after set_layer separate_dimensions) or a path of match names and 1-based indexes, e.g. ["ADBE Effect Parade", 1, "ADBE Gaussian Blur 2-0001"]; list_properties shows them.',
+  "Layer info leaves out default values: a missing flag means false (locked, shy, solo, three_d, motion_blur), blend_mode NORMAL, stretch 100, enabled true, no parent.",
   RUN_JSX_RULE,
 ].join("\n");
 

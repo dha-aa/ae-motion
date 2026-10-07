@@ -49,6 +49,26 @@ export function aerenderOverride(): string | undefined {
   return process.env.AE_AERENDER || undefined;
 }
 
+/** Tool groups (src/tools/<group>.ts). */
+export const TOOLSETS = ["inspect", "project", "layers", "timeline", "masks", "animate", "scene3d", "design", "output", "scripting", "meta"] as const;
+export type Toolset = (typeof TOOLSETS)[number];
+
+/**
+ * Which tool groups to register (AE_MCP_TOOLSETS, comma separated; default: all). Fewer tools means a smaller tool
+ * list in every request. inspect and meta are always on. "core" = inspect, project, layers, animate, output.
+ */
+export function enabledToolsets(): Set<Toolset> {
+  const env = process.env.AE_MCP_TOOLSETS?.trim();
+  if (!env || env === "all") return new Set(TOOLSETS);
+  const out = new Set<Toolset>(["inspect", "meta"]);
+  for (const raw of env.split(",").map((s) => s.trim().toLowerCase()).filter(Boolean)) {
+    if (raw === "core") for (const g of ["project", "layers", "animate", "output"] as const) out.add(g);
+    else if ((TOOLSETS as readonly string[]).includes(raw)) out.add(raw as Toolset);
+    else process.stderr.write(`ae-motion-mcp: unknown toolset "${raw}" in AE_MCP_TOOLSETS (known: core, ${TOOLSETS.join(", ")})\n`);
+  }
+  return out;
+}
+
 /** Largest tool response (text characters) returned to the client; bigger ones become an error with a hint. */
 export const CHARACTER_LIMIT = 25_000;
 
