@@ -77,6 +77,7 @@
 | | `render_status` | State, percent, log tail and the file actually written |
 | | `render_cancel` | Cancel a running render job |
 | Escape hatch | `run_jsx` | Last resort: run arbitrary ExtendScript (disabled unless `AE_MCP_ALLOW_JSX=1`). Its description, the server instructions and `motion-guide` all tell models to use a dedicated tool whenever one exists |
+| Server | `check_for_updates` | Is a newer release out? Current and latest version and the update command (see README, Updates) |
 
 Resources: `ae://project` (same as `get_project`) and `ae://selection` (layers selected in the active comp). Prompt: `motion-guide`.
 
