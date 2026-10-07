@@ -118,28 +118,44 @@ If a call fails, the error includes a code and a hint. See [Troubleshooting](#tr
 
 ## Tools
 
-23 tools, grouped by what they do. Time is in seconds, sizes in pixels, colors are `[r,g,b]` floats from 0 to 1, and scale is in percent. Comps and layers are addressed by the numeric ids the tools return. Properties are addressed by alias (`position`, `scale`, `rotation`, `opacity`, `anchor`) or by an array of match names; use `list_properties` to discover paths.
+41 tools, grouped by what they do. Time is in seconds, sizes in pixels, colors are `[r,g,b]` floats from 0 to 1, and scale is in percent. Comps and layers are addressed by the numeric ids the tools return. Properties are addressed by alias (`position`, `scale`, `rotation`, `opacity`, `anchor`) or by an array of match names; use `list_properties` to discover paths.
 
 | Group | Tool | What it does |
 |---|---|---|
 | Inspect | `get_project` | Project items, active comp id, AE version, project path |
-| | `get_comp` | Comp settings and its layers |
-| | `get_layer` | Transform values, effects, expressions, marker count |
+| | `get_comp` | Comp settings, work area, playhead time, marker count, and its layers |
+| | `get_layer` | Transform values, effects, expressions, marker count, layer flags |
 | | `list_properties` | Walk a layer's property tree (names, match names, values, keyframe counts) |
+| | `get_keyframes` | Read a property's keyframes: values, interpolation, temporal ease, expression |
 | | `find_effects` | Search installed effects by name, match name or category |
-| Build | `create_comp` | Create a composition and open it |
+| Project | `save_project` | Save, or Save As to a path (needed before `render_start`) |
+| | `set_comp` | Change a comp's name, size, fps, duration, background, pixel aspect or work area |
+| | `delete_item` | Delete a comp, footage item or folder (refuses used items unless `force`) |
+| | `create_comp` | Create a composition and open it |
 | | `import_footage` | Import a file or image sequence |
-| | `add_layer` | Add a solid, text, shape, null, adjustment, footage, precomp or camera layer |
-| | `set_layer` | Name, timing, parent, blend mode, visibility |
+| Layers | `add_layer` | Add a solid, text, shape (rect, ellipse, star, polygon, path), null, adjustment, footage, precomp, camera or light layer |
+| | `set_layer` | Name, timing, time stretch, parent, blend mode, visibility, 3D, shy, solo, lock, label, motion blur, time remap |
 | | `delete_layer` | Remove a layer |
+| | `duplicate_layer` | Duplicate a layer, optionally several offset copies |
+| | `reorder_layer` | Move a layer to the top, bottom, up, down, an index, or before/after another layer |
 | | `precompose` | Precompose layers from one comp |
+| Timeline | `split_layer` | Split layers at a time (Cmd/Ctrl+Shift+D) |
+| | `delete_range` | Cut a time range out of the comp, with ripple or lift |
+| | `shift_layers` | Move layers in time |
+| | `sequence_layers` | Place layers end to end, with optional overlap |
+| | `set_playhead` | Move the current-time indicator |
+| | `add_marker`, `list_markers`, `delete_marker` | Layer and comp markers with comment, duration, chapter, url, label |
+| Masks and mattes | `add_mask` | Add a rect, ellipse, polygon or bezier-path mask with mode, feather, opacity, expansion |
+| | `set_track_matte` | Use a layer as an alpha or luma track matte, or remove the matte |
 | Animate | `set_property` | Set a value, or a keyframe at `time` |
 | | `set_keyframes` | Replace all keyframes on a property, with interpolation and easing |
 | | `set_expression` | Set or clear an expression and report syntax errors |
 | | `apply_effect` | Add an effect by match name and set its parameters |
+| | `edit_effect` | Remove, enable or disable an effect |
 | | `apply_preset` | Apply an `.ffx` animation preset |
 | | `set_text` | Text content, font, size, color, tracking, justification |
 | | `stagger` | Offset existing keyframes across layers |
+| | `add_shape_modifier` | Add Trim Paths, Repeater or Round Corners to a shape group |
 | Preview and render | `preview_frame` | Render one frame to PNG and return it as an image |
 | | `render_start` | Save the project and start a background `aerender` job |
 | | `render_status` | State, percent and log tail of a render job |
@@ -149,6 +165,17 @@ If a call fails, the error includes a code and a hint. See [Troubleshooting](#tr
 Resources: `ae://project`, `ae://selection`. Prompt: `motion-guide` (conventions and the recommended build loop).
 
 A good build loop is: `get_project`, `create_comp`, `add_layer` (background first), `set_keyframes` with easing, `preview_frame` at key moments, adjust, then `render_start` and poll `render_status`. Prefer `set_keyframes` over many `set_property` calls, use `stagger` for repeated elements, and call `find_effects` rather than guessing effect names.
+
+### Timeline editing
+
+The timeline tools work like the editing commands in the After Effects timeline. All times are comp seconds and snap to whole frames unless a tool has `snap: false`.
+
+- **Cut:** `split_layer` splits one or more layers at a time, like Cmd/Ctrl+Shift+D. The first part stays on the original layer; a copy above it holds the second part.
+- **Remove a section:** `delete_range` takes out `start` to `end`. Layers inside the range are deleted, layers crossing an edge are trimmed, and layers spanning the range are split with the middle removed. With `ripple` (the default) later material moves earlier to close the gap; `ripple: false` leaves the gap. `shorten_comp` also shortens the comp when rippling.
+- **Arrange:** `shift_layers` moves layers in time, `sequence_layers` places them end to end (with optional `overlap`), and `reorder_layer` changes stacking order.
+- **Navigate and mark:** `set_playhead` moves the current-time indicator; `add_marker`, `list_markers` and `delete_marker` manage layer and comp markers; `set_comp` can set the work area.
+
+Example prompts: "split the title layer at 2.5 seconds", "cut 3s to 5s out of every layer and close the gap", "line up these five layers one after another with a 10 frame overlap", "add a marker at every beat".
 
 Errors come back as `{error:{code,message,hint}}` with codes `NOT_FOUND`, `BAD_ARGS`, `AE_ERROR`, `BRIDGE_DOWN`, `TIMEOUT`, `FORBIDDEN`, `UNSUPPORTED` and `EXISTS`.
 
@@ -178,6 +205,9 @@ All settings are environment variables on the MCP server process. The one except
 - Running renders are stopped when the MCP client disconnects or the server is terminated.
 - `preview_frame` uses `comp.saveFrameToPng`; on versions without it you get `UNSUPPORTED`.
 - `stagger` does not preserve spatial tangents on position keyframes.
+- `split_layer` and `delete_range` check everything first where they can, and skip or refuse locked layers. `delete_range` does not move markers.
+- `set_track_matte` uses `setTrackMatte` on After Effects 23 and later. Older versions need the matte layer directly above the target (use `reorder_layer`).
+- `delete_item` refuses items that are used in comps or non-empty folders unless `force` is true.
 
 ## Troubleshooting
 
@@ -233,7 +263,7 @@ After editing `panel/`, re-run the installer to copy it into the extensions fold
 
 ### Test status
 
-Checked on macOS with After Effects 26.3: the server builds and starts, the panel bridge connects, and the inspect tools and `preview_frame` work against a real project. The render job lifecycle (start, failed start keeps the old output, jobs stop when the client disconnects) is covered by a test against a fake bridge and a fake `aerender`. The build and animate tools and real `aerender` renders follow the same path but have not been verified end to end, and neither has the Windows installer. Issues and fixes are welcome.
+Checked on macOS with After Effects 26.3: the server builds and starts, the panel bridge connects, and the inspect tools and `preview_frame` work against a real project. The render job lifecycle (start, failed start keeps the old output, jobs stop when the client disconnects) is covered by a test against a fake bridge and a fake `aerender`. The timeline tools (split, ripple delete, shift, sequence), reorder, duplicate, markers, comp and item tools have logic tests against a mock After Effects DOM. Masks, mattes, shape modifiers, lights and the other build and animate tools use After Effects APIs that have not been verified end to end, and neither have real `aerender` renders or the Windows installer. Issues and fixes are welcome.
 
 ## License
 
