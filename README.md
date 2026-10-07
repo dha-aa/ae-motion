@@ -118,7 +118,7 @@ If a call fails, the error includes a code and a hint. See [Troubleshooting](#tr
 
 ## Tools
 
-41 tools, grouped by what they do. Time is in seconds, sizes in pixels, colors are `[r,g,b]` floats from 0 to 1, and scale is in percent. Comps and layers are addressed by the numeric ids the tools return. Properties are addressed by alias (`position`, `scale`, `rotation`, `opacity`, `anchor`) or by an array of match names; use `list_properties` to discover paths.
+50 tools, grouped by what they do. Time is in seconds, sizes in pixels, colors are `[r,g,b]` floats from 0 to 1, and scale is in percent. Comps and layers are addressed by the numeric ids the tools return. Properties are addressed by alias (`position`, `scale`, `rotation`, `opacity`, `anchor`) or by an array of match names; use `list_properties` to discover paths.
 
 | Group | Tool | What it does |
 |---|---|---|
@@ -133,8 +133,9 @@ If a call fails, the error includes a code and a hint. See [Troubleshooting](#tr
 | | `delete_item` | Delete a comp, footage item or folder (refuses used items unless `force`) |
 | | `create_comp` | Create a composition and open it |
 | | `import_footage` | Import a file or image sequence |
-| Layers | `add_layer` | Add a solid, text, shape (rect, ellipse, star, polygon, path), null, adjustment, footage, precomp, camera or light layer |
+| Layers | `add_layer` | Add a solid, text, shape (rect, ellipse, star, polygon, path), null, adjustment, footage, precomp, camera or light layer; optional `position` and `three_d` place it as it is created |
 | | `set_layer` | Name, timing, time stretch, parent, blend mode, visibility, 3D, shy, solo, lock, label, motion blur, time remap |
+| | `link_layers` | Parent several layers to a layer, unlink them, or create a null and parent them all to it in one call |
 | | `delete_layer` | Remove a layer |
 | | `duplicate_layer` | Duplicate a layer, optionally several offset copies |
 | | `reorder_layer` | Move a layer to the top, bottom, up, down, an index, or before/after another layer |
@@ -147,6 +148,14 @@ If a call fails, the error includes a code and a hint. See [Troubleshooting](#tr
 | | `add_marker`, `list_markers`, `delete_marker` | Layer and comp markers with comment, duration, chapter, url, label |
 | Masks and mattes | `add_mask` | Add a rect, ellipse, polygon or bezier-path mask with mode, feather, opacity, expansion |
 | | `set_track_matte` | Use a layer as an alpha or luma track matte, or remove the matte |
+| 3D and camera | `get_camera` | Read a camera: lens (zoom, focal length, field of view), depth of field, iris, position, point of interest, and what drives each property |
+| | `set_camera` | Lens, depth of field, focus, iris, one-node or two-node, position, point of interest, rotation, look at a layer |
+| | `camera_move` | Keyframed moves: dolly, truck, pedestal, crane, pan, tilt, roll, orbit, zoom, rack focus, or a path through waypoints |
+| | `camera_shake` | Handheld shake on position, aim or roll (wiggle expressions), removable |
+| | `camera_rig` | Create or remove a rig: two 3D null controls (position and target) that drive the camera |
+| | `set_3d` | Make a layer 3D; set position, rotation, orientation, scale and material options (shadows, shininess, metal) |
+| | `set_light` | Light type, intensity, color, cone, falloff, shadows, and placement |
+| | `set_3d_view` | Switch the viewer's 3D view: active camera, default, front, left, top, back, right, bottom, custom 1 to 3 |
 | Animate | `set_property` | Set a value, or a keyframe at `time` |
 | | `set_keyframes` | Replace all keyframes on a property, with interpolation and easing |
 | | `set_expression` | Set or clear an expression and report syntax errors |
@@ -177,6 +186,17 @@ The timeline tools work like the editing commands in the After Effects timeline.
 
 Example prompts: "split the title layer at 2.5 seconds", "cut 3s to 5s out of every layer and close the gap", "line up these five layers one after another with a 10 frame overlap", "add a marker at every beat".
 
+### 3D cameras
+
+The camera tools use After Effects' coordinates: x to the right, y **down**, z into the screen, so a camera in front of the comp has a negative z and "up" on screen is a negative y. Most moves need a two-node camera (one with a point of interest, which is what `add_layer` creates by default).
+
+- **Set up:** `set_camera` takes the lens as `zoom` (px), `focal_length` (mm, on a 36 mm film width) or `fov` (horizontal degrees), plus depth of field, focus distance (or `focus_on_layer_id`), aperture, blur level and the iris controls. `look_at_layer_id` aims the camera at a layer; with `follow: true` it keeps following. `get_camera` reads it all back.
+- **Move:** `camera_move` makes keyframes you can edit afterwards. `dolly` goes toward or away from the target, `truck` and `pedestal` slide the camera and target together, `crane` lifts the camera while it keeps looking at the target, `pan` and `tilt` turn the point of interest, `roll` rolls, `orbit` circles a target (`degrees` to the right, `vertical_degrees` up), `zoom` changes the lens, `rack_focus` pulls focus to a distance or a layer, and `path` flies through waypoints. Every move has a `start`, `duration` and `easing`, begins from the camera's value at `start`, and replaces keyframes inside its own time range.
+- **Rig and shake:** `camera_rig create` adds two 3D null controls linked to the camera by expressions, so one layer drives the whole move; `camera_move` then keys the controls for you. `camera_shake` adds handheld shake with wiggle expressions on top of any keyframes. Both are removable.
+- **3D layers and lights:** `set_3d` turns a layer 3D and sets its transform and material; `set_light` edits lights.
+
+Example prompts: "orbit the camera 120 degrees around the product over 4 seconds", "slow push-in with a little handheld shake", "rack focus from the foreground card to the logo", "make these cards 3D, rotate them 25 degrees and add a spot light with shadows".
+
 Errors come back as `{error:{code,message,hint}}` with codes `NOT_FOUND`, `BAD_ARGS`, `AE_ERROR`, `BRIDGE_DOWN`, `TIMEOUT`, `FORBIDDEN`, `UNSUPPORTED` and `EXISTS`.
 
 ## Configuration
@@ -203,12 +223,16 @@ All settings are environment variables on the MCP server process. The one except
 - Every mutating tool call is one undo step. If a tool fails midway, partial changes stay in that undo group, so undo once to revert.
 - `render_start` saves the project and runs `aerender` in the background. The project must have been saved at least once. If the output file already exists you must pass `overwrite: true`; the old file is only removed once the render is actually about to start, so a failed start keeps it. After Effects takes the file extension from the output module, so the file can differ from `output_path` (on After Effects 26.3 the default output module turned a `.mov` request into `.mp4`); `render_status` reports the file that was actually written. For a specific format, name an output-module template in `om_template`. Canceling a render can leave a partial temp file next to the output.
 - Running renders are stopped when the MCP client disconnects or the server is terminated.
-- `preview_frame` uses `comp.saveFrameToPng`; on versions without it you get `UNSUPPORTED`.
+- `preview_frame` uses `comp.saveFrameToPng`; on versions without it you get `UNSUPPORTED`. After Effects can keep writing the PNG for a moment after it returns (heavy 3D frames), so the server waits up to 10 seconds for the file.
 - `stagger` does not preserve spatial tangents on position keyframes.
 - `split_layer` and `delete_range` check everything first where they can, and skip or refuse locked layers. `delete_range` does not move markers.
 - A layer that is used as a track matte is hidden by After Effects (its `enabled` flag becomes false), as in the timeline UI, and it stays hidden after the matte is removed (turn it back on with `set_layer` `enabled: true`).
 - `set_track_matte` uses `setTrackMatte` on After Effects 23 and later. Older versions need the matte layer directly above the target (use `reorder_layer`).
 - `delete_item` refuses items that are used in comps or non-empty folders unless `force` is true.
+- `link_layers` keeps each layer where it is on screen when you link or unlink it. `jump: true` keeps the layer's own values instead, so it moves by the parent's offset. With `new_null` the null goes at the average of the layers' position values (stacked above the top-most one), and it is 3D if any of them is. A self-link, a cycle, a locked layer or mixed comps are refused before anything changes.
+- `set_3d_view` runs After Effects' own View > Switch 3D View command, so it needs no screen control. It only changes what the editor shows: `preview_frame` and renders always use the active camera. Running it clears the layer selection. `active_camera` needs a camera in the comp (the menu item is named after it).
+- Camera rigs, shake and look-at are expressions with a marker comment on the first line (`// ae-motion rig`, `// ae-motion shake`, `// ae-motion look-at`). `camera_move` keys a rig's controls, works underneath a shake, and refuses any other expression on position or point of interest. Do not rename a rig's control layers.
+- Focal length assumes a 36 mm film width, so `focal_length` and `fov` are converted to zoom pixels using the comp width.
 
 ## Troubleshooting
 
@@ -267,7 +291,7 @@ After editing `panel/`, re-run the installer to copy it into the extensions fold
 
 `npm test` needs no After Effects: it lints `host.jsx` for ExtendScript-safe syntax, checks the tool list, runs logic tests against a mock After Effects DOM, and runs a render lifecycle test with a fake `aerender`. The mock reproduces two real After Effects behaviors that caused bugs: changing a layer's start time moves its in/out points, and setting an in point also moves the out point.
 
-Checked by hand on macOS with After Effects 26.3: every tool has been run against a real project, including real `aerender` renders with `render_status` and `render_cancel`, Save As and in-place saves, `import_footage` and `apply_preset`. For `run_jsx` only the default block was checked. Not exercised: camera and adjustment layers, the `set_layer` parent and blend mode options, running code through `run_jsx`, and the Windows installer. Issues and fixes are welcome.
+Checked by hand on macOS with After Effects 26.3: every tool has been run against a real project, including real `aerender` renders with `render_status` and `render_cancel`, Save As and in-place saves, `import_footage` and `apply_preset`. For `run_jsx` only the default block was checked. Not exercised: adjustment layers, the `set_layer` blend mode option (parenting was checked through `link_layers`), running code through `run_jsx`, and the Windows installer. The 3D camera, light and 3D layer tools were checked live too: lens and depth-of-field setup, every move type (with the directions confirmed from rendered pixels), easing, rig create and remove with the animation preserved, shake, look-at, path, `set_3d` and `set_light` including materials, shadows and keyframes. Linking, the null options and all eleven 3D views were checked live as well: linking keeps layers in place, jump mode, moving a parent, unlinking, a group null, 3D nulls, the refusals, and each view confirmed from the viewer's own label. Issues and fixes are welcome.
 
 ## License
 

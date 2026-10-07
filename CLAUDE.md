@@ -21,10 +21,12 @@ npm start         # runs the server on stdio (normally launched by the MCP clien
 npm test          # build, then run everything in test/ (no After Effects needed)
 ```
 
-There is no separate lint command and no single-test runner — `npm test` runs `test/run-all.mjs`, which runs these in order and stops on the first failure:
-1. `test/static-checks.mjs` — parses `panel/host/host.jsx`, lints it for ES3 violations, boots `dist/index.js` and diffs `tools/list` against the command functions (`C.<name> = function`) defined in `host.jsx`.
+There is no separate lint command and no single-test runner — `npm test` runs `test/run-all.mjs`, which runs every file below in order and fails if any of them fails:
+1. `test/static-checks.mjs` — parses `panel/host/host.jsx`, lints it for ES3 violations, boots `dist/index.js` and diffs `tools/list` against the command functions (`C.<name> = function`) defined in `host.jsx`. `EXPECTED_TOOLS` there must match the tool count.
 2. `test/mock-host.test.mjs` — logic tests for layer/timeline/comp/marker tools against a mock After Effects DOM (no real AE).
-3. `test/render.test.mjs` — render job lifecycle (start, failed-start keeps old output, jobs stop on client disconnect) against a fake bridge and fake `aerender`.
+3. `test/mock-camera.test.mjs` — logic tests for the 3D camera, light and 3D layer tools (camera maths, keyframe bookkeeping, rigs, shake) against a mock DOM.
+4. `test/aerender-discovery.test.mjs` — `findAerender` against fake install layouts.
+5. `test/render.test.mjs` — render job lifecycle (start, failed-start keeps old output, jobs stop on client disconnect, the real output file is reported) against a fake bridge and fake `aerender`.
 
 To run one of these files directly: `node test/static-checks.mjs` (after `npm run build`, since it execs `dist/index.js`).
 
@@ -47,6 +49,13 @@ Adding a new MCP tool means touching both ends: register it in `src/index.ts` (w
 - `app.path` is a Folder object, not a string: use `app.path.fsName` (`appDir()` in `host.jsx`). `new Folder(app.path)` gives a bogus temp path.
 - `aerender` takes the output file's extension from the output module, so the written file can differ from `-output` (a `.mov` request became `.mp4`). `render_status` looks for the real file once the job is done.
 - Time changes should snap to whole frames (`snapT`); several tools rely on exact frame boundaries.
+- Coordinates are x right, y DOWN, z into the screen: a camera in front of the comp has negative z, and "up" on screen is negative y. The camera helpers in `host.jsx` (`yaw`, `elevate`, `rightOf`) rely on this.
+- A camera's position and point of interest can be driven by expressions we add, marked on the first line: `// ae-motion rig`, `// ae-motion shake`, `// ae-motion look-at`. `keyTarget` sends keyframes to a rig's control layers, lets keys sit under a shake, and refuses any other expression.
+- Lens maths assumes a 36 mm film width: zoom px = focal length x comp width / 36.
+- `addCamera` and `addLight` leave x and y at 0 even when given a center; `centerLayer` puts them over the comp center.
+- `layer.parent = x` keeps the layer where it is on screen (After Effects compensates its position), and `parent = null` does too. `setParentWithJump` keeps the layer's own values, so the layer moves by the parent's offset. `link_layers` uses the first unless `jump: true`.
+- 3D views are run with `app.findMenuCommandId(<menu item>)` + `app.executeCommand`. The active camera item is named `Active Camera (<camera layer name>)` (get the camera from `comp.activeCamera`); a plain "Active Camera" is not found. Running a view command clears the layer selection. Verify a new menu name against `View > Switch 3D View` before adding it.
+- `saveFrameToPng` can return before the PNG is fully written (heavy 3D frames); the server's `preview_frame` waits for the file to appear and stop growing.
 - The mock in `test/mock-host.test.mjs` models the first two quirks; keep it in sync when you find another.
 
 ### Conventions tools follow (see the `motion-guide` prompt in index.ts)
@@ -74,4 +83,4 @@ Changes to `panel/` aren't picked up by `npm run build` — they need the instal
 
 ## Verification status
 
-Every tool was checked by hand against a real AE project (26.3, macOS); see "Test status" in the README for the gaps (camera and adjustment layers, `set_layer` parent and blend mode, running code through `run_jsx`, the Windows installer). The mock in `test/mock-host.test.mjs` only knows the AE behavior we have seen, so a green `npm test` doesn't prove a change works in real AE.
+Every tool was checked by hand against a real AE project (26.3, macOS), the camera tools with their move directions confirmed from rendered pixels; see "Test status" in the README for the gaps (adjustment layers, `set_layer` blend mode, running code through `run_jsx`, the Windows installer). The mock in `test/mock-host.test.mjs` only knows the AE behavior we have seen, so a green `npm test` doesn't prove a change works in real AE.

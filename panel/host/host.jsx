@@ -318,9 +318,10 @@ var AEM = (function () {
     } else if (kind === "shape") { l = comp.layers.addShape(); l.name = "Shape Layer"; if (o.shape) addShapeContent(l, o.shape);
     } else if (kind === "null") { l = comp.layers.addNull(dur);
     } else if (kind === "footage" || kind === "precomp") { l = comp.layers.add(item);
-    } else if (kind === "camera") { l = comp.layers.addCamera(o.name || "Camera 1", o.center || [comp.width / 2, comp.height / 2]);
+    } else if (kind === "camera") { l = comp.layers.addCamera(o.name || "Camera 1", o.center || [comp.width / 2, comp.height / 2]); centerLayer(l, o.center || [comp.width / 2, comp.height / 2]);
     } else if (kind === "light") {
       l = comp.layers.addLight(o.name || "Light 1", o.center ? [o.center[0], o.center[1]] : [comp.width / 2, comp.height / 2]);
+      centerLayer(l, o.center ? o.center : [comp.width / 2, comp.height / 2]);
       if (o.light_type) {
         lt = LightType[String(o.light_type).toUpperCase()];
         if (lt === undefined) fail("BAD_ARGS", "light_type must be point, spot, parallel or ambient");
@@ -328,6 +329,8 @@ var AEM = (function () {
       }
     } else { fail("BAD_ARGS", "Unknown layer kind: " + kind); }
     if (o.name) l.name = o.name;
+    if (has(o, "three_d")) l.threeDLayer = o.three_d;
+    if (has(o, "position")) setLayerPosition(l, o.position);
     if (has(o, "start")) l.startTime = o.start;
     if (has(o, "in")) setIn(l, o["in"]);
     if (has(o, "out")) l.outPoint = o.out;
@@ -861,6 +864,586 @@ var AEM = (function () {
     else if (a.action === "disable") e.enabled = false;
     else fail("BAD_ARGS", "action must be remove, enable or disable");
     return { effect: info, action: a.action, remaining: fx.numProperties };
+  };
+
+  // ---------- 3D cameras, lights and 3D layers ----------
+  var RIGMARK = "// ae-motion rig";
+  var SHAKEMARK = "// ae-motion shake";
+  var LOOKMARK = "// ae-motion look-at";
+  var EASE_NAMES = { linear: 1, ease_in: 1, ease_out: 1, ease_in_out: 1 };
+  var FALLOFFS = { none: 1, smooth: 2, inverse_square_clamped: 3 };
+  var LIGHTTYPES = { point: "POINT", spot: "SPOT", parallel: "PARALLEL", ambient: "AMBIENT" };
+  var CASTS = { off: 0, on: 1, only: 2 };
+  var MATERIAL = {
+    light_transmission: "ADBE Light Transmission", ambient: "ADBE Ambient Coefficient", diffuse: "ADBE Diffuse Coefficient",
+    specular_intensity: "ADBE Specular Coefficient", specular_shininess: "ADBE Shininess Coefficient", metal: "ADBE Metal Coefficient",
+    reflection_intensity: "ADBE Reflection Coefficient", reflection_sharpness: "ADBE Glossiness Coefficient", reflection_rolloff: "ADBE Fresnel Coefficient",
+    transparency: "ADBE Transparency Coefficient", transparency_rolloff: "ADBE Transp Rolloff", index_of_refraction: "ADBE Index of Refraction"
+  };
+  var IRIS = {
+    iris_shape: "ADBE Iris Shape", iris_rotation: "ADBE Iris Rotation", iris_roundness: "ADBE Iris Roundness", iris_aspect_ratio: "ADBE Iris Aspect Ratio",
+    iris_diffraction_fringe: "ADBE Iris Diffraction Fringe", highlight_gain: "ADBE Iris Highlight Gain", highlight_threshold: "ADBE Iris Highlight Threshold",
+    highlight_saturation: "ADBE Iris Hightlight Saturation"
+  };
+
+  // vectors: After Effects has x to the right, y DOWN and z into the screen; a camera in front of the comp has negative z.
+  function v3(a) { return [a[0], a[1], a.length > 2 ? a[2] : 0]; }
+  function vadd(a, b) { return [a[0] + b[0], a[1] + b[1], a[2] + b[2]]; }
+  function vsub(a, b) { return [a[0] - b[0], a[1] - b[1], a[2] - b[2]]; }
+  function vmul(a, k) { return [a[0] * k, a[1] * k, a[2] * k]; }
+  function vdot(a, b) { return a[0] * b[0] + a[1] * b[1] + a[2] * b[2]; }
+  function vlen(a) { return Math.sqrt(vdot(a, a)); }
+  function vnorm(a) {
+    var n = vlen(a);
+    if (n < 1e-9) fail("BAD_ARGS", "The camera and its point of interest are at the same position");
+    return vmul(a, 1 / n);
+  }
+  function rad(d) { return d * Math.PI / 180; }
+  // yaw turns the +z direction toward +x (a camera at -z swings to the right; a view direction turns right with yaw(w, -deg))
+  function yaw(v, deg) { var a = rad(deg), c = Math.cos(a), s = Math.sin(a); return [v[0] * c - v[2] * s, v[1], v[0] * s + v[2] * c]; }
+  // elevate raises a vector toward the top of the screen (y decreases) while keeping its length
+  function elevate(v, deg) {
+    var r = vlen(v), rho = Math.sqrt(v[0] * v[0] + v[2] * v[2]), phi = Math.atan2(-v[1], rho), phi2 = phi + rad(deg), rho2, k;
+    phi2 = Math.max(-1.5533, Math.min(1.5533, phi2));
+    rho2 = r * Math.cos(phi2);
+    k = rho > 1e-9 ? rho2 / rho : 0;
+    return [v[0] * k, -r * Math.sin(phi2), v[2] * k];
+  }
+  function rightOf(f) {
+    var h = Math.sqrt(f[0] * f[0] + f[2] * f[2]);
+    if (h < 1e-9) fail("BAD_ARGS", "The camera looks straight up or down, so truck is undefined");
+    return [f[2] / h, 0, -f[0] / h];
+  }
+  function easeU(name, u) {
+    if (name === "ease_in") return u * u;
+    if (name === "ease_out") return 1 - (1 - u) * (1 - u);
+    if (name === "ease_in_out") return u * u * (3 - 2 * u);
+    return u;
+  }
+  function sampleCount(deg, step) { var n = Math.ceil(Math.abs(deg) / (step || 5)); return Math.max(2, Math.min(180, n)); }
+
+  // New cameras and lights should sit over the comp center; set x and y explicitly instead of trusting addCamera/addLight.
+  function centerLayer(l, c) {
+    var p = l.property("ADBE Transform Group").property("ADBE Position"), v = p.value;
+    if (Math.abs(v[0] - c[0]) > 1e-6 || Math.abs(v[1] - c[1]) > 1e-6) p.setValue([c[0], c[1], v[2]]);
+  }
+  function camLayer(id) {
+    var l = getLayer(id);
+    if (!(l instanceof CameraLayer)) fail("BAD_ARGS", "Layer " + id + " is not a camera", "Add one with add_layer kind camera");
+    return l;
+  }
+  function tp(l, match) { return l.property("ADBE Transform Group").property(match); }
+  function camOpt(l, match) { return l.property("ADBE Camera Options Group").property(match); }
+  function isTwoNode(l) { return l.autoOrient === AutoOrientType.CAMERA_OR_POINT_OF_INTEREST; }
+  function needTwoNode(l) { if (!isTwoNode(l)) fail("BAD_ARGS", "This camera is one-node (it has no point of interest)", "Call set_camera with two_node: true first"); }
+  function cleanName(n) { if (String(n).indexOf('"') !== -1) fail("BAD_ARGS", "Layer names used by rigs and look-at cannot contain double quotes"); return n; }
+
+  // Where to put keyframes for a camera's position or point of interest: the property itself, or the rig control that drives it.
+  function keyTarget(l, match, label) {
+    var p = tp(l, match), m, ctrl = null;
+    if (p.expressionEnabled) {
+      if (p.expression.indexOf(RIGMARK) === 0) {
+        m = /thisComp\.layer\("([^"]+)"\)/.exec(p.expression);
+        if (m) { try { ctrl = l.containingComp.layer(m[1]); } catch (e) { ctrl = null; } }
+        if (!ctrl) fail("NOT_FOUND", "The rig control layer for " + label + " is missing", "Use camera_rig remove, then create the rig again");
+        return ctrl.property("ADBE Transform Group").property("ADBE Position");
+      }
+      if (p.expression.indexOf(SHAKEMARK) !== 0) fail("BAD_ARGS", label + " is driven by an expression", "Clear it with set_expression and an empty expression");
+    }
+    return p;
+  }
+  function stateAt(l, t) {
+    return {
+      P: v3(copyArr(keyTarget(l, "ADBE Position", "Position").valueAtTime(t, true))),
+      T: v3(copyArr(keyTarget(l, "ADBE Anchor Point", "Point of Interest").valueAtTime(t, true)))
+    };
+  }
+  function setAt(p, v, t) {
+    if (t !== null && t !== undefined) {
+      if (!p.canVaryOverTime) fail("BAD_ARGS", "Property is not keyframable");
+      p.setValueAtTime(t, v);
+    } else {
+      if (p.numKeys > 0) fail("BAD_ARGS", "Property is animated; pass time to set a keyframe", "Use camera_move or set_keyframes to change animation");
+      p.setValue(v);
+    }
+  }
+  function clearKeysBetween(p, t0, t1) {
+    var i;
+    for (i = p.numKeys; i >= 1; i--) if (p.keyTime(i) >= t0 - EPS && p.keyTime(i) <= t1 + EPS) p.removeKey(i);
+  }
+  // Insert keys (replacing any existing keys inside their time range). Sampled keys use linear timing because the easing is already in the values.
+  function putKeys(p, keys, easing, sampled) {
+    var i, idx, n = keys.length, lin = KeyframeInterpolationType.LINEAR;
+    clearKeysBetween(p, keys[0].t, keys[n - 1].t);
+    for (i = 0; i < n; i++) p.setValueAtTime(keys[i].t, keys[i].v);
+    for (i = 0; i < n; i++) {
+      idx = p.nearestKeyIndex(keys[i].t);
+      if (sampled || easing === "linear") {
+        p.setInterpolationTypeAtKey(idx, lin, lin);
+      } else if (n >= 2) {
+        if (i === 0 && (easing === "ease_in" || easing === "ease_in_out")) applyKeyMeta(p, idx, { ease_out: "easy" });
+        if (i === n - 1 && (easing === "ease_out" || easing === "ease_in_out")) applyKeyMeta(p, idx, { ease_in: "easy" });
+      }
+    }
+    return n;
+  }
+  function copyAnimation(src, dst) {
+    var i, n = src.numKeys;
+    if (n === 0) { dst.setValue(src.value); return; }
+    for (i = 1; i <= n; i++) dst.setValueAtTime(src.keyTime(i), src.keyValue(i));
+    for (i = 1; i <= n; i++) {
+      try { dst.setInterpolationTypeAtKey(i, src.keyInInterpolationType(i), src.keyOutInterpolationType(i)); } catch (e1) {}
+      try { dst.setTemporalEaseAtKey(i, src.keyInTemporalEase(i), src.keyOutTemporalEase(i)); } catch (e2) {}
+    }
+  }
+  function driveOf(p) {
+    if (p.expressionEnabled) {
+      if (p.expression.indexOf(RIGMARK) === 0) return "rig";
+      if (p.expression.indexOf(SHAKEMARK) === 0) return "shake";
+      if (p.expression.indexOf(LOOKMARK) === 0) return "look-at";
+      return "expression";
+    }
+    return p.numKeys > 0 ? "keyframes" : "static";
+  }
+  function xformProp(l, match) {
+    if (l instanceof CameraLayer && (match === "ADBE Position" || match === "ADBE Anchor Point")) return keyTarget(l, match, match === "ADBE Position" ? "Position" : "Point of Interest");
+    return tp(l, match);
+  }
+  function vN(a, dims) { var v = v3(a); return dims === 2 ? [v[0], v[1]] : v; }
+  function scaleN(a, dims) { return dims === 2 ? [a[0], a[1]] : [a[0], a[1], a.length > 2 ? a[2] : 100]; }
+  function applyXform(l, a, t) {
+    var r = a.rotation, dims = (l instanceof CameraLayer || l instanceof LightLayer || l.threeDLayer) ? 3 : 2;
+    if (has(a, "position")) setAt(xformProp(l, "ADBE Position"), vN(a.position, dims), t);
+    if (has(a, "point_of_interest")) setAt(xformProp(l, "ADBE Anchor Point"), vN(a.point_of_interest, dims), t);
+    else if (has(a, "anchor")) setAt(xformProp(l, "ADBE Anchor Point"), vN(a.anchor, dims), t);
+    if (has(a, "scale")) setAt(xformProp(l, "ADBE Scale"), scaleN(a.scale, dims), t);
+    if (has(a, "orientation")) setAt(xformProp(l, "ADBE Orientation"), v3(a.orientation), t);
+    if (r) {
+      if (has(r, "x")) setAt(xformProp(l, "ADBE Rotate X"), r.x, t);
+      if (has(r, "y")) setAt(xformProp(l, "ADBE Rotate Y"), r.y, t);
+      if (has(r, "z")) setAt(xformProp(l, "ADBE Rotate Z"), r.z, t);
+    }
+  }
+  function xformInfo(l, t) {
+    var o = {};
+    o.position = safe(function () { return copyArr(tp(l, "ADBE Position").valueAtTime(t, false)); });
+    o.point_of_interest = (l instanceof CameraLayer || l instanceof LightLayer) ? safe(function () { return copyArr(tp(l, "ADBE Anchor Point").valueAtTime(t, false)); }) : undefined;
+    o.orientation = safe(function () { return copyArr(tp(l, "ADBE Orientation").valueAtTime(t, false)); });
+    o.rotation = {
+      x: safe(function () { return tp(l, "ADBE Rotate X").valueAtTime(t, false); }),
+      y: safe(function () { return tp(l, "ADBE Rotate Y").valueAtTime(t, false); }),
+      z: safe(function () { return tp(l, "ADBE Rotate Z").valueAtTime(t, false); })
+    };
+    return o;
+  }
+  function axisDistance(l, other, t) {
+    var P = v3(copyArr(tp(l, "ADBE Position").valueAtTime(t, false))), L = v3(copyArr(tp(other, "ADBE Position").valueAtTime(t, false))), d = vsub(L, P), f, r;
+    if (isTwoNode(l)) {
+      f = vnorm(vsub(v3(copyArr(tp(l, "ADBE Anchor Point").valueAtTime(t, false))), P));
+      r = vdot(d, f);
+    } else {
+      r = vlen(d);
+    }
+    if (!(r > 0)) fail("BAD_ARGS", "That layer is behind the camera");
+    return r;
+  }
+  function camInfo(l, t) {
+    var comp = l.containingComp, W = comp.width, H = comp.height, z = camOpt(l, "ADBE Camera Zoom").valueAtTime(t, false), o = {}, k, iris = {};
+    o.layer = layerInfo(l);
+    o.two_node = isTwoNode(l);
+    o.zoom = z;
+    o.focal_length_mm = z * 36 / W;
+    o.fov_horizontal = 2 * Math.atan(W / (2 * z)) * 180 / Math.PI;
+    o.fov_vertical = 2 * Math.atan(H / (2 * z)) * 180 / Math.PI;
+    o.depth_of_field = camOpt(l, "ADBE Camera Depth of Field").valueAtTime(t, false) ? true : false;
+    o.focus_distance = camOpt(l, "ADBE Camera Focus Distance").valueAtTime(t, false);
+    o.aperture = camOpt(l, "ADBE Camera Aperture").valueAtTime(t, false);
+    o.blur_level = camOpt(l, "ADBE Camera Blur Level").valueAtTime(t, false);
+    for (k in IRIS) {
+      if (IRIS.hasOwnProperty(k)) iris[k] = safe(function () { return camOpt(l, IRIS[k]).valueAtTime(t, false); });
+    }
+    o.iris = iris;
+    k = xformInfo(l, t);
+    o.position = k.position; o.point_of_interest = k.point_of_interest; o.orientation = k.orientation; o.rotation = k.rotation;
+    o.driven_by = {
+      position: driveOf(tp(l, "ADBE Position")), point_of_interest: driveOf(tp(l, "ADBE Anchor Point")), roll: driveOf(tp(l, "ADBE Rotate Z")),
+      zoom: driveOf(camOpt(l, "ADBE Camera Zoom")), focus_distance: driveOf(camOpt(l, "ADBE Camera Focus Distance"))
+    };
+    return o;
+  }
+
+  C.get_camera = function (a) {
+    need(a, ["layer_id"]);
+    return camInfo(camLayer(a.layer_id), has(a, "time") ? a.time : 0);
+  };
+
+  C.set_camera = function (a) {
+    need(a, ["layer_id"]);
+    var l = camLayer(a.layer_id), W = l.containingComp.width, t = has(a, "time") ? a.time : null, nlens = 0, z, k, other, p;
+    if (has(a, "zoom")) nlens++;
+    if (has(a, "focal_length")) nlens++;
+    if (has(a, "fov")) nlens++;
+    if (nlens > 1) fail("BAD_ARGS", "Pass only one of zoom, focal_length and fov");
+    if (has(a, "focus_distance") && has(a, "focus_on_layer_id")) fail("BAD_ARGS", "Pass only one of focus_distance and focus_on_layer_id");
+    if (has(a, "name")) l.name = a.name;
+    if (has(a, "two_node")) l.autoOrient = a.two_node ? AutoOrientType.CAMERA_OR_POINT_OF_INTEREST : AutoOrientType.NO_AUTO_ORIENT;
+    if (has(a, "zoom")) z = a.zoom;
+    else if (has(a, "focal_length")) z = a.focal_length * W / 36;
+    else if (has(a, "fov")) { if (!(a.fov > 0 && a.fov < 180)) fail("BAD_ARGS", "fov must be between 0 and 180 degrees"); z = W / (2 * Math.tan(rad(a.fov) / 2)); }
+    if (z !== undefined) { if (!(z > 0)) fail("BAD_ARGS", "The lens must be greater than 0"); setAt(camOpt(l, "ADBE Camera Zoom"), z, t); }
+    if (has(a, "depth_of_field")) setAt(camOpt(l, "ADBE Camera Depth of Field"), a.depth_of_field ? 1 : 0, t);
+    if (has(a, "focus_distance")) setAt(camOpt(l, "ADBE Camera Focus Distance"), a.focus_distance, t);
+    else if (has(a, "focus_on_layer_id")) {
+      other = getLayer(a.focus_on_layer_id);
+      if (other.containingComp.id !== l.containingComp.id) fail("BAD_ARGS", "That layer is in a different comp");
+      setAt(camOpt(l, "ADBE Camera Focus Distance"), axisDistance(l, other, t === null ? 0 : t), t);
+    }
+    if (has(a, "aperture")) setAt(camOpt(l, "ADBE Camera Aperture"), a.aperture, t);
+    if (has(a, "blur_level")) setAt(camOpt(l, "ADBE Camera Blur Level"), a.blur_level, t);
+    for (k in IRIS) { if (IRIS.hasOwnProperty(k) && has(a, k)) setAt(camOpt(l, IRIS[k]), a[k], t); }
+    applyXform(l, a, t);
+    if (has(a, "look_at_layer_id")) {
+      needTwoNode(l);
+      other = getLayer(a.look_at_layer_id);
+      if (other.containingComp.id !== l.containingComp.id) fail("BAD_ARGS", "That layer is in a different comp");
+      p = tp(l, "ADBE Anchor Point");
+      if (a.follow) {
+        if (p.expressionEnabled) fail("BAD_ARGS", "Point of interest is already driven by an expression", "Clear it with set_expression and an empty expression");
+        p.expression = LOOKMARK + '\nthisComp.layer("' + cleanName(other.name) + '").transform.position';
+        if (p.expressionError) { p.expression = ""; fail("AE_ERROR", "Look-at expression failed: " + p.expressionError); }
+      } else {
+        setAt(xformProp(l, "ADBE Anchor Point"), v3(copyArr(tp(other, "ADBE Position").valueAtTime(t === null ? 0 : t, false))), t);
+      }
+    }
+    return camInfo(l, t === null ? 0 : t);
+  };
+
+  C.camera_move = function (a) {
+    need(a, ["layer_id", "type"]);
+    var l = camLayer(a.layer_id), comp = l.containingComp, type = a.type, easing = a.easing || "ease_in_out", t0 = has(a, "start") ? a.start : 0, dur = a.duration, t1,
+      st, f, d, delta, n, i, u, e, w, v, target, deg, vdeg, p, z0, z1, other, wp, nPos = 0,
+      planPos = null, planPoi = null, planRoll = null, planZoom = null, planFocus = null, posSampled = false, poiSampled = false, res = { type: type, keyframes: {} };
+    if (!EASE_NAMES[easing]) fail("BAD_ARGS", "easing must be linear, ease_in, ease_out or ease_in_out");
+    if (t0 < 0) fail("BAD_ARGS", "start must be 0 or more");
+    if (type !== "path") {
+      if (!(dur > 0)) fail("BAD_ARGS", "duration must be greater than 0");
+      t1 = t0 + dur;
+    }
+
+    if (type === "dolly") {
+      needTwoNode(l); st = stateAt(l, t0); f = vsub(st.T, st.P); d = vlen(f);
+      if (has(a, "factor")) { if (!(a.factor > 0)) fail("BAD_ARGS", "factor must be greater than 0"); z1 = d * a.factor; }
+      else if (has(a, "distance")) z1 = d - a.distance;
+      else fail("BAD_ARGS", "dolly needs distance (px toward the point of interest) or factor (new distance as a multiple of the current one)");
+      if (z1 < 1) fail("BAD_ARGS", "The dolly would reach the point of interest (it is " + Math.round(d) + " px away)");
+      planPos = [{ t: t0, v: st.P }, { t: t1, v: vsub(st.T, vmul(vnorm(f), z1)) }];
+    } else if (type === "truck" || type === "pedestal") {
+      need(a, ["distance"]); needTwoNode(l); st = stateAt(l, t0);
+      delta = type === "truck" ? vmul(rightOf(vnorm(vsub(st.T, st.P))), a.distance) : [0, -a.distance, 0];
+      planPos = [{ t: t0, v: st.P }, { t: t1, v: vadd(st.P, delta) }];
+      planPoi = [{ t: t0, v: st.T }, { t: t1, v: vadd(st.T, delta) }];
+    } else if (type === "crane") {
+      need(a, ["distance"]); needTwoNode(l); st = stateAt(l, t0);
+      planPos = [{ t: t0, v: st.P }, { t: t1, v: vadd(st.P, [0, -a.distance, 0]) }];
+    } else if (type === "pan" || type === "tilt") {
+      need(a, ["degrees"]); needTwoNode(l); st = stateAt(l, t0); w = vsub(st.T, st.P);
+      n = sampleCount(a.degrees, a.step_degrees); planPoi = []; poiSampled = true;
+      for (i = 0; i <= n; i++) {
+        u = i / n; e = easeU(easing, u);
+        v = type === "pan" ? yaw(w, -a.degrees * e) : elevate(w, a.degrees * e);
+        planPoi.push({ t: t0 + dur * u, v: vadd(st.P, v) });
+      }
+    } else if (type === "roll") {
+      need(a, ["degrees"]); p = tp(l, "ADBE Rotate Z"); z0 = p.valueAtTime(t0, true);
+      planRoll = [{ t: t0, v: z0 }, { t: t1, v: z0 + a.degrees }];
+    } else if (type === "orbit") {
+      needTwoNode(l); st = stateAt(l, t0);
+      deg = has(a, "degrees") ? a.degrees : 0; vdeg = has(a, "vertical_degrees") ? a.vertical_degrees : 0;
+      if (deg === 0 && vdeg === 0) fail("BAD_ARGS", "orbit needs degrees (left/right) or vertical_degrees (up/down)");
+      target = has(a, "target") ? v3(a.target) : st.T; v = vsub(st.P, target);
+      if (vlen(v) < 1) fail("BAD_ARGS", "The camera is at the orbit target");
+      n = sampleCount(Math.max(Math.abs(deg), Math.abs(vdeg)), a.step_degrees); planPos = []; posSampled = true;
+      for (i = 0; i <= n; i++) {
+        u = i / n; e = easeU(easing, u);
+        planPos.push({ t: t0 + dur * u, v: vadd(target, elevate(yaw(v, deg * e), vdeg * e)) });
+      }
+      if (has(a, "target") && vlen(vsub(target, st.T)) > 1e-6) planPoi = [{ t: t0, v: st.T }, { t: t1, v: target }];
+    } else if (type === "zoom") {
+      p = camOpt(l, "ADBE Camera Zoom"); z0 = p.valueAtTime(t0, true);
+      if (has(a, "to_zoom")) z1 = a.to_zoom;
+      else if (has(a, "factor")) z1 = z0 * a.factor;
+      else if (has(a, "to_focal_length")) z1 = a.to_focal_length * comp.width / 36;
+      else if (has(a, "to_fov")) { if (!(a.to_fov > 0 && a.to_fov < 180)) fail("BAD_ARGS", "to_fov must be between 0 and 180 degrees"); z1 = comp.width / (2 * Math.tan(rad(a.to_fov) / 2)); }
+      else fail("BAD_ARGS", "zoom needs to_zoom, factor, to_focal_length or to_fov");
+      if (!(z1 > 0)) fail("BAD_ARGS", "The target lens must be greater than 0");
+      planZoom = [{ t: t0, v: z0 }, { t: t1, v: z1 }];
+    } else if (type === "rack_focus") {
+      p = camOpt(l, "ADBE Camera Focus Distance"); z0 = p.valueAtTime(t0, true);
+      if (has(a, "to_focus_distance")) z1 = a.to_focus_distance;
+      else if (has(a, "to_layer_id")) {
+        other = getLayer(a.to_layer_id);
+        if (other.containingComp.id !== comp.id) fail("BAD_ARGS", "That layer is in a different comp");
+        z1 = axisDistance(l, other, t1);
+      } else fail("BAD_ARGS", "rack_focus needs to_focus_distance or to_layer_id");
+      planFocus = [{ t: t0, v: z0 }, { t: t1, v: z1 }];
+      p = camOpt(l, "ADBE Camera Depth of Field");
+      if (a.enable_dof !== false && p.numKeys === 0 && !p.value) { p.setValue(1); res.depth_of_field_enabled = true; }
+    } else if (type === "path") {
+      wp = a.waypoints;
+      if (!(wp instanceof Array) || wp.length < 2) fail("BAD_ARGS", "path needs at least 2 waypoints");
+      planPos = []; planPoi = [];
+      for (i = 0; i < wp.length; i++) {
+        if (!has(wp[i], "t")) fail("BAD_ARGS", "Every waypoint needs a time t");
+        if (i > 0 && !(wp[i].t > wp[i - 1].t)) fail("BAD_ARGS", "Waypoint times must increase");
+        if (has(wp[i], "position")) planPos.push({ t: wp[i].t, v: v3(wp[i].position) });
+        if (has(wp[i], "point_of_interest")) planPoi.push({ t: wp[i].t, v: v3(wp[i].point_of_interest) });
+      }
+      if (planPoi.length) needTwoNode(l);
+      if (!planPos.length) planPos = null;
+      if (!planPoi.length) planPoi = null;
+      if (!planPos && !planPoi) fail("BAD_ARGS", "Waypoints need position and/or point_of_interest");
+      if (wp[0].t < 0) fail("BAD_ARGS", "Waypoint times must be 0 or more");
+      t0 = wp[0].t; t1 = wp[wp.length - 1].t;
+    } else {
+      fail("BAD_ARGS", "type must be dolly, truck, pedestal, crane, pan, tilt, roll, orbit, zoom, rack_focus or path");
+    }
+    if (t1 > comp.duration + EPS) fail("BAD_ARGS", "The move ends at " + t1 + " s, after the comp does (" + comp.duration + " s)", "Shorten it or lengthen the comp with set_comp");
+
+    if (planPos) { res.keyframes.position = putKeys(keyTarget(l, "ADBE Position", "Position"), planPos, easing, posSampled); res.final_position = planPos[planPos.length - 1].v; }
+    if (planPoi) { res.keyframes.point_of_interest = putKeys(keyTarget(l, "ADBE Anchor Point", "Point of Interest"), planPoi, easing, poiSampled); res.final_point_of_interest = planPoi[planPoi.length - 1].v; }
+    if (planRoll) res.keyframes.roll = putKeys(tp(l, "ADBE Rotate Z"), planRoll, easing, false);
+    if (planZoom) { res.keyframes.zoom = putKeys(camOpt(l, "ADBE Camera Zoom"), planZoom, easing, false); res.final_zoom = planZoom[1].v; }
+    if (planFocus) { res.keyframes.focus_distance = putKeys(camOpt(l, "ADBE Camera Focus Distance"), planFocus, easing, false); res.final_focus_distance = planFocus[1].v; }
+    res.start = t0; res.end = t1;
+    return res;
+  };
+
+  C.camera_shake = function (a) {
+    need(a, ["layer_id"]);
+    var l = camLayer(a.layer_id), target = a.target || "position", amount = has(a, "amount") ? a.amount : 10, freq = has(a, "frequency") ? a.frequency : 2,
+      oct = has(a, "octaves") ? a.octaves : 2, rotAmt = has(a, "rotation_amount") ? a.rotation_amount : 0.3, seed = has(a, "seed") ? a.seed : 1,
+      props = [], applied = [], i, p, ex, wig;
+    if (target !== "position" && target !== "point_of_interest" && target !== "rotation" && target !== "all") fail("BAD_ARGS", "target must be position, point_of_interest, rotation or all");
+    if (!(freq > 0) || amount < 0) fail("BAD_ARGS", "frequency must be greater than 0 and amount 0 or more");
+    if (target === "position" || target === "all") props.push({ name: "position", p: tp(l, "ADBE Position"), rot: false });
+    if (target === "point_of_interest" || target === "all") { needTwoNode(l); props.push({ name: "point_of_interest", p: tp(l, "ADBE Anchor Point"), rot: false }); }
+    if (target === "rotation" || target === "all") props.push({ name: "roll", p: tp(l, "ADBE Rotate Z"), rot: true });
+    for (i = 0; i < props.length; i++) {
+      p = props[i].p;
+      if (a.remove) {
+        if (p.expressionEnabled && p.expression.indexOf(SHAKEMARK) === 0) { p.expression = ""; applied.push(props[i].name); }
+        continue;
+      }
+      if (p.expressionEnabled && p.expression.indexOf(SHAKEMARK) !== 0) fail("BAD_ARGS", props[i].name + " is already driven by an expression", "Remove the rig or clear the expression first");
+      ex = SHAKEMARK + "\nseedRandom(" + (seed + i) + ", true);\n";
+      if (props[i].rot) ex += "wiggle(" + freq + ", " + rotAmt + ", " + oct + ")";
+      else if (a.include_depth === true) ex += "wiggle(" + freq + ", " + amount + ", " + oct + ")";
+      else ex += "w = wiggle(" + freq + ", " + amount + ", " + oct + ");\n[w[0], w[1], value[2]]";
+      p.expression = ex;
+      if (p.expressionError) { p.expression = ""; fail("AE_ERROR", "Shake expression failed: " + p.expressionError); }
+      applied.push(props[i].name);
+    }
+    return { removed: a.remove === true, applied: applied, amount: amount, rotation_amount: rotAmt, frequency: freq, octaves: oct, seed: seed };
+  };
+
+  C.camera_rig = function (a) {
+    need(a, ["layer_id", "action"]);
+    var l = camLayer(a.layer_id), comp = l.containingComp, posP = tp(l, "ADBE Position"), poiP = tp(l, "ADBE Anchor Point"), names = [], pairs, i, ctrl, ctrlPos, m, existing, info = { action: a.action, controls: [] };
+    if (a.action === "create") {
+      needTwoNode(l);
+      if (posP.expressionEnabled || poiP.expressionEnabled) fail("BAD_ARGS", "The camera position or point of interest already has an expression", "Use camera_rig remove first, or clear the expression");
+      names = [cleanName(l.name + " Position"), cleanName(l.name + " Target")];
+      for (i = 0; i < names.length; i++) {
+        existing = null;
+        try { existing = comp.layer(names[i]); } catch (e) { existing = null; }
+        if (existing) fail("BAD_ARGS", "A layer named " + names[i] + " already exists", "Rename the camera or that layer");
+      }
+      pairs = [[posP, names[0]], [poiP, names[1]]];
+      for (i = 0; i < pairs.length; i++) {
+        ctrl = comp.layers.addNull(comp.duration);
+        ctrl.name = pairs[i][1];
+        ctrl.threeDLayer = true;
+        ctrlPos = ctrl.property("ADBE Transform Group").property("ADBE Position");
+        copyAnimation(pairs[i][0], ctrlPos);
+        while (pairs[i][0].numKeys > 0) pairs[i][0].removeKey(pairs[i][0].numKeys);
+        pairs[i][0].expression = RIGMARK + '\nthisComp.layer("' + pairs[i][1] + '").transform.position';
+        if (pairs[i][0].expressionError) { pairs[i][0].expression = ""; fail("AE_ERROR", "Rig expression failed: " + pairs[i][0].expressionError); }
+        info.controls.push({ name: pairs[i][1], layer_id: ctrl.id, drives: i === 0 ? "position" : "point_of_interest" });
+      }
+      info.note = "Animate the control layers (or use camera_move, which keys them for you). Renaming a control layer breaks the link.";
+      return info;
+    }
+    if (a.action === "remove") {
+      pairs = [[posP, "position"], [poiP, "point_of_interest"]];
+      for (i = 0; i < pairs.length; i++) {
+        if (!(pairs[i][0].expressionEnabled && pairs[i][0].expression.indexOf(RIGMARK) === 0)) continue;
+        m = /thisComp\.layer\("([^"]+)"\)/.exec(pairs[i][0].expression);
+        ctrl = null;
+        if (m) { try { ctrl = comp.layer(m[1]); } catch (e2) { ctrl = null; } }
+        pairs[i][0].expression = "";
+        if (ctrl) {
+          copyAnimation(ctrl.property("ADBE Transform Group").property("ADBE Position"), pairs[i][0]);
+          info.controls.push({ name: ctrl.name, layer_id: ctrl.id, restored: pairs[i][1] });
+          if (a.delete_controls !== false) ctrl.remove();
+        }
+      }
+      if (!info.controls.length) fail("BAD_ARGS", "This camera has no rig");
+      info.controls_deleted = a.delete_controls !== false;
+      return info;
+    }
+    fail("BAD_ARGS", "action must be create or remove");
+  };
+
+  // ---------- 3D layers and lights ----------
+  C.set_3d = function (a) {
+    need(a, ["layer_id"]);
+    var l = getLayer(a.layer_id), t = has(a, "time") ? a.time : null, m = a.material, grp, k, any;
+    if (l instanceof CameraLayer) fail("BAD_ARGS", "Use set_camera for camera layers");
+    if (l instanceof LightLayer) fail("BAD_ARGS", "Use set_light for light layers");
+    any = has(a, "position") || has(a, "anchor") || has(a, "scale") || has(a, "orientation") || has(a, "rotation") || !!m;
+    if (has(a, "three_d")) l.threeDLayer = a.three_d;
+    else if (any && !l.threeDLayer) l.threeDLayer = true;
+    applyXform(l, a, t);
+    if (m) {
+      grp = l.property("ADBE Material Options Group");
+      if (!grp) fail("BAD_ARGS", "This layer has no material options", "Make it 3D first");
+      if (has(m, "casts_shadows")) { if (CASTS[m.casts_shadows] === undefined) fail("BAD_ARGS", "casts_shadows must be off, on or only"); setAt(grp.property("ADBE Casts Shadows"), CASTS[m.casts_shadows], t); }
+      if (has(m, "accepts_shadows")) setAt(grp.property("ADBE Accepts Shadows"), m.accepts_shadows ? 1 : 0, t);
+      if (has(m, "accepts_lights")) setAt(grp.property("ADBE Accepts Lights"), m.accepts_lights ? 1 : 0, t);
+      for (k in MATERIAL) { if (MATERIAL.hasOwnProperty(k) && has(m, k)) setAt(grp.property(MATERIAL[k]), m[k], t); }
+    }
+    k = xformInfo(l, t === null ? 0 : t);
+    return { layer: layerInfo(l), three_d: l.threeDLayer === true, position: k.position, orientation: k.orientation, rotation: k.rotation };
+  };
+
+  function lightInfo(l, t) {
+    var g = l.property("ADBE Light Options Group"), o = {}, k, name = "unknown", ft = safe(function () { return g.property("ADBE Light Falloff Type").valueAtTime(t, false); });
+    for (k in LIGHTTYPES) { if (LIGHTTYPES.hasOwnProperty(k) && LightType[LIGHTTYPES[k]] === l.lightType) name = k; }
+    o.layer = layerInfo(l);
+    o.light_type = name;
+    o.intensity = safe(function () { return g.property("ADBE Light Intensity").valueAtTime(t, false); });
+    o.color = safe(function () { return copyArr(g.property("ADBE Light Color").valueAtTime(t, false)); });
+    o.cone_angle = safe(function () { return g.property("ADBE Light Cone Angle").valueAtTime(t, false); });
+    o.cone_feather = safe(function () { return g.property("ADBE Light Cone Feather 2").valueAtTime(t, false); });
+    o.falloff = ft === 3 ? "inverse_square_clamped" : (ft === 2 ? "smooth" : "none");
+    o.falloff_radius = safe(function () { return g.property("ADBE Light Falloff Start").valueAtTime(t, false); });
+    o.falloff_distance = safe(function () { return g.property("ADBE Light Falloff Distance").valueAtTime(t, false); });
+    o.casts_shadows = safe(function () { return g.property("ADBE Casts Shadows").valueAtTime(t, false) ? true : false; });
+    o.shadow_darkness = safe(function () { return g.property("ADBE Light Shadow Darkness").valueAtTime(t, false); });
+    o.shadow_diffusion = safe(function () { return g.property("ADBE Light Shadow Diffusion").valueAtTime(t, false); });
+    k = xformInfo(l, t);
+    o.position = k.position; o.point_of_interest = k.point_of_interest; o.orientation = k.orientation; o.rotation = k.rotation;
+    return o;
+  }
+  C.set_light = function (a) {
+    need(a, ["layer_id"]);
+    var l = getLayer(a.layer_id), t = has(a, "time") ? a.time : null, g, lt, fo;
+    if (!(l instanceof LightLayer)) fail("BAD_ARGS", "Layer is not a light", "Add one with add_layer kind light");
+    if (has(a, "name")) l.name = a.name;
+    if (has(a, "light_type")) {
+      lt = LIGHTTYPES[a.light_type];
+      if (!lt) fail("BAD_ARGS", "light_type must be point, spot, parallel or ambient");
+      l.lightType = LightType[lt];
+    }
+    g = l.property("ADBE Light Options Group");
+    if ((has(a, "cone_angle") || has(a, "cone_feather")) && l.lightType !== LightType.SPOT) fail("BAD_ARGS", "cone_angle and cone_feather need a spot light");
+    if (has(a, "intensity")) setAt(g.property("ADBE Light Intensity"), a.intensity, t);
+    if (a.color) setAt(g.property("ADBE Light Color"), rgba(a.color), t);
+    if (has(a, "cone_angle")) setAt(g.property("ADBE Light Cone Angle"), a.cone_angle, t);
+    if (has(a, "cone_feather")) setAt(g.property("ADBE Light Cone Feather 2"), a.cone_feather, t);
+    if (has(a, "falloff")) { fo = FALLOFFS[a.falloff]; if (!fo) fail("BAD_ARGS", "falloff must be none, smooth or inverse_square_clamped"); setAt(g.property("ADBE Light Falloff Type"), fo, t); }
+    if (has(a, "falloff_radius")) setAt(g.property("ADBE Light Falloff Start"), a.falloff_radius, t);
+    if (has(a, "falloff_distance")) setAt(g.property("ADBE Light Falloff Distance"), a.falloff_distance, t);
+    if (has(a, "casts_shadows")) setAt(g.property("ADBE Casts Shadows"), a.casts_shadows ? 1 : 0, t);
+    if (has(a, "shadow_darkness")) setAt(g.property("ADBE Light Shadow Darkness"), a.shadow_darkness, t);
+    if (has(a, "shadow_diffusion")) setAt(g.property("ADBE Light Shadow Diffusion"), a.shadow_diffusion, t);
+    applyXform(l, a, t);
+    return lightInfo(l, t === null ? 0 : t);
+  };
+
+  // ---------- linking (parenting), nulls and the 3D viewer ----------
+  var VIEWS = {
+    "active_camera": "Active Camera", "default": "Default", "front": "Front", "left": "Left", "top": "Top", "back": "Back", "right": "Right", "bottom": "Bottom",
+    "custom_1": "Custom View 1", "custom_2": "Custom View 2", "custom_3": "Custom View 3"
+  };
+
+  // A three-value position needs a 3D layer, so it turns 3D on; cameras and lights are always 3D.
+  function setLayerPosition(l, v) {
+    var is3 = (l instanceof CameraLayer || l instanceof LightLayer || l.threeDLayer === true);
+    if (v.length > 2 && !is3) { l.threeDLayer = true; is3 = true; }
+    tp(l, "ADBE Position").setValue(is3 ? v3(v) : [v[0], v[1]]);
+  }
+
+  C.link_layers = function (a) {
+    need(a, ["layer_ids"]);
+    var ids = a.layer_ids, layers = [], seen = {}, i, l, comp = null, par = null, nn = null, byId = has(a, "parent_id"), unlink = (a.parent_id === null),
+      anc, top, sum = [0, 0, 0], v, any3 = false, pos, made = null, out = [];
+    if (!(ids instanceof Array) || ids.length === 0) fail("BAD_ARGS", "layer_ids must be a non-empty array");
+    if (has(a, "new_null")) nn = a.new_null === true ? {} : a.new_null;
+    if (((byId || unlink) ? 1 : 0) + (nn ? 1 : 0) !== 1) fail("BAD_ARGS", "Pass exactly one of parent_id (a layer id, or null to unlink) and new_null");
+    for (i = 0; i < ids.length; i++) {
+      if (seen[ids[i]]) continue;
+      seen[ids[i]] = true;
+      l = getLayer(ids[i]);
+      if (comp === null) comp = l.containingComp;
+      else if (l.containingComp.id !== comp.id) fail("BAD_ARGS", "All layers must be in the same composition");
+      if (l.locked) fail("BAD_ARGS", "Layer " + l.name + " is locked", "Unlock it with set_layer locked: false");
+      layers.push(l);
+    }
+    // validate everything before changing anything
+    if (byId) {
+      par = getLayer(a.parent_id);
+      if (par.containingComp.id !== comp.id) fail("BAD_ARGS", "The parent is in a different composition");
+      if (seen[par.id]) fail("BAD_ARGS", "A layer cannot be its own parent");
+      for (anc = par.parent; anc; anc = anc.parent) {
+        if (seen[anc.id]) fail("BAD_ARGS", "That would link " + anc.name + " to its own child " + par.name);
+      }
+    }
+    if (nn) {
+      top = layers[0];
+      for (i = 0; i < layers.length; i++) {
+        l = layers[i];
+        if (l.threeDLayer === true) any3 = true;
+        v = tp(l, "ADBE Position").value;
+        sum[0] += v[0]; sum[1] += v[1]; sum[2] += (v.length > 2 ? v[2] : 0);
+        if (l.index < top.index) top = l;
+      }
+      pos = has(nn, "position") ? v3(nn.position) : [sum[0] / layers.length, sum[1] / layers.length, sum[2] / layers.length];
+      made = comp.layers.addNull(comp.duration);
+      made.name = nn.name || "Link Null";
+      if (has(nn, "three_d") ? nn.three_d : (any3 || (has(nn, "position") && nn.position.length > 2))) made.threeDLayer = true;
+      setLayerPosition(made, made.threeDLayer ? pos : [pos[0], pos[1]]);
+      made.moveBefore(top);
+      par = made;
+    }
+    for (i = 0; i < layers.length; i++) {
+      if (par === null) layers[i].parent = null;
+      else if (a.jump === true) layers[i].setParentWithJump(par);
+      else layers[i].parent = par;
+    }
+    for (i = 0; i < layers.length; i++) out.push(layerInfo(layers[i]));
+    return { parent: par ? layerInfo(par) : null, created_null: made !== null, layers: out };
+  };
+
+  C.set_3d_view = function (a) {
+    need(a, ["view"]);
+    var name, cmd, comp, cam;
+    if (!VIEWS.hasOwnProperty(a.view)) fail("BAD_ARGS", "view must be active_camera, default, front, left, top, back, right, bottom, custom_1, custom_2 or custom_3");
+    name = VIEWS[a.view];
+    if (has(a, "comp_id")) { comp = getComp(a.comp_id); comp.openInViewer(); }
+    else {
+      comp = app.project.activeItem;
+      if (!(comp instanceof CompItem)) fail("BAD_ARGS", "There is no active composition", "Pass comp_id");
+    }
+    // After Effects puts the active camera's layer name in the menu item: "Active Camera (Camera 1)"
+    if (a.view === "active_camera") {
+      cam = comp.activeCamera;
+      if (cam) name = "Active Camera (" + cam.name + ")";
+    }
+    cmd = app.findMenuCommandId(name);
+    if (!cmd) fail("UNSUPPORTED", "This After Effects version has no menu command named " + name, a.view === "active_camera" ? "The menu item includes the active camera's name; add a camera layer first" : "");
+    app.executeCommand(cmd);
+    return { view: a.view, menu_item: name, command_id: cmd };
   };
 
   C.run_jsx = function (a) {

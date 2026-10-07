@@ -19,10 +19,15 @@ const bridge = http.createServer((req, res) => {
   req.on("end", () => {
     res.setHeader("content-type", "application/json");
     if (req.headers["x-ae-token"] !== TOKEN) { res.statusCode = 401; return res.end("{}"); }
-    const { cmd } = JSON.parse(body);
+    const { cmd, args } = JSON.parse(body);
     if (cmd === "prepare_render") {
       if (!prepareOk) return res.end(JSON.stringify({ ok: false, error: { code: "BAD_ARGS", message: "Project has never been saved" } }));
       return res.end(JSON.stringify({ ok: true, result: { project_path: "/tmp/x.aep", comp_name: "C", total_frames: 10, aerender_dir: DIR } }));
+    }
+    if (cmd === "preview_frame") {
+      // After Effects can finish writing the PNG a moment after the command returns, especially for heavy 3D frames.
+      setTimeout(() => fs.writeFileSync(args.output_path, "fake png bytes"), 700);
+      return res.end(JSON.stringify({ ok: true, result: {} }));
     }
     res.end(JSON.stringify({ ok: true, result: {} }));
   });
@@ -132,6 +137,21 @@ const results = [];
   results.push(["C: job finishes", st.state === "done"]);
   results.push(["C: status reports the file actually written (.mp4)", typeof st.output_path === "string" && st.output_path.endsWith(".mp4") && st.output_exists === true]);
   results.push(["C: status keeps the requested path and explains the difference", typeof st.requested_path === "string" && st.requested_path.endsWith("c.mov") && typeof st.note === "string"]);
+  s.p.stdin.end();
+  await Promise.race([s.exited, sleep(3000)]);
+  s.p.kill();
+}
+
+// Phase D: preview_frame must wait for a PNG that is written shortly after the command returns.
+{
+  prepareOk = true;
+  const s = startServer();
+  await s.init();
+  const started = Date.now();
+  const r = await s.call("tools/call", { name: "preview_frame", arguments: { comp_id: 1, time: 0 } });
+  const content = r.result?.content ?? [];
+  results.push(["D: preview_frame waits for a PNG written after the command returns", r.result?.isError !== true && content.some((c) => c.type === "image")]);
+  results.push(["D: ...without waiting much longer than needed", Date.now() - started < 5000]);
   s.p.stdin.end();
   await Promise.race([s.exited, sleep(3000)]);
   s.p.kill();
