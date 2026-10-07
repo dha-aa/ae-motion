@@ -16,6 +16,7 @@ interface Job {
   child: ChildProcess;
   exitCode: number | null;
   finishedAt?: number;
+  startedAt: number;
 }
 
 export interface RenderArgs {
@@ -26,11 +27,65 @@ export interface RenderArgs {
   overwrite?: boolean;
 }
 
-function findAerender(dir: string): string {
-  const exe = process.platform === "win32" ? "aerender.exe" : "aerender";
-  const candidates = [process.env.AE_AERENDER, path.join(dir, exe), path.join(dir, "Support Files", exe), path.join(path.dirname(dir), exe)];
+function aerenderName(): string {
+  return process.platform === "win32" ? "aerender.exe" : "aerender";
+}
+
+/** Standard install locations, newest version first, for when After Effects does not report a usable folder. */
+function installCandidates(exe: string): string[] {
+  const out: string[] = [];
+  const scan = (root: string, sub: string[]) => {
+    let names: string[] = [];
+    try { names = fs.readdirSync(root); } catch { return; }
+    for (const n of names.filter((x) => /^Adobe After Effects/i.test(x)).sort().reverse()) out.push(path.join(root, n, ...sub, exe));
+  };
+  if (process.platform === "darwin") scan("/Applications", []);
+  else if (process.platform === "win32") {
+    for (const root of [process.env["ProgramFiles"], process.env["ProgramFiles(x86)"]]) if (root) scan(path.join(root, "Adobe"), ["Support Files"]);
+  }
+  return out;
+}
+
+/**
+ * Locate aerender. Tries AE_AERENDER, then the folder After Effects reported and its parents (the layout differs between
+ * macOS and Windows and between versions), then the standard install locations.
+ */
+export function findAerender(dir: string): string {
+  const exe = aerenderName();
+  const candidates: (string | undefined)[] = [process.env.AE_AERENDER];
+  let cur = dir || "";
+  for (let i = 0; i < 5 && cur; i++) {
+    candidates.push(path.join(cur, exe), path.join(cur, "Support Files", exe));
+    const up = path.dirname(cur);
+    if (up === cur) break;
+    cur = up;
+  }
+  candidates.push(...installCandidates(exe));
   for (const c of candidates) if (c && fs.existsSync(c)) return c;
   throw new AeToolError("AE_ERROR", "aerender not found", "Set AE_AERENDER to the full path of the aerender executable");
+}
+
+/**
+ * After Effects takes the file extension from the output module, so the file it writes can differ from the requested path
+ * (for example a .mov request produced .mp4). Look for a file with the same name written since the job started.
+ * Partial temp files (name.<pid>.<n>.ext) are ignored.
+ */
+function findWritten(requested: string, since: number): string | undefined {
+  const dir = path.dirname(requested);
+  const base = path.basename(requested, path.extname(requested));
+  const partial = new RegExp("^" + base.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "\\.\\d+\\.\\d+\\.");
+  let names: string[] = [];
+  try { names = fs.readdirSync(dir); } catch { return undefined; }
+  let best: { p: string; t: number } | undefined;
+  for (const n of names) {
+    if (!n.startsWith(base + ".") || partial.test(n)) continue;
+    const p = path.join(dir, n);
+    let st: fs.Stats;
+    try { st = fs.statSync(p); } catch { continue; }
+    if (!st.isFile() || st.mtimeMs < since - 2000) continue;
+    if (!best || st.mtimeMs > best.t) best = { p, t: st.mtimeMs };
+  }
+  return best?.p;
 }
 
 export class RenderManager {
@@ -60,7 +115,7 @@ export class RenderManager {
     if (replacing) fs.rmSync(out, { force: true });
 
     const child = spawn(bin, args, { windowsHide: true });
-    const job: Job = { id: randomUUID().slice(0, 8), state: "running", percent: 0, output: out, totalFrames: Math.max(1, total_frames), log: [], child, exitCode: null };
+    const job: Job = { id: randomUUID().slice(0, 8), state: "running", percent: 0, output: out, totalFrames: Math.max(1, total_frames), log: [], child, exitCode: null, startedAt: Date.now() };
     this.jobs.set(job.id, job);
 
     let partial = "";
@@ -117,7 +172,14 @@ export class RenderManager {
 
   status(id: string) {
     const j = this.get(id);
-    return { job_id: j.id, state: j.state, percent: j.percent, output_path: j.output, output_exists: fs.existsSync(j.output), exit_code: j.exitCode, log_tail: j.log.slice(-10) };
+    let actual = j.output;
+    if (j.state === "done" && !fs.existsSync(actual)) actual = findWritten(j.output, j.startedAt) ?? actual;
+    const out: Record<string, unknown> = { job_id: j.id, state: j.state, percent: j.percent, output_path: actual, output_exists: fs.existsSync(actual), exit_code: j.exitCode, log_tail: j.log.slice(-10) };
+    if (actual !== j.output) {
+      out.requested_path = j.output;
+      out.note = "After Effects chose the file extension from the output module, so the file differs from the requested path";
+    }
+    return out;
   }
 
   cancel(id: string) {

@@ -31,11 +31,11 @@ await new Promise((r) => bridge.listen(0, "127.0.0.1", r));
 fs.writeFileSync(path.join(DIR, "bridge.json"), JSON.stringify({ port: bridge.address().port, token: TOKEN }));
 
 const fake = path.join(DIR, "aerender");
-fs.writeFileSync(fake, `#!/bin/bash\necho $$ > ${DIR}/aerender.pid\nexec sleep 300\n`, { mode: 0o755 });
+fs.writeFileSync(fake, `#!/bin/bash\necho $$ > ${DIR}/aerender.pid\nif [ "$FAKE_MODE" = "write" ]; then\n  while [ "$1" != "-output" ]; do shift; done\n  out="$2"; echo "PROGRESS: finished"; printf data > "\${out%.*}.mp4"; exit 0\nfi\nexec sleep 300\n`, { mode: 0o755 });
 
-function startServer() {
+function startServer(extraEnv = {}) {
   const p = spawn("node", [SERVER], {
-    env: { ...process.env, AE_MCP_BRIDGE_FILE: path.join(DIR, "bridge.json"), AE_AERENDER: fake, AE_MCP_ALLOWED_DIRS: DIR },
+    env: { ...process.env, AE_MCP_BRIDGE_FILE: path.join(DIR, "bridge.json"), AE_AERENDER: fake, AE_MCP_ALLOWED_DIRS: DIR, ...extraEnv },
     stdio: ["pipe", "pipe", "pipe"],
   });
   let buf = "";
@@ -112,6 +112,28 @@ const results = [];
   await sleep(300);
   results.push(["B: aerender is stopped on disconnect", pid > 0 && !alive(pid)]);
   if (pid > 0 && alive(pid)) process.kill(pid, "SIGKILL"); // cleanup if the check failed
+  s.p.kill();
+}
+
+// Phase C: aerender writes a different extension than requested; render_status must report the real file.
+{
+  prepareOk = true;
+  const s = startServer({ FAKE_MODE: "write" });
+  await s.init();
+  const out = path.join(DIR, "c.mov");
+  const r = await s.call("tools/call", { name: "render_start", arguments: { comp_id: 1, output_path: out } });
+  const job = JSON.parse(r.result.content[0].text).job_id;
+  let st = {};
+  for (let i = 0; i < 50 && st.state !== "done"; i++) {
+    await sleep(100);
+    const sr = await s.call("tools/call", { name: "render_status", arguments: { job_id: job } });
+    st = JSON.parse(sr.result.content[0].text);
+  }
+  results.push(["C: job finishes", st.state === "done"]);
+  results.push(["C: status reports the file actually written (.mp4)", typeof st.output_path === "string" && st.output_path.endsWith(".mp4") && st.output_exists === true]);
+  results.push(["C: status keeps the requested path and explains the difference", typeof st.requested_path === "string" && st.requested_path.endsWith("c.mov") && typeof st.note === "string"]);
+  s.p.stdin.end();
+  await Promise.race([s.exited, sleep(3000)]);
   s.p.kill();
 }
 
