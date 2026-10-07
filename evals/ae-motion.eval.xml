@@ -1,0 +1,47 @@
+<!--
+  Evaluation for the ae-motion MCP server (MCP builder guide, phase 4). Questions are read-only and are answered
+  against the fixture project evals/fixtures/rocket_launch.aep, which must be the open project in After Effects
+  (see evals/README.md). Answers were verified with the server's read-only tools; they are compared as exact strings.
+-->
+<evaluation>
+  <qa_pair>
+    <question>The project contains an animated launch sequence with on-screen messages. What exact message is shown on screen two and a half seconds into the main composition? Answer with the text exactly as displayed.</question>
+    <answer>IGNITION</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>In the main composition, how many seconds pass between the moment the final countdown number appears and the moment the vehicle starts moving off the pad? Answer with a number of seconds only.</question>
+    <answer>1.6</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>The streak left behind the ascending vehicle does not have its own keyframes; its length is computed from another layer. What is the name of that other layer?</question>
+    <answer>Rocket</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Ignoring any shake or wobble, what vertical (y) coordinate does the vehicle's motion path end at, in composition pixels? Answer with the number only.</question>
+    <answer>-520</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>The vehicle is drawn as a single vector layer built from several separate shape groups (body, details and so on). How many top-level shape groups does that layer contain? Answer with a number.</question>
+    <answer>7</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Each time the on-screen countdown changes, the message briefly pops in larger and settles to normal size. At what scale percentage does each pop start? Answer with the number only.</question>
+    <answer>135</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>An orange light flares on the ground when the engine fires. How many seconds pass between its first opacity keyframe and its last one? Answer with a number of seconds only.</question>
+    <answer>3.25</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>The main composition has a control layer that shakes several other layers through parenting. How many layers in the main composition are children of that control layer? Answer with a number.</question>
+    <answer>4</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>The ground flare's soft edge comes from a mask rather than a blur effect. How many pixels of feather does that mask use? Answer with a single number.</question>
+    <answer>170</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>The layer that draws the field of stars is composited onto the sky with a non-default layer blend mode. Which blend mode is it? Answer with After Effects' BlendingMode name in uppercase, for example NORMAL or SCREEN.</question>
+    <answer>ADD</answer>
+  </qa_pair>
+</evaluation>
