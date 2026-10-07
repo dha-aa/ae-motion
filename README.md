@@ -201,11 +201,12 @@ All settings are environment variables on the MCP server process. The one except
 
 - Commands run one at a time in After Effects. A call that takes longer than 30 seconds returns `TIMEOUT` but may still finish in AE, so inspect the project before retrying.
 - Every mutating tool call is one undo step. If a tool fails midway, partial changes stay in that undo group, so undo once to revert.
-- `render_start` saves the project and runs `aerender` in the background. The project must have been saved at least once. If the output file already exists you must pass `overwrite: true`; the old file is only removed once the render is actually about to start, so a failed start keeps it. `.mp4` output needs an H.264 output-module template (Adobe Media Encoder) that you name in `om_template`.
+- `render_start` saves the project and runs `aerender` in the background. The project must have been saved at least once. If the output file already exists you must pass `overwrite: true`; the old file is only removed once the render is actually about to start, so a failed start keeps it. After Effects takes the file extension from the output module, so the file can differ from `output_path` (on After Effects 26.3 the default output module turned a `.mov` request into `.mp4`); `render_status` reports the file that was actually written. For a specific format, name an output-module template in `om_template`. Canceling a render can leave a partial temp file next to the output.
 - Running renders are stopped when the MCP client disconnects or the server is terminated.
 - `preview_frame` uses `comp.saveFrameToPng`; on versions without it you get `UNSUPPORTED`.
 - `stagger` does not preserve spatial tangents on position keyframes.
 - `split_layer` and `delete_range` check everything first where they can, and skip or refuse locked layers. `delete_range` does not move markers.
+- A layer that is used as a track matte is hidden by After Effects (its `enabled` flag becomes false), as in the timeline UI, and it stays hidden after the matte is removed (turn it back on with `set_layer` `enabled: true`).
 - `set_track_matte` uses `setTrackMatte` on After Effects 23 and later. Older versions need the matte layer directly above the target (use `reorder_layer`).
 - `delete_item` refuses items that are used in comps or non-empty folders unless `force` is true.
 
@@ -264,7 +265,9 @@ After editing `panel/`, re-run the installer to copy it into the extensions fold
 
 ### Test status
 
-Checked on macOS with After Effects 26.3: the server builds and starts, the panel bridge connects, and the inspect tools and `preview_frame` work against a real project. The render job lifecycle (start, failed start keeps the old output, jobs stop when the client disconnects) is covered by a test against a fake bridge and a fake `aerender`. The timeline tools (split, ripple delete, shift, sequence), reorder, duplicate, markers, comp and item tools have logic tests against a mock After Effects DOM. Masks, mattes, shape modifiers, lights and the other build and animate tools use After Effects APIs that have not been verified end to end, and neither have real `aerender` renders or the Windows installer. Issues and fixes are welcome.
+`npm test` needs no After Effects: it lints `host.jsx` for ExtendScript-safe syntax, checks the tool list, runs logic tests against a mock After Effects DOM, and runs a render lifecycle test with a fake `aerender`. The mock reproduces two real After Effects behaviors that caused bugs: changing a layer's start time moves its in/out points, and setting an in point also moves the out point.
+
+Checked by hand on macOS with After Effects 26.3: every tool has been run against a real project, including real `aerender` renders with `render_status` and `render_cancel`, Save As and in-place saves, `import_footage` and `apply_preset`. For `run_jsx` only the default block was checked. Not exercised: camera and adjustment layers, the `set_layer` parent and blend mode options, running code through `run_jsx`, and the Windows installer. Issues and fixes are welcome.
 
 ## License
 

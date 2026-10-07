@@ -39,6 +39,16 @@ To run one of these files directly: `node test/static-checks.mjs` (after `npm ru
 
 Adding a new MCP tool means touching both ends: register it in `src/index.ts` (with a zod schema) and implement the matching `C.<name>` in `host.jsx`. `static-checks.mjs` will fail if the two drift out of sync, and the `EXPECTED_TOOLS` constant there needs bumping when the tool count changes.
 
+### After Effects quirks to remember (found in live testing)
+
+- Setting a layer's `inPoint` also moves its `outPoint` (the layer keeps its length). Use `setIn(layer, t)` in `host.jsx`, which puts `outPoint` back, instead of assigning `inPoint` directly. Assigning `outPoint` on its own is safe.
+- Changing `startTime` moves the in and out points with it. `shiftLayer` relies on that but still checks.
+- Using a layer as a track matte hides it (`enabled` becomes false).
+- `app.path` is a Folder object, not a string: use `app.path.fsName` (`appDir()` in `host.jsx`). `new Folder(app.path)` gives a bogus temp path.
+- `aerender` takes the output file's extension from the output module, so the written file can differ from `-output` (a `.mov` request became `.mp4`). `render_status` looks for the real file once the job is done.
+- Time changes should snap to whole frames (`snapT`); several tools rely on exact frame boundaries.
+- The mock in `test/mock-host.test.mjs` models the first two quirks; keep it in sync when you find another.
+
 ### Conventions tools follow (see the `motion-guide` prompt in index.ts)
 
 - Time in seconds, sizes in pixels, colors `[r,g,b]` floats 0–1, scale in percent.
@@ -64,4 +74,4 @@ Changes to `panel/` aren't picked up by `npm run build` — they need the instal
 
 ## Verification status
 
-Per the README: inspect tools and `preview_frame` are checked against a real AE project (26.3, macOS). Render job lifecycle and the timeline/layer/comp/marker tools have logic tests against mocks, not real AE. Masks, mattes, shape modifiers, lights, and real `aerender` renders have not been verified end to end. Keep this in mind when changing that code — the test suite not failing doesn't mean it works in real AE.
+Every tool was checked by hand against a real AE project (26.3, macOS); see "Test status" in the README for the gaps (camera and adjustment layers, `set_layer` parent and blend mode, running code through `run_jsx`, the Windows installer). The mock in `test/mock-host.test.mjs` only knows the AE behavior we have seen, so a green `npm test` doesn't prove a change works in real AE.
