@@ -249,6 +249,7 @@ Panel logs are in `~/Library/Logs/CSXS/` on macOS and `%TEMP%` (`csxs*.log`) on 
 npm install
 npm run build     # compile src/ to dist/
 npm start         # run the server on stdio (normally launched by your client)
+npm test          # build, then run the tests in test/ (no After Effects needed)
 ```
 
 Layout:
