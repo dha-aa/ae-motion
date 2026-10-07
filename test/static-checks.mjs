@@ -45,7 +45,7 @@ srv.stdin.end();
 const msgs = out.split("\n").filter(Boolean).map((l) => JSON.parse(l));
 const tools = msgs.find((m) => m.id === 2).result.tools;
 const names = tools.map((t) => t.name);
-const EXPECTED_TOOLS = 51; // update when adding or removing a tool
+const EXPECTED_TOOLS = 52; // update when adding or removing a tool
 report(names.length === EXPECTED_TOOLS, `tools/list returns ${names.length} tools (expected ${EXPECTED_TOOLS})`);
 const cmds = new Set([...host.matchAll(/C\.(\w+) = function/g)].map((m) => m[1]));
 const notBridged = new Set(["render_start", "render_status", "render_cancel"]);

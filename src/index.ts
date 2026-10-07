@@ -70,7 +70,7 @@ bridged("create_comp", "Create a composition and open it in the viewer.", {
 bridged("import_footage", "Import a file (or an image sequence) into the project. Path must be inside the allowed folders.", { path: z.string(), as: z.enum(["footage", "sequence"]).optional() }, ["path"]);
 bridged(
   "add_layer",
-  "Add a layer. kind: solid | text | shape | null | adjustment | footage | precomp | camera | light. options: name, color, size, duration, text, item_id (footage/precomp), center (camera/light), position ([x,y] or [x,y,z]; three values turn 3D on), three_d, light_type (point|spot|parallel|ambient), start/in/out, shape {type: rect|ellipse|star|polygon|path, size, fill, stroke, stroke_width, roundness, points, outer_radius, inner_radius (star/polygon), vertices/in_tangents/out_tangents/closed (path)}.",
+  "Add a layer (text layers take options.box_size [w,h] for box text). kind: solid | text | shape | null | adjustment | footage | precomp | camera | light. options: name, color, size, duration, text, item_id (footage/precomp), center (camera/light), position ([x,y] or [x,y,z]; three values turn 3D on), three_d, light_type (point|spot|parallel|ambient), start/in/out, shape {type: rect|ellipse|star|polygon|path, size, fill, stroke, stroke_width, roundness, points, outer_radius, inner_radius (star/polygon), vertices/in_tangents/out_tangents/closed (path)}.",
   {
     comp_id: id("Comp"),
     kind: z.enum(["solid", "text", "shape", "null", "adjustment", "footage", "precomp", "camera", "light"]),
@@ -78,7 +78,7 @@ bridged(
       .object({
         name: z.string().optional(), color: Color.optional(), size: z.array(z.number()).length(2).optional(), duration: z.number().positive().optional(),
         text: z.string().optional(), item_id: z.number().int().optional(), center: z.array(z.number()).min(2).max(3).optional(), light_type: z.enum(["point", "spot", "parallel", "ambient"]).optional(),
-        start: z.number().optional(), in: z.number().optional(), out: z.number().optional(), position: V3.optional(), three_d: z.boolean().optional(),
+        start: z.number().optional(), in: z.number().optional(), out: z.number().optional(), position: V3.optional(), three_d: z.boolean().optional(), box_size: z.tuple([z.number().positive(), z.number().positive()]).optional(),
         shape: z.object({
           type: z.enum(["rect", "ellipse", "star", "polygon", "path"]).default("rect"),
           points: z.number().int().min(3).max(100).optional(), outer_radius: z.number().positive().optional(), inner_radius: z.number().positive().optional(),
@@ -130,10 +130,24 @@ bridged("apply_effect", "Add an effect by match name (see find_effects) and set 
   layer_id: id("Layer"), match_name: z.string(), name: z.string().optional(), params: z.record(Value).optional(),
 });
 bridged("apply_preset", "Apply an .ffx animation preset to a layer. Path must be inside the allowed folders.", { layer_id: id("Layer"), ffx_path: z.string() }, ["ffx_path"]);
-bridged("set_text", "Set text content and basic styling on a text layer. font is the PostScript name.", {
-  layer_id: id("Layer"), text: z.string().optional(), font: z.string().optional(), size: z.number().positive().optional(),
-  color: Color.optional(), tracking: z.number().optional(), justification: z.enum(["left", "center", "right"]).optional(),
-});
+bridged(
+  "set_text",
+  "Set text content and any character or paragraph styling on a text layer; only the fields you pass change, and the result reads the values back (skipped lists anything After Effects refused). font is the PostScript name. Character: size, color, tracking, leading (turns auto leading off), auto_leading, baseline_shift, horizontal_scale and vertical_scale (percent, 100 = normal), faux_bold, faux_italic, all_caps, small_caps, superscript, subscript, ligatures, tsume. Stroke: stroke_color (turns the stroke on), stroke_width, stroke (on/off), stroke_over_fill, fill (on/off). Paragraph: justification (left, center, right, justify, justify_center, justify_right, justify_all), first_line_indent, left_indent, right_indent, space_before, space_after, box_size [w,h] (resizes box text; point text cannot be converted, create box text with add_layer options.box_size). Pass time to set the text at a time as a keyframe. Styling applies to the whole layer; for per-character changes use text animators (add_property).",
+  {
+    layer_id: id("Layer"), time: z.number().min(0).optional(), text: z.string().optional(), font: z.string().optional(),
+    size: z.number().positive().optional(), color: Color.optional(), tracking: z.number().optional(),
+    leading: z.number().positive().optional(), auto_leading: z.boolean().optional(), baseline_shift: z.number().optional(),
+    horizontal_scale: z.number().positive().optional(), vertical_scale: z.number().positive().optional(),
+    faux_bold: z.boolean().optional(), faux_italic: z.boolean().optional(), all_caps: z.boolean().optional(), small_caps: z.boolean().optional(),
+    superscript: z.boolean().optional(), subscript: z.boolean().optional(), ligatures: z.boolean().optional(), tsume: z.number().min(0).max(100).optional(),
+    stroke_color: Color.optional(), stroke_width: z.number().min(0).optional(), stroke: z.boolean().optional(), stroke_over_fill: z.boolean().optional(), fill: z.boolean().optional(),
+    justification: z.enum(["left", "center", "right", "justify", "justify_center", "justify_right", "justify_all"]).optional(),
+    first_line_indent: z.number().optional(), left_indent: z.number().optional(), right_indent: z.number().optional(),
+    space_before: z.number().optional(), space_after: z.number().optional(),
+    box_size: z.tuple([z.number().positive(), z.number().positive()]).optional(),
+  }
+);
+bridged("get_text", "Read a text layer's content and styling (font, size, colors, stroke, leading, tracking, scale, caps, indents, justification, box size), at `time` (default: now).", { layer_id: id("Layer"), time: z.number().min(0).optional() });
 bridged("stagger", "Offset existing keyframes of one property across layers: layer i is shifted by i * offset_seconds. Spatial tangents are not preserved.", {
   layer_ids: z.array(z.number().int()).min(2), path: PropPath, offset_seconds: z.number(), order: z.enum(["forward", "reverse"]).optional(),
 });

@@ -314,7 +314,7 @@ var AEM = (function () {
       col = o.color || [1, 1, 1]; size = o.size || [comp.width, comp.height];
       l = comp.layers.addSolid([col[0], col[1], col[2]], o.name || (kind === "solid" ? "Solid" : "Adjustment Layer"), size[0], size[1], 1, dur);
       if (kind === "adjustment") l.adjustmentLayer = true;
-    } else if (kind === "text") { l = comp.layers.addText(has(o, "text") ? o.text : "Text");
+    } else if (kind === "text") { l = o.box_size ? comp.layers.addBoxText([o.box_size[0], o.box_size[1]], has(o, "text") ? o.text : "Text") : comp.layers.addText(has(o, "text") ? o.text : "Text");
     } else if (kind === "shape") { l = comp.layers.addShape(); l.name = "Shape Layer"; if (o.shape) addShapeContent(l, o.shape);
     } else if (kind === "null") { l = comp.layers.addNull(dur);
     } else if (kind === "footage" || kind === "precomp") { l = comp.layers.add(item);
@@ -469,22 +469,98 @@ var AEM = (function () {
     l.applyPreset(f);
     return layerInfo(l);
   };
+  var TEXT_NUM = {
+    size: "fontSize", tracking: "tracking", leading: "leading", baseline_shift: "baselineShift",
+    stroke_width: "strokeWidth",
+    first_line_indent: "firstLineIndent", left_indent: "leftIndent", right_indent: "rightIndent",
+    space_before: "spaceBefore", space_after: "spaceAfter", tsume: "tsume"
+  };
+  var TEXT_BOOL = {
+    faux_bold: "fauxBold", faux_italic: "fauxItalic", ligatures: "ligature", auto_leading: "autoLeading",
+    stroke: "applyStroke", fill: "applyFill", stroke_over_fill: "strokeOverFill"
+  };
+  var TEXT_JUST = {
+    left: "LEFT_JUSTIFY", center: "CENTER_JUSTIFY", right: "RIGHT_JUSTIFY", justify: "FULL_JUSTIFY_LASTLINE_LEFT",
+    justify_center: "FULL_JUSTIFY_LASTLINE_CENTER", justify_right: "FULL_JUSTIFY_LASTLINE_RIGHT", justify_all: "FULL_JUSTIFY_LASTLINE_FULL"
+  };
+  function baseEnum(n) {
+    var E = FontBaselineOption, k, list = [];
+    if (typeof E[n] !== "undefined") return E[n];
+    if (typeof E["FONT_" + n] !== "undefined") return E["FONT_" + n];
+    for (k in E) { list.push(k); if (String(k).toUpperCase().indexOf(n) !== -1 && typeof E[k] === "number") return E[k]; }
+    throw new Error("FontBaselineOption has no " + n + " (found: " + list.join(", ") + ")");
+  }
+  function baselineOf(doc) {
+    if (typeof doc.fontBaselineOption !== "undefined") return doc.fontBaselineOption;
+    if (typeof doc.baselineOption !== "undefined") return doc.baselineOption;
+    return undefined;
+  }
+  function readText(doc) {
+    var o = {}, k;
+    o.text = doc.text; o.font = doc.font; o.size = doc.fontSize;
+    o.color = safe(function () { return doc.fillColor; });
+    o.stroke_color = safe(function () { return doc.strokeColor; });
+    o.justification = null;
+    for (k in TEXT_JUST) { if (TEXT_JUST.hasOwnProperty(k) && safe(function () { return doc.justification === ParagraphJustification[TEXT_JUST[k]]; })) { o.justification = k; break; } }
+    for (k in TEXT_NUM) { if (TEXT_NUM.hasOwnProperty(k)) o[k] = safe(function () { return doc[TEXT_NUM[k]]; }); }
+    for (k in TEXT_BOOL) { if (TEXT_BOOL.hasOwnProperty(k)) o[k] = safe(function () { return doc[TEXT_BOOL[k]]; }); }
+    o.horizontal_scale = safe(function () { return Math.round(doc.horizontalScale * 10000) / 100; });
+    o.vertical_scale = safe(function () { return Math.round(doc.verticalScale * 10000) / 100; });
+    o.all_caps = safe(function () { return doc.fontCapsOption === FontCapsOption.FONT_ALL_CAPS; });
+    o.small_caps = safe(function () { return doc.fontCapsOption === FontCapsOption.FONT_SMALL_CAPS; });
+    o.superscript = safe(function () { var v = baselineOf(doc); return v === undefined ? null : v === baseEnum("SUPERSCRIPT"); });
+    o.subscript = safe(function () { var v = baselineOf(doc); return v === undefined ? null : v === baseEnum("SUBSCRIPT"); });
+    o.box_size = safe(function () { return doc.boxText ? doc.boxTextSize : null; });
+    return o;
+  }
+  function textProp(a) {
+    var l = getLayer(a.layer_id);
+    if (!(l instanceof TextLayer)) fail("BAD_ARGS", "Layer is not a text layer");
+    return l.property("ADBE Text Properties").property("ADBE Text Document");
+  }
+  C.get_text = function (a) {
+    need(a, ["layer_id"]);
+    var prop = textProp(a);
+    return readText(has(a, "time") ? prop.valueAtTime(a.time, false) : prop.value);
+  };
   C.set_text = function (a) {
     need(a, ["layer_id"]);
-    var l = getLayer(a.layer_id), prop, doc, J = ParagraphJustification;
-    if (!(l instanceof TextLayer)) fail("BAD_ARGS", "Layer is not a text layer");
-    prop = l.property("ADBE Text Properties").property("ADBE Text Document");
-    doc = prop.value;
+    var prop = textProp(a), doc, k, skipped = {}, hasKeys = prop.numKeys > 0, rb;
+    doc = has(a, "time") ? prop.valueAtTime(a.time, false) : prop.value;
     if (has(a, "text")) doc.text = a.text;
     if (a.font) doc.font = a.font;
-    if (has(a, "size")) doc.fontSize = a.size;
     if (a.color) { doc.fillColor = [a.color[0], a.color[1], a.color[2]]; doc.applyFill = true; }
-    if (has(a, "tracking")) doc.tracking = a.tracking;
-    if (a.justification) {
-      doc.justification = a.justification === "center" ? J.CENTER_JUSTIFY : (a.justification === "right" ? J.RIGHT_JUSTIFY : J.LEFT_JUSTIFY);
+    if (a.stroke_color) { doc.strokeColor = [a.stroke_color[0], a.stroke_color[1], a.stroke_color[2]]; doc.applyStroke = true; }
+    if (has(a, "stroke_width") && !has(a, "stroke")) doc.applyStroke = true;
+    for (k in TEXT_NUM) {
+      if (TEXT_NUM.hasOwnProperty(k) && has(a, k)) {
+        try { doc[TEXT_NUM[k]] = a[k]; } catch (e1) { skipped[k] = String(e1.message || e1); }
+      }
     }
-    prop.setValue(doc);
-    return { text: prop.value.text, font: prop.value.font, size: prop.value.fontSize };
+    if (has(a, "leading") && !has(a, "auto_leading")) { try { doc.autoLeading = false; } catch (e2) {} try { doc.leading = a.leading; } catch (e3) { skipped.leading = String(e3.message || e3); } }
+    for (k in TEXT_BOOL) {
+      if (TEXT_BOOL.hasOwnProperty(k) && has(a, k)) {
+        try { doc[TEXT_BOOL[k]] = a[k]; } catch (e4) { skipped[k] = String(e4.message || e4); }
+      }
+    }
+    if (has(a, "horizontal_scale")) { try { doc.horizontalScale = a.horizontal_scale / 100; } catch (e7) { skipped.horizontal_scale = String(e7.message || e7); } }
+    if (has(a, "vertical_scale")) { try { doc.verticalScale = a.vertical_scale / 100; } catch (e8) { skipped.vertical_scale = String(e8.message || e8); } }
+    if (has(a, "all_caps") || has(a, "small_caps")) {
+      try { doc.fontCapsOption = (a.all_caps === true) ? FontCapsOption.FONT_ALL_CAPS : ((a.small_caps === true) ? FontCapsOption.FONT_SMALL_CAPS : FontCapsOption.FONT_NORMAL_CAPS); } catch (e9) { skipped.caps = String(e9.message || e9); }
+    }
+    if (has(a, "superscript") || has(a, "subscript")) {
+      try { doc.fontBaselineOption = (a.superscript === true) ? baseEnum("SUPERSCRIPT") : ((a.subscript === true) ? baseEnum("SUBSCRIPT") : baseEnum("NORMAL_BASELINE")); } catch (e10) { skipped.baseline = String(e10.message || e10); }
+    }
+    if (a.justification) {
+      if (!TEXT_JUST.hasOwnProperty(a.justification)) fail("BAD_ARGS", "justification must be left, center, right, justify, justify_center, justify_right or justify_all");
+      try { doc.justification = ParagraphJustification[TEXT_JUST[a.justification]]; } catch (e5) { skipped.justification = String(e5.message || e5); }
+    }
+    if (a.box_size) { try { if (!doc.boxText) throw new Error("This is point text; After Effects can only make box text when the layer is created (add_layer with options.box_size)"); doc.boxTextSize = [a.box_size[0], a.box_size[1]]; } catch (e6) { skipped.box_size = String(e6.message || e6); } }
+    if (has(a, "time")) prop.setValueAtTime(a.time, doc); else if (hasKeys) fail("BAD_ARGS", "Source text is animated; pass time to set the text at a time");
+    else prop.setValue(doc);
+    rb = readText(has(a, "time") ? prop.valueAtTime(a.time, false) : prop.value);
+    rb.skipped = skipped;
+    return rb;
   };
   C.stagger = function (a) {
     need(a, ["layer_ids", "path", "offset_seconds"]);

@@ -118,7 +118,7 @@ If a call fails, the error includes a code and a hint. See [Troubleshooting](#tr
 
 ## Tools
 
-51 tools, grouped by what they do. Time is in seconds, sizes in pixels, colors are `[r,g,b]` floats from 0 to 1, and scale is in percent. Comps and layers are addressed by the numeric ids the tools return. Properties are addressed by alias (`position`, `scale`, `rotation`, `opacity`, `anchor`) or by an array of match names; use `list_properties` to discover paths.
+52 tools, grouped by what they do. Time is in seconds, sizes in pixels, colors are `[r,g,b]` floats from 0 to 1, and scale is in percent. Comps and layers are addressed by the numeric ids the tools return. Properties are addressed by alias (`position`, `scale`, `rotation`, `opacity`, `anchor`) or by an array of match names; use `list_properties` to discover paths.
 
 | Group | Tool | What it does |
 |---|---|---|
@@ -163,7 +163,8 @@ If a call fails, the error includes a code and a hint. See [Troubleshooting](#tr
 | | `apply_effect` | Add an effect by match name and set its parameters |
 | | `edit_effect` | Remove, enable or disable an effect |
 | | `apply_preset` | Apply an `.ffx` animation preset |
-| | `set_text` | Text content, font, size, color, tracking, justification |
+| | `set_text` | Text content and full styling: font, size, fill and stroke, leading, tracking, scale, caps, super/subscript, indents, spacing, justification, box size; reads values back |
+| | `get_text` | Read a text layer's content and styling |
 | | `stagger` | Offset existing keyframes across layers |
 | | `add_shape_modifier` | Add Trim Paths, Repeater or Round Corners to a shape group |
 | Preview and render | `preview_frame` | Render one frame to PNG and return it as an image |
