@@ -394,6 +394,15 @@ var AEM = (function () {
     rv = safeVal(p, has(a, "time") ? a.time : 0);
     return { value: rv === undefined ? null : rv, num_keys: p.numKeys };
   };
+  C.add_property = function (a) {
+    need(a, ["layer_id", "match_name"]);
+    var l = getLayer(a.layer_id), g = has(a, "group_path") && a.group_path.length ? resolvePath(l, a.group_path) : l, np, i, path;
+    if (!g.canAddProperty(a.match_name)) fail("BAD_ARGS", "Cannot add '" + a.match_name + "' there", "Check the group_path and match name with list_properties (text animators: group ADBE Text Animators, match ADBE Text Animator; selectors ADBE Text Selectors / ADBE Text Selector; animator properties such as ADBE Text Position 3D, ADBE Text Opacity)");
+    np = g.addProperty(a.match_name);
+    path = (has(a, "group_path") && a.group_path.length ? (typeof a.group_path === "string" ? [a.group_path] : a.group_path.slice(0)) : []);
+    path.push(g.propertyType === PropertyType.INDEXED_GROUP ? np.propertyIndex : np.matchName);
+    return { name: np.name, match_name: np.matchName, path: path };
+  };
   C.set_keyframes = function (a) {
     need(a, ["layer_id", "path", "keys"]);
     var l = getLayer(a.layer_id), p = resolvePath(l, a.path), vals = [], i, k, idx;
@@ -405,8 +414,22 @@ var AEM = (function () {
       if (typeof k.t !== "number" || !has(k, "v")) fail("BAD_ARGS", "Each key needs numeric t and a v");
       vals.push(coerce(p, k.v));
     }
-    for (i = p.numKeys; i >= 1; i--) p.removeKey(i);
-    for (i = 0; i < a.keys.length; i++) p.setValueAtTime(a.keys[i].t, vals[i]);
+    if (p.matchName === "ADBE Time Remapping") {
+      // removing every key switches time remapping off, so add the new keys first and drop the old ones afterwards
+      var oldT = [], j, ix, same;
+      for (i = 1; i <= p.numKeys; i++) oldT.push(p.keyTime(i));
+      for (i = 0; i < a.keys.length; i++) p.setValueAtTime(a.keys[i].t, vals[i]);
+      for (j = 0; j < oldT.length; j++) {
+        same = false;
+        for (i = 0; i < a.keys.length; i++) if (Math.abs(a.keys[i].t - oldT[j]) < 0.0001) same = true;
+        if (same) continue;
+        ix = p.nearestKeyIndex(oldT[j]);
+        if (Math.abs(p.keyTime(ix) - oldT[j]) < 0.0001) p.removeKey(ix);
+      }
+    } else {
+      for (i = p.numKeys; i >= 1; i--) p.removeKey(i);
+      for (i = 0; i < a.keys.length; i++) p.setValueAtTime(a.keys[i].t, vals[i]);
+    }
     for (i = 0; i < a.keys.length; i++) { idx = p.nearestKeyIndex(a.keys[i].t); applyKeyMeta(p, idx, a.keys[i]); }
     return { num_keys: p.numKeys, keys: keyList(p) };
   };

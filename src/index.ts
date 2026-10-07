@@ -124,6 +124,7 @@ bridged(
     keys: z.array(z.object({ t: z.number().min(0), v: Value, interp: z.enum(["linear", "bezier", "hold"]).optional(), ease_in: Ease.optional(), ease_out: Ease.optional() })).min(1),
   }
 );
+bridged("add_property", "Add a property or group to a layer, for things set_property cannot reach until they exist. Text animator: group_path ['ADBE Text Properties','ADBE Text Animators'], match_name ADBE Text Animator; then add properties with group_path = returned path + 'ADBE Text Animator Properties' (match_name ADBE Text Position 3D, ADBE Text Opacity, ADBE Text Fill Color, ADBE Text Tracking Amount...) and a range selector with group_path = returned path + 'ADBE Text Selectors', match_name ADBE Text Selector. Layer styles cannot be created by scripts in After Effects, so they are not supported. Returns the new property path for set_property / set_keyframes.", { layer_id: id("Layer"), match_name: z.string(), group_path: PropPath.optional() }, ["match_name"]);
 bridged("set_expression", "Set an expression on a property (empty string clears it). Returns whether After Effects accepted the syntax.", { layer_id: id("Layer"), path: PropPath, expression: z.string() });
 bridged("apply_effect", "Add an effect by match name (see find_effects) and set parameters by name, match name or 1-based index. If any parameter fails the effect is removed.", {
   layer_id: id("Layer"), match_name: z.string(), name: z.string().optional(), params: z.record(Value).optional(),

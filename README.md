@@ -118,7 +118,7 @@ If a call fails, the error includes a code and a hint. See [Troubleshooting](#tr
 
 ## Tools
 
-50 tools, grouped by what they do. Time is in seconds, sizes in pixels, colors are `[r,g,b]` floats from 0 to 1, and scale is in percent. Comps and layers are addressed by the numeric ids the tools return. Properties are addressed by alias (`position`, `scale`, `rotation`, `opacity`, `anchor`) or by an array of match names; use `list_properties` to discover paths.
+51 tools, grouped by what they do. Time is in seconds, sizes in pixels, colors are `[r,g,b]` floats from 0 to 1, and scale is in percent. Comps and layers are addressed by the numeric ids the tools return. Properties are addressed by alias (`position`, `scale`, `rotation`, `opacity`, `anchor`) or by an array of match names; use `list_properties` to discover paths.
 
 | Group | Tool | What it does |
 |---|---|---|
@@ -159,6 +159,7 @@ If a call fails, the error includes a code and a hint. See [Troubleshooting](#tr
 | Animate | `set_property` | Set a value, or a keyframe at `time` |
 | | `set_keyframes` | Replace all keyframes on a property, with interpolation and easing |
 | | `set_expression` | Set or clear an expression and report syntax errors |
+| | `add_property` | Add a text animator, its properties and range selector (layer styles cannot be created by scripts) |
 | | `apply_effect` | Add an effect by match name and set its parameters |
 | | `edit_effect` | Remove, enable or disable an effect |
 | | `apply_preset` | Apply an `.ffx` animation preset |
