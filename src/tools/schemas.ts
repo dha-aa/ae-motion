@@ -19,7 +19,7 @@ export const LayerIds = z.array(z.number().int()).min(1).describe("Layer ids, al
 export const PropPath = z
   .union([z.string(), z.array(z.union([z.string(), z.number()])).min(1)])
   .describe(
-    'Alias (position|scale|rotation|opacity|anchor) or an array of match names, e.g. ["ADBE Effect Parade","ADBE Gaussian Blur 2","ADBE Gaussian Blur 2-0001"]. Use list_properties to discover paths.',
+    'Alias (position|scale|rotation|opacity|anchor, or x_position|y_position|z_position after set_layer separate_dimensions) or an array of match names, e.g. ["ADBE Effect Parade","ADBE Gaussian Blur 2","ADBE Gaussian Blur 2-0001"]. Use list_properties to discover paths.',
   );
 /** A mask or shape-layer path: rect / ellipse (position, size), polygon (points) or path (vertices + tangents). Same format get_keyframes returns. */
 export const ShapeSpec = z.object({

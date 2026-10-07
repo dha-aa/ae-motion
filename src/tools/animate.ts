@@ -4,7 +4,7 @@
  */
 import { z } from "zod";
 import type { ToolRegistry } from "./registry.js";
-import { Color, Ease, id, PropPath, Size, Value } from "./schemas.js";
+import { Color, Ease, id, LayerIds, PropPath, Size, Value } from "./schemas.js";
 
 export function registerAnimateTools(r: ToolRegistry): void {
   r.bridged(
@@ -22,6 +22,34 @@ export function registerAnimateTools(r: ToolRegistry): void {
       keys: z.array(z.object({ t: z.number().min(0), v: Value, interp: z.enum(["linear", "bezier", "hold"]).optional(), ease_in: Ease.optional(), ease_out: Ease.optional() })).min(1),
     },
     { idempotent: true },
+  );
+
+  r.bridged(
+    "edit_keyframes",
+    "Edit single keys on one property without rewriting the others; edits run in order. Address a key by t (seconds; matches a key within half a frame) or index (1-based, from get_keyframes). action set: create a key at t (v, or the current value) or update one (v, interp, ease_in, ease_out; spatial properties such as position also take spatial_in / spatial_out motion-path tangents relative to the key, auto_bezier, continuous and roving). action move: move a key to `to` seconds, keeping every setting. action delete: remove a key. Returns all keys as get_keyframes does.",
+    {
+      layer_id: id("Layer"), path: PropPath,
+      edits: z.array(z.object({
+        action: z.enum(["set", "move", "delete"]),
+        t: z.number().min(0).optional().describe("Key time in seconds (set creates a key here if none exists)"),
+        index: z.number().int().min(1).optional().describe("1-based key index from get_keyframes (instead of t)"),
+        to: z.number().min(0).optional().describe("move: new time in seconds"),
+        v: Value.optional(), interp: z.enum(["linear", "bezier", "hold"]).optional(), ease_in: Ease.optional(), ease_out: Ease.optional(),
+        spatial_in: z.array(z.number()).min(2).max(3).optional().describe("Incoming motion-path tangent [x,y(,z)], relative to the key (turns auto_bezier off)"),
+        spatial_out: z.array(z.number()).min(2).max(3).optional().describe("Outgoing motion-path tangent [x,y(,z)], relative to the key"),
+        auto_bezier: z.boolean().optional(), continuous: z.boolean().optional(),
+        roving: z.boolean().optional().describe("Let the key's time float for an even speed (not the first or last key)"),
+      })).min(1),
+    },
+  );
+
+  r.bridged(
+    "copy_animation",
+    "Copy one property's animation from a layer to other layers: every key with its interpolation, easing and motion-path tangents (or the static value), plus any expression. The targets' existing keys on that property are replaced. to_path copies onto a different property of the same value type (default: the same path). offset_seconds moves the keys in time; stagger_seconds adds i * stagger_seconds for the i-th target.",
+    {
+      from_layer_id: id("Source layer"), path: PropPath, to_layer_ids: LayerIds, to_path: PropPath.optional(),
+      offset_seconds: z.number().optional(), stagger_seconds: z.number().optional(),
+    },
   );
 
   r.bridged(
@@ -87,7 +115,7 @@ export function registerAnimateTools(r: ToolRegistry): void {
 
   r.bridged(
     "stagger",
-    "Offset existing keyframes of one property across layers: layer i is shifted by i * offset_seconds. Spatial tangents are not preserved.",
+    "Offset existing keyframes of one property across layers: layer i is shifted by i * offset_seconds. Every key setting (easing, motion-path tangents) is kept.",
     { layer_ids: z.array(z.number().int()).min(2), path: PropPath, offset_seconds: z.number(), order: z.enum(["forward", "reverse"]).optional() },
   );
 

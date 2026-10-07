@@ -49,6 +49,8 @@ C.set_layer = function (a) {
     if (bm === undefined) fail("BAD_ARGS", "Unknown blend mode: " + a.blend_mode);
   }
   if (has(a, "parent_id")) par = getLayer(a.parent_id);
+  if (has(a, "auto_orient") && a.auto_orient !== "path" && a.auto_orient !== "off") fail("BAD_ARGS", "auto_orient must be path or off");
+  if (has(a, "auto_orient") && (l instanceof CameraLayer || l instanceof LightLayer)) fail("BAD_ARGS", "For cameras and lights use set_camera two_node / point_of_interest");
   // unlock first and lock last, so the other edits in the same call can be applied
   if (a.locked === false) l.locked = false;
   if (has(a, "name")) l.name = a.name;
@@ -63,6 +65,9 @@ C.set_layer = function (a) {
   if (has(a, "in")) setIn(l, a["in"]);
   if (has(a, "out")) l.outPoint = a.out;
   if (has(a, "enabled")) l.enabled = a.enabled;
+  // separated position is addressed as x_position / y_position / z_position (ADBE Position_0/1/2)
+  if (has(a, "separate_dimensions")) tp(l, "ADBE Position").dimensionsSeparated = a.separate_dimensions;
+  if (has(a, "auto_orient")) l.autoOrient = a.auto_orient === "path" ? AutoOrientType.ALONG_PATH : AutoOrientType.NO_AUTO_ORIENT;
   if (bm !== undefined) l.blendingMode = bm;
   if (a.parent_id === null) l.parent = null; else if (par) l.parent = par;
   if (a.locked === true) l.locked = true;

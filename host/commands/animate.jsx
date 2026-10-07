@@ -18,33 +18,134 @@ C.set_property = function (a) {
 
 C.set_keyframes = function (a) {
   need(a, ["layer_id", "path", "keys"]);
-  var l = getLayer(a.layer_id), p = resolvePath(l, a.path), vals = [], i, j, k, idx, oldT, ix, same;
+  var l = getLayer(a.layer_id), p = resolvePath(l, a.path), keys = [], i, k, idx;
   if (!p.canVaryOverTime) fail("BAD_ARGS", "Property is not keyframable");
   if (!(a.keys instanceof Array) || !a.keys.length) fail("BAD_ARGS", "keys must be a non-empty array");
   if (p.expressionEnabled) fail("BAD_ARGS", "Property has an active expression", "Clear it with set_expression and an empty expression");
   for (i = 0; i < a.keys.length; i++) {
     k = a.keys[i];
     if (typeof k.t !== "number" || !has(k, "v")) fail("BAD_ARGS", "Each key needs numeric t and a v");
-    vals.push(coerce(p, k.v));
+    keys.push({ t: k.t, v: coerce(p, k.v) });
   }
   if (p.matchName === "ADBE Time Remapping") {
-    // removing every key switches time remapping off, so add the new keys first and drop the old ones afterwards
-    oldT = [];
-    for (i = 1; i <= p.numKeys; i++) oldT.push(p.keyTime(i));
-    for (i = 0; i < a.keys.length; i++) p.setValueAtTime(a.keys[i].t, vals[i]);
-    for (j = 0; j < oldT.length; j++) {
-      same = false;
-      for (i = 0; i < a.keys.length; i++) if (Math.abs(a.keys[i].t - oldT[j]) < 0.0001) same = true;
-      if (same) continue;
-      ix = p.nearestKeyIndex(oldT[j]);
-      if (Math.abs(p.keyTime(ix) - oldT[j]) < 0.0001) p.removeKey(ix);
-    }
+    replaceKeys(p, keys, 0); // adds the new keys before removing old ones: removing every key switches time remapping off
   } else {
+    // remove first, so no old key's interpolation or ease survives on a key at the same time
     for (i = p.numKeys; i >= 1; i--) p.removeKey(i);
-    for (i = 0; i < a.keys.length; i++) p.setValueAtTime(a.keys[i].t, vals[i]);
+    for (i = 0; i < keys.length; i++) p.setValueAtTime(keys[i].t, keys[i].v);
   }
   for (i = 0; i < a.keys.length; i++) { idx = p.nearestKeyIndex(a.keys[i].t); applyKeyMeta(p, idx, a.keys[i]); }
   return { num_keys: p.numKeys, keys: keyList(p) };
+};
+
+// Find the key an edit addresses: by 1-based index, or by time (the key within half a frame of t).
+function findKey(p, e, tol) {
+  var i;
+  if (has(e, "index")) {
+    if (e.index < 1 || e.index > p.numKeys) fail("NOT_FOUND", "No key " + e.index + " (the property has " + p.numKeys + ")", "Use get_keyframes");
+    return e.index;
+  }
+  if (!has(e, "t")) fail("BAD_ARGS", "Each edit needs t or index");
+  if (!p.numKeys) return 0;
+  i = p.nearestKeyIndex(e.t);
+  return Math.abs(p.keyTime(i) - e.t) <= tol ? i : 0;
+}
+
+// Tangent arrays must match the property's dimensions ([x,y] for 2D position, [x,y,z] for 3D).
+function tangentFor(p, v) {
+  var n = p.value.length, o = [], i;
+  for (i = 0; i < n; i++) o.push(i < v.length ? v[i] : 0);
+  return o;
+}
+
+// Settings an edit may change on key idx.
+function applyEdit(p, idx, e) {
+  var spatial = has(e, "spatial_in") || has(e, "spatial_out") || has(e, "auto_bezier") || has(e, "continuous") || has(e, "roving"), si, so;
+  applyKeyMeta(p, idx, e);
+  if (!spatial) return;
+  if (!p.isSpatial) fail("BAD_ARGS", "spatial_in, spatial_out, auto_bezier, continuous and roving only apply to spatial properties (position, anchor point, point of interest)");
+  if (has(e, "continuous")) p.setSpatialContinuousAtKey(idx, e.continuous);
+  if (has(e, "auto_bezier")) p.setSpatialAutoBezierAtKey(idx, e.auto_bezier);
+  if (has(e, "spatial_in") || has(e, "spatial_out")) {
+    si = has(e, "spatial_in") ? tangentFor(p, e.spatial_in) : p.keyInSpatialTangent(idx);
+    so = has(e, "spatial_out") ? tangentFor(p, e.spatial_out) : p.keyOutSpatialTangent(idx);
+    p.setSpatialTangentsAtKey(idx, si, so);
+  }
+  if (has(e, "roving")) {
+    if (e.roving && (idx === 1 || idx === p.numKeys)) fail("BAD_ARGS", "The first and last keys cannot rove");
+    p.setRovingAtKey(idx, e.roving);
+  }
+}
+
+// Edit single keys without rewriting the rest: set (create or update), move (keeps every setting) and delete.
+C.edit_keyframes = function (a) {
+  need(a, ["layer_id", "path", "edits"]);
+  var l = getLayer(a.layer_id), p = resolvePath(l, a.path), tol = l.containingComp.frameDuration / 2, done = [], i, e, idx, k, v;
+  if (p.propertyType !== PropertyType.PROPERTY || !p.canVaryOverTime) fail("BAD_ARGS", "Property is not keyframable", "Use list_properties");
+  if (!(a.edits instanceof Array) || !a.edits.length) fail("BAD_ARGS", "edits must be a non-empty array");
+  for (i = 0; i < a.edits.length; i++) {
+    e = a.edits[i];
+    idx = findKey(p, e, tol);
+    if (e.action === "set") {
+      if (!idx) {
+        if (!has(e, "t")) fail("NOT_FOUND", "Edit " + i + ": no key to update", "Pass t to create one");
+        v = has(e, "v") ? coerce(p, e.v) : p.valueAtTime(e.t, true); // new key: given value, or the value already there
+        p.setValueAtTime(e.t, v);
+        idx = p.nearestKeyIndex(e.t);
+      } else if (has(e, "v")) {
+        p.setValueAtTime(p.keyTime(idx), coerce(p, e.v));
+      }
+      applyEdit(p, idx, e);
+      done.push({ edit: i, action: "set", index: idx, t: p.keyTime(idx) });
+    } else if (e.action === "move") {
+      if (!idx) fail("NOT_FOUND", "Edit " + i + ": no key at t " + e.t, "Use get_keyframes for key times");
+      if (!has(e, "to") || e.to < 0) fail("BAD_ARGS", "Edit " + i + ": move needs to (a time of 0 or more)");
+      if (findKey(p, { t: e.to }, tol) && findKey(p, { t: e.to }, tol) !== idx) fail("EXISTS", "Edit " + i + ": there is already a key at " + e.to, "Delete it first");
+      k = snapKey(p, idx);
+      p.removeKey(idx);
+      p.setValueAtTime(e.to, k.v);
+      idx = p.nearestKeyIndex(e.to);
+      restoreKey(p, idx, k);
+      restoreRoving(p, idx, k);
+      done.push({ edit: i, action: "move", index: idx, t: p.keyTime(idx) });
+    } else if (e.action === "delete") {
+      if (!idx) fail("NOT_FOUND", "Edit " + i + ": no key at t " + e.t, "Use get_keyframes for key times");
+      done.push({ edit: i, action: "delete", t: p.keyTime(idx) });
+      p.removeKey(idx);
+    } else {
+      fail("BAD_ARGS", "Edit " + i + ": action must be set, move or delete");
+    }
+  }
+  k = [];
+  for (i = 1; i <= p.numKeys && i <= 500; i++) k.push(keyInfo(p, i));
+  return { edits: done, num_keys: p.numKeys, keys: k, expression_active: p.expressionEnabled === true };
+};
+
+// Copy one property's animation (every key setting, or the static value, and any expression) to other layers.
+C.copy_animation = function (a) {
+  need(a, ["from_layer_id", "path", "to_layer_ids"]);
+  var src = resolvePath(getLayer(a.from_layer_id), a.path), toPath = has(a, "to_path") ? a.to_path : a.path,
+    dt = has(a, "offset_seconds") ? a.offset_seconds : 0, step = has(a, "stagger_seconds") ? a.stagger_seconds : 0, targets = [], out = [], i, l, dst;
+  if (src.propertyType !== PropertyType.PROPERTY) fail("BAD_ARGS", "path must point to a property, not a group", "Use list_properties");
+  if (!(a.to_layer_ids instanceof Array) || !a.to_layer_ids.length) fail("BAD_ARGS", "to_layer_ids must be a non-empty array");
+  // validate every target before changing anything
+  for (i = 0; i < a.to_layer_ids.length; i++) {
+    l = getLayer(a.to_layer_ids[i]);
+    if (l.locked) fail("BAD_ARGS", "Layer " + l.id + " is locked", "Unlock it with set_layer locked:false");
+    dst = resolvePath(l, toPath);
+    if (dst === src) fail("BAD_ARGS", "A layer cannot copy onto its own property");
+    if (dst.propertyValueType !== src.propertyValueType) fail("BAD_ARGS", "Layer " + l.id + ": the target property has a different value type (" + vt(dst) + " vs " + vt(src) + ")");
+    if (src.numKeys && src.keyTime(1) + dt + i * step < 0) fail("BAD_ARGS", "The offset would move keys before 0 s");
+    targets.push({ layer: l, prop: dst });
+  }
+  for (i = 0; i < targets.length; i++) {
+    dst = targets[i].prop;
+    if (dst.expressionEnabled && !src.expressionEnabled) dst.expression = "";
+    copyAnimation(src, dst, dt + i * step);
+    if (src.expressionEnabled) dst.expression = src.expression;
+    out.push({ layer_id: targets[i].layer.id, num_keys: dst.numKeys, offset: dt + i * step });
+  }
+  return { copied: out, keys_per_layer: src.numKeys, expression: src.expressionEnabled ? src.expression : null };
 };
 
 C.set_expression = function (a) {
@@ -124,7 +225,7 @@ C.stagger = function (a) {
     props.push(p);
   }
   for (i = 1; i < props.length; i++) shiftKeys(props[i], i * a.offset_seconds);
-  return { staggered: ids.length, note: "Spatial tangents are not preserved" };
+  return { staggered: ids.length };
 };
 
 C.add_shape_modifier = function (a) {

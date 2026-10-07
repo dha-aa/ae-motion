@@ -55,14 +55,10 @@ C.list_properties = function (a) {
 
 C.get_keyframes = function (a) {
   need(a, ["layer_id", "path"]);
-  var l = getLayer(a.layer_id), p = resolvePath(l, a.path), out = [], i, k, n;
+  var l = getLayer(a.layer_id), p = resolvePath(l, a.path), out = [], i, n;
   if (p.propertyType !== PropertyType.PROPERTY) fail("BAD_ARGS", "path must point to a property, not a group", "Use list_properties");
   n = p.numKeys;
-  for (i = 1; i <= n && i <= 500; i++) {
-    k = { index: i, t: p.keyTime(i), v: keyVal(p, i), interp_in: interpName(p.keyInInterpolationType(i)), interp_out: interpName(p.keyOutInterpolationType(i)) };
-    try { k.ease_in = easeList(p.keyInTemporalEase(i)); k.ease_out = easeList(p.keyOutTemporalEase(i)); } catch (e) {}
-    out.push(k);
-  }
+  for (i = 1; i <= n && i <= 500; i++) out.push(keyInfo(p, i));
   return { num_keys: n, keys: out, expression: (p.canSetExpression && p.expressionEnabled) ? p.expression : null };
 };
 

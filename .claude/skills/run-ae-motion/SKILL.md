@@ -31,7 +31,7 @@ node $D smoke         # comp -> shapes -> eased keys -> preview PNG -> delete co
 | command | what it does |
 |---|---|
 | `status` | Bridge file present + panel answers `GET /health` |
-| `list` | Tool names (52), resources, prompts from a real `tools/list` |
+| `list` | Tool names (54), resources, prompts from a real `tools/list` |
 | `call <tool> [json]` | One tool call. Prints the result JSON; images are saved to `$SHOTS`. Exit 1 on any error |
 | `script <file\|->` | Many calls in **one** server session, one JSON per line: `{"tool":..., "args":..., "allowError":true?}`. `"$N.field.path"` in args is replaced by result N's value (0-based). Stops at the first error unless `allowError` |
 | `bridge <cmd> [json]` | Raw host command to the panel, bypassing the MCP server (zod, sandbox, run_jsx gate). Reaches non-tool commands `get_selection`, `prepare_render` |
@@ -87,7 +87,7 @@ Register `node <repo>/dist/index.js` with an MCP client (`claude mcp add ae-moti
 ## Test
 
 ```bash
-npm test     # build + 6 test files, no AE needed: "all 6 test files passed"
+npm test     # build + 7 test files, no AE needed: "all 7 test files passed"
 ```
 
 ## Gotchas

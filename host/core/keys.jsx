@@ -53,21 +53,76 @@ function keyList(prop) {
   return out;
 }
 
-// Move every key on p by dt seconds, keeping interpolation and temporal ease (spatial tangents are lost).
-function shiftKeys(p, dt) {
-  var n = p.numKeys, ks = [], i, k, idx;
-  for (i = 1; i <= n; i++) {
-    k = { t: p.keyTime(i), v: p.keyValue(i), ii: p.keyInInterpolationType(i), oi: p.keyOutInterpolationType(i) };
-    try { k.ie = p.keyInTemporalEase(i); k.oe = p.keyOutTemporalEase(i); } catch (e) {}
-    ks.push(k);
+// ---------- full-fidelity key snapshots ----------
+// A snapshot holds everything about a key: value, interpolation, temporal ease and continuity, and for spatial
+// properties the motion-path tangents, auto-bezier, continuity and roving. Each read and write is guarded because
+// not every property type supports every attribute.
+
+function snapKey(p, i) {
+  var k = { t: p.keyTime(i), v: p.keyValue(i) };
+  try { k.ii = p.keyInInterpolationType(i); k.oi = p.keyOutInterpolationType(i); } catch (e1) {}
+  try { k.ie = p.keyInTemporalEase(i); k.oe = p.keyOutTemporalEase(i); } catch (e2) {}
+  try { k.tc = p.keyTemporalContinuous(i); k.ta = p.keyTemporalAutoBezier(i); } catch (e3) {}
+  if (p.isSpatial) {
+    try { k.si = p.keyInSpatialTangent(i); k.so = p.keyOutSpatialTangent(i); } catch (e4) {}
+    try { k.sc = p.keySpatialContinuous(i); k.sa = p.keySpatialAutoBezier(i); } catch (e5) {}
+    try { k.rov = p.keyRoving(i); } catch (e6) {}
   }
-  for (i = n; i >= 1; i--) p.removeKey(i);
-  for (i = 0; i < ks.length; i++) p.setValueAtTime(ks[i].t + dt, ks[i].v);
-  for (i = 0; i < ks.length; i++) {
-    idx = p.nearestKeyIndex(ks[i].t + dt);
-    try { p.setInterpolationTypeAtKey(idx, ks[i].ii, ks[i].oi); } catch (e1) {}
-    if (ks[i].ie) { try { p.setTemporalEaseAtKey(idx, ks[i].ie, ks[i].oe); } catch (e2) {} }
+  return k;
+}
+
+function snapAll(p) { var out = [], i; for (i = 1; i <= p.numKeys; i++) out.push(snapKey(p, i)); return out; }
+
+// Apply a snapshot's settings (not its value or time) to key idx. Roving is applied separately (restoreRoving),
+// after every key exists, because After Effects only allows it between other keys.
+// Ease goes before the interpolation type: setting an ease switches a linear key to bezier.
+function restoreKey(p, idx, k) {
+  if (k.ie) { try { p.setTemporalEaseAtKey(idx, k.ie, k.oe); } catch (e2) {} }
+  if (k.ii !== undefined) { try { p.setInterpolationTypeAtKey(idx, k.ii, k.oi); } catch (e1) {} }
+  if (k.tc !== undefined) { try { p.setTemporalContinuousAtKey(idx, k.tc); p.setTemporalAutoBezierAtKey(idx, k.ta); } catch (e3) {} }
+  if (p.isSpatial) {
+    if (k.sc !== undefined) { try { p.setSpatialContinuousAtKey(idx, k.sc); p.setSpatialAutoBezierAtKey(idx, k.sa); } catch (e4) {} }
+    // explicit tangents only when the key was not auto-bezier (setting tangents switches auto-bezier off)
+    if (k.si && !k.sa) { try { p.setSpatialTangentsAtKey(idx, k.si, k.so); } catch (e5) {} }
   }
+}
+
+function restoreRoving(p, idx, k) {
+  if (k.rov) { try { p.setRovingAtKey(idx, true); } catch (e) {} }
+}
+
+// Make keys the only keys on p, moved by dt seconds, with all their settings. New keys are added before old ones
+// are removed, because removing every key switches some properties off (time remapping).
+function replaceKeys(p, keys, dt) {
+  var oldT = [], i, j, same, ix, idx = [];
+  // roving keys re-time themselves whenever other keys change, so pin them first or they cannot be found again
+  if (p.isSpatial) for (i = 1; i <= p.numKeys; i++) { try { if (p.keyRoving(i)) p.setRovingAtKey(i, false); } catch (e) {} }
+  for (i = 1; i <= p.numKeys; i++) oldT.push(p.keyTime(i));
+  for (i = 0; i < keys.length; i++) p.setValueAtTime(keys[i].t + dt, keys[i].v);
+  for (j = 0; j < oldT.length; j++) {
+    same = false;
+    for (i = 0; i < keys.length; i++) if (Math.abs(keys[i].t + dt - oldT[j]) < 0.0001) same = true;
+    if (same) continue;
+    ix = p.nearestKeyIndex(oldT[j]);
+    if (Math.abs(p.keyTime(ix) - oldT[j]) < 0.0001) p.removeKey(ix);
+  }
+  for (i = 0; i < keys.length; i++) { idx.push(p.nearestKeyIndex(keys[i].t + dt)); restoreKey(p, idx[i], keys[i]); }
+  for (i = 0; i < keys.length; i++) restoreRoving(p, idx[i], keys[i]);
+}
+
+// Move every key on p by dt seconds, keeping all key settings.
+function shiftKeys(p, dt) { replaceKeys(p, snapAll(p), dt); }
+
+// A key as JSON for get_keyframes / edit_keyframes (the same field names edit_keyframes accepts).
+function keyInfo(p, i) {
+  var k = { index: i, t: p.keyTime(i), v: keyVal(p, i), interp_in: interpName(p.keyInInterpolationType(i)), interp_out: interpName(p.keyOutInterpolationType(i)) };
+  try { k.ease_in = easeList(p.keyInTemporalEase(i)); k.ease_out = easeList(p.keyOutTemporalEase(i)); } catch (e1) {}
+  if (p.isSpatial) {
+    try { k.spatial_in = copyArr(p.keyInSpatialTangent(i)); k.spatial_out = copyArr(p.keyOutSpatialTangent(i)); } catch (e2) {}
+    try { k.auto_bezier = p.keySpatialAutoBezier(i); k.continuous = p.keySpatialContinuous(i); } catch (e3) {}
+    try { k.roving = p.keyRoving(i); } catch (e4) {}
+  }
+  return k;
 }
 
 // A key's value as JSON (text documents become their text; unserializable types become undefined).
@@ -122,13 +177,13 @@ function putKeys(p, keys, easing, sampled) {
   return n;
 }
 
-// Copy src's keys (with interpolation and ease), or its static value, onto dst.
-function copyAnimation(src, dst) {
-  var i, n = src.numKeys;
-  if (n === 0) { dst.setValue(src.value); return; }
-  for (i = 1; i <= n; i++) dst.setValueAtTime(src.keyTime(i), src.keyValue(i));
-  for (i = 1; i <= n; i++) {
-    try { dst.setInterpolationTypeAtKey(i, src.keyInInterpolationType(i), src.keyOutInterpolationType(i)); } catch (e1) {}
-    try { dst.setTemporalEaseAtKey(i, src.keyInTemporalEase(i), src.keyOutTemporalEase(i)); } catch (e2) {}
+// Copy src's keys (with every key setting), or its static value, onto dst, moved by dt seconds (default 0).
+// dst's own keys are replaced.
+function copyAnimation(src, dst, dt) {
+  if (src.numKeys === 0) {
+    while (dst.numKeys > 0) dst.removeKey(dst.numKeys);
+    dst.setValue(src.value);
+    return;
   }
+  replaceKeys(dst, snapAll(src), dt || 0);
 }

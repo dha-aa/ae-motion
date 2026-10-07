@@ -1,6 +1,6 @@
 # Tool reference
 
-52 tools, grouped the same way as the source (`src/tools/<group>.ts` on the server, `host/commands/<group>.jsx` in After Effects). Every tool's full argument schema and description is served by the MCP `tools/list` call, so your client always sees the current details. This page gives the overview and the behavior you can't read off a schema.
+54 tools, grouped the same way as the source (`src/tools/<group>.ts` on the server, `host/commands/<group>.jsx` in After Effects). Every tool's full argument schema and description is served by the MCP `tools/list` call, so your client always sees the current details. This page gives the overview and the behavior you can't read off a schema.
 
 ## Conventions
 
@@ -27,7 +27,7 @@
 | | `import_footage` | Import a file or image sequence |
 | | `delete_item` | Delete a comp, footage item or folder (refuses used items unless `force`) |
 | Layers | `add_layer` | Add a solid, text (point or box), shape (rect, ellipse, star, polygon, path), null, adjustment, footage, precomp, camera or light layer; optional `position` and `three_d` place it as it is created |
-| | `set_layer` | Name, timing, time stretch, parent, blend mode, visibility, 3D, shy, solo, lock, label, motion blur, time remap |
+| | `set_layer` | Name, timing, time stretch, parent, blend mode, visibility, 3D, shy, solo, lock, label, motion blur, time remap, separate dimensions, auto-orient along path |
 | | `link_layers` | Parent several layers to a layer, unlink them, or create a null and parent them all to it in one call |
 | | `delete_layer` | Remove a layer |
 | | `duplicate_layer` | Duplicate a layer, optionally several offset copies |
@@ -43,6 +43,8 @@
 | | `set_track_matte` | Use a layer as an alpha or luma track matte, or remove the matte |
 | Animate | `set_property` | Set a value, or a keyframe at `time` |
 | | `set_keyframes` | Replace all keyframes on a property, with interpolation and easing; also path keyframes (mask and shape morphs) |
+| | `edit_keyframes` | Edit single keys: add or update (value, easing, curved motion-path tangents, auto-bezier, roving), move, delete |
+| | `copy_animation` | Copy a property's animation, with every key setting and any expression, to other layers, with offset and stagger |
 | | `set_expression` | Set or clear an expression and report syntax errors |
 | | `add_property` | Add a text animator, its properties and range selector (layer styles cannot be created by scripts) |
 | | `apply_effect` | Add an effect by match name and set its parameters |
@@ -50,7 +52,7 @@
 | | `apply_preset` | Apply an `.ffx` animation preset |
 | | `set_text` | Text content and full styling: font, size, fill and stroke, leading, tracking, scale, caps, super/subscript, indents, spacing, justification, box size; reads values back |
 | | `get_text` | Read a text layer's content and styling |
-| | `stagger` | Offset existing keyframes across layers |
+| | `stagger` | Offset existing keyframes across layers (keeps easing and path curves) |
 | | `add_shape_modifier` | Add Trim Paths, Repeater or Round Corners to a shape group |
 | 3D and camera | `get_camera` | Read a camera: lens (zoom, focal length, field of view), depth of field, iris, position, point of interest, and what drives each property |
 | | `set_camera` | Lens, depth of field, focus, iris, one-node or two-node, position, point of interest, rotation, look at a layer |
@@ -75,6 +77,16 @@ Every tool has a title and the four MCP annotations: `readOnlyHint` (inspection,
 - **Unknown arguments are rejected**, at any depth: `set_layer` with `colour` fails with `Unrecognized key(s) in object: 'colour'` instead of silently ignoring it. Schema errors come back as plain text (`MCP error -32602: Input validation error: ...`) and never reach After Effects.
 - **Results are compact JSON** (no indentation).
 - **Responses are capped at 25,000 characters.** A bigger result is replaced by a `BAD_ARGS` error that says how to ask for less; for `list_properties`, pass `group_path` and/or a smaller `depth`.
+
+## Keyframe editing
+
+- **Whole property vs single keys:** `set_keyframes` replaces every key on a property; `edit_keyframes` changes individual keys and leaves the rest alone. Edits run in order and address a key by `t` (matched within half a frame) or `index` (from `get_keyframes`).
+- **Curved motion paths:** on spatial properties (position, anchor point, point of interest) `set` takes `spatial_in` / `spatial_out` tangents relative to the key, e.g. `{action: "set", t: 1, spatial_in: [-120, 0], spatial_out: [120, 0]}` bends the path through that key. `auto_bezier` and `continuous` switch After Effects' own smoothing. `get_keyframes` reports the same fields, so keys can be read, tweaked and written back.
+- **Roving keys** (`roving: true`) let After Effects pick the key's time for an even speed along the path; it re-times the key whenever its neighbours change. The first and last keys cannot rove.
+- **Moving a key** (`{action: "move", t: 2, to: 2.5}`) keeps its value, easing and tangents; it refuses to land on another key.
+- **Separate dimensions:** `set_layer` `separate_dimensions: true` splits position into `x_position`, `y_position` (and `z_position`), each with its own keys and easing; this is the usual way to make bounces.
+- **Auto-orient:** `set_layer` `auto_orient: "path"` rotates the layer along its motion path.
+- **Reusing animation:** `copy_animation` copies one property's keys, with every setting and any expression, to other layers; `stagger_seconds` offsets each target a little more. `stagger` shifts existing keys across layers and keeps every key setting.
 
 ## Paths and motion blur
 
@@ -106,7 +118,6 @@ The camera tools use After Effects' coordinates: x to the right, y **down**, z i
 - `render_start` saves the project and runs `aerender` in the background. The project must have been saved at least once. If the output file already exists you must pass `overwrite: true`; the old file is only removed once the render is about to start, so a failed start keeps it. After Effects takes the file extension from the output module, so the file can differ from `output_path` (on After Effects 26.3 the default output module turned a `.mov` request into `.mp4`); `render_status` reports the file that was actually written. For a specific format, name an output-module template in `om_template`. Canceling a render can leave a partial temp file next to the output.
 - Running renders are stopped when the MCP client disconnects or the server is terminated. Job state is kept in memory, so restarting the server forgets old job ids.
 - `preview_frame` uses `comp.saveFrameToPng`; on versions without it you get `UNSUPPORTED`. After Effects can keep writing the PNG for a moment after it returns (heavy 3D frames), so the server waits up to 10 seconds for the file. PNGs are written to `<temp>/ae-motion-mcp/`.
-- `stagger` does not preserve spatial tangents on position keyframes.
 - `split_layer` and `delete_range` check everything first where they can, and skip or refuse locked layers. `delete_range` does not move markers.
 - A layer used as a track matte is hidden by After Effects (its `enabled` flag becomes false), as in the timeline UI, and stays hidden after the matte is removed (turn it back on with `set_layer` `enabled: true`).
 - `set_track_matte` uses `setTrackMatte` on After Effects 23 and later. Older versions need the matte layer directly above the target (use `reorder_layer`).

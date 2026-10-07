@@ -5,7 +5,11 @@ var ALIAS = {
   scale: ["ADBE Transform Group", "ADBE Scale"],
   rotation: ["ADBE Transform Group", "ADBE Rotate Z"],
   opacity: ["ADBE Transform Group", "ADBE Opacity"],
-  anchor: ["ADBE Transform Group", "ADBE Anchor Point"]
+  anchor: ["ADBE Transform Group", "ADBE Anchor Point"],
+  // after set_layer separate_dimensions: true
+  x_position: ["ADBE Transform Group", "ADBE Position_0"],
+  y_position: ["ADBE Transform Group", "ADBE Position_1"],
+  z_position: ["ADBE Transform Group", "ADBE Position_2"]
 };
 
 function getItem(id) {

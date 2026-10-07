@@ -103,6 +103,8 @@ Found in live testing; the code relies on all of these.
 - `saveFrameToPng` can return before the PNG is fully written (heavy 3D frames); `preview_frame` waits for the file to appear and stop growing.
 - Setting keyframes on time remapping: removing every key switches time remapping off, so `set_keyframes` adds the new keys before removing the old ones.
 - Layer ids and `project.layerByID` exist from After Effects 22.0, the manifest's minimum version.
+- Setting a key's temporal ease switches it to bezier, so `restoreKey` sets the ease first and the interpolation type last.
+- Roving keys re-time themselves whenever any other key changes, so code that rewrites keys (`replaceKeys`) turns roving off first and restores it at the end. After Effects may also rescale a roving key's tangents.
 
 `test/mock-host.test.mjs` models the first two; keep the mocks in sync when you find another.
 
@@ -116,6 +118,7 @@ Found in live testing; the code relies on all of these.
 | `mock-host.test.mjs` | Layer, timeline, comp, marker and item commands against a fake After Effects DOM |
 | `mock-camera.test.mjs` | Camera maths, moves, rigs, shake, look-at, 3D layers, lights, linking and 3D views against a fake DOM |
 | `mock-shapes.test.mjs` | Path values from shape specs, the ellipse vertex order, get_keyframes round trips, comp motion blur |
+| `mock-keyframes.test.mjs` | `edit_keyframes`, `copy_animation`, `stagger` fidelity, separate dimensions, auto-orient; the fake property models the ease-switches-to-bezier and roving re-time behaviors |
 | `aerender-discovery.test.mjs` | `findAerender` against fake install layouts |
 | `server.test.mjs` | The built server end to end over stdio, with a fake bridge and a fake `aerender`: render lifecycle (failed start keeps old output, jobs stop on disconnect, the real output file is reported), `preview_frame` waiting, path sandboxing, the `run_jsx` gate. Skipped on Windows (uses a bash script) |
 
