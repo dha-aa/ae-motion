@@ -1,6 +1,6 @@
 # Tool reference
 
-64 tools, grouped the same way as the source (`src/tools/<group>.ts` on the server, `host/commands/<group>.jsx` in After Effects). Every tool's full argument schema and description is served by the MCP `tools/list` call, so your client always sees the current details. This page gives the overview and the behavior you can't read off a schema.
+66 tools, grouped the same way as the source (`src/tools/<group>.ts` on the server, `host/commands/<group>.jsx` in After Effects). Every tool's full argument schema and description is served by the MCP `tools/list` call, so your client always sees the current details. This page gives the overview and the behavior you can't read off a schema.
 
 ## Conventions
 
@@ -17,11 +17,12 @@
 |---|---|---|
 | Inspect | `get_project` | Project items, active comp id, AE version, project path |
 | | `get_comp` | Comp settings, work area, playhead time, marker count, and its layers |
-| | `get_layer` | Transform values, effects, expressions, masks, track matte, marker count, layer flags, and bounds (content box and where it sits in the comp) |
+| | `get_layer` | Transform values, effects, expressions, masks, track matte, marker count, layer flags (incl. blend mode and motion blur), and bounds (content box and where it sits in the comp) |
 | | `list_properties` | Walk a layer's property tree (names, match names, values, keyframe counts) |
 | | `get_keyframes` | Read a property's keyframes: values, interpolation, temporal ease, expression |
 | | `find_effects` | Search installed effects by name, match name or category |
-| Project | `save_project` | Save, or Save As to a path (needed before `render_start`) |
+| Project | `open_project` | Open a project file, refusing to drop unsaved changes unless `discard_unsaved` |
+| | `save_project` | Save, or Save As to a path (needed before `render_start`) |
 | | `create_comp` | Create a composition and open it |
 | | `set_comp` | Change a comp's name, size, fps, duration, background, pixel aspect, work area, or motion blur (switch, shutter angle, phase) |
 | | `import_footage` | Import a file or image sequence |

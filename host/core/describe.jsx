@@ -16,13 +16,22 @@ function layerKind(l) {
 }
 
 /** @param {Layer} l @returns {any} */
+// BlendingMode enum value -> its name (NORMAL, ADD, SCREEN and so on), the same names set_layer blend_mode takes.
+function blendModeName(v) {
+  var k;
+  for (k in BlendingMode) { if (BlendingMode.hasOwnProperty(k) && BlendingMode[k] === v) return k; }
+  return undefined;
+}
+
 function layerInfo(l) {
   return {
     id: l.id, index: l.index, name: l.name, kind: layerKind(l),
     "in": l.inPoint, "out": l.outPoint, start: l.startTime,
     parent_id: l.parent ? l.parent.id : null, enabled: l.enabled, comp_id: l.containingComp.id,
     locked: l.locked, shy: l.shy, solo: l.solo, label: l.label,
-    three_d: safe(function () { return l.threeDLayer; }), stretch: safe(function () { return l.stretch; })
+    three_d: safe(function () { return l.threeDLayer; }), stretch: safe(function () { return l.stretch; }),
+    // cameras and lights have neither
+    blend_mode: safe(function () { return blendModeName(l.blendingMode); }), motion_blur: safe(function () { return l.motionBlur; })
   };
 }
 

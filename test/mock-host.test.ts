@@ -74,20 +74,24 @@ function makeWorld({ startShiftsInOut = true, inKeepsDuration = true } = {}) {
       item(i) { return world.items[i - 1]; },
       itemByID(id) { return world.items.find((i) => i.id === id) || null; },
       layerByID(id) { for (const c of world.items) for (let j = 1; j <= (c.numLayers || 0); j++) if (c.layer(j).id === id) return c.layer(j); return null; },
-      file: null,
+      file: null, dirty: false, closed: null,
+      close(opt) { this.closed = opt; },
     },
     beginUndoGroup() {}, endUndoGroup() {},
+    opened: [], open(f) { this.opened.push(f.path); return {}; },
   };
   class MarkerValue { constructor(c) { this.comment = c; this.duration = 0; this.chapter = ""; this.url = ""; this.label = 0; } }
   const ctx = { app, CompItem, FolderItem, FootageItem, TextLayer: Stub, ShapeLayer: Stub, CameraLayer: Stub, LightLayer: Stub, SolidSource: Stub, MarkerValue, console,
-    FrameBlendingType: { NO_FRAME_BLEND: 1, FRAME_MIX: 2, PIXEL_MOTION: 3 }, LayerQuality: { BEST: 1, DRAFT: 2, WIREFRAME: 3 } };
+    FrameBlendingType: { NO_FRAME_BLEND: 1, FRAME_MIX: 2, PIXEL_MOTION: 3 }, LayerQuality: { BEST: 1, DRAFT: 2, WIREFRAME: 3 },
+    BlendingMode: { NORMAL: 5212, ADD: 5220, SCREEN: 5232 }, CloseOptions: { DO_NOT_SAVE_CHANGES: 1, SAVE_CHANGES: 2 },
+    File: class { constructor(p) { this.path = p; this.exists = !/missing/.test(p); } } };
   vm.createContext(ctx);
   vm.runInContext(SRC, ctx);
   const call = (cmd, args = {}) => JSON.parse(ctx.AEM.dispatch(JSON.stringify({ cmd, args })));
   const comp = (name = "Comp") => { const c = new CompItem(name); world.items.push(c); return c; };
   const layer = (c, name, i, o) => c.addLayer(name, i, o);
   const names = (c) => c._layers.map((l) => l.name);
-  return { call, comp, layer, names, world, FolderItem, FootageItem, CompItem };
+  return { call, comp, layer, names, world, FolderItem, FootageItem, CompItem, app };
 }
 
 const results = [];
@@ -328,6 +332,28 @@ t("set_layer frame_blending / quality / collapse map to After Effects enums", ()
   ok(w.call("set_layer", { layer_id: l.id, frame_blending: "pixel_motion", quality: "draft", collapse: true }));
   assert.equal(l.frameBlendingType, 3); assert.equal(l.quality, 2); assert.equal(l.collapseTransformation, true);
   fails(w.call("set_layer", { layer_id: l.id, frame_blending: "blurry" }), "BAD_ARGS");
+});
+
+t("layer info reports blend mode by name and the motion blur switch", () => {
+  const w = makeWorld(); const c = w.comp(); const l = w.layer(c, "stars", 0, 5);
+  l.blendingMode = 5220; l.motionBlur = true;
+  const info = w.call("get_comp", { comp_id: c.id }).result.layers[0];
+  assert.equal(info.blend_mode, "ADD"); assert.equal(info.motion_blur, true);
+  ok(w.call("set_layer", { layer_id: l.id, blend_mode: "screen" }));
+  assert.equal(l.blendingMode, 5232, "set_layer accepts the same names (any case)");
+});
+
+t("open_project protects unsaved work and closes without a save dialog when discarding", () => {
+  const w = makeWorld();
+  fails(w.call("open_project", { path: "/x/notes.txt" }), "BAD_ARGS");
+  fails(w.call("open_project", { path: "/x/missing.aep" }), "NOT_FOUND");
+  w.app.project.dirty = true;
+  const e = w.call("open_project", { path: "/x/scene.aep" });
+  fails(e, "BAD_ARGS"); assert.match(e.error.hint, /save_project|discard_unsaved/);
+  assert.equal(w.app.opened.length, 0, "nothing opened");
+  ok(w.call("open_project", { path: "/x/scene.aep", discard_unsaved: true }));
+  assert.equal(w.app.project.closed, 1, "closed with DO_NOT_SAVE_CHANGES first");
+  assert.deepEqual(w.app.opened, ["/x/scene.aep"]);
 });
 
 for (const [name, pass, msg] of results) console.log((pass ? "PASS" : "FAIL") + "  " + name + (pass ? "" : "\n      " + msg));

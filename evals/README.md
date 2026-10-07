@@ -17,13 +17,13 @@ The answers come from a fixed project, `fixtures/rocket_launch.aep`: an 8-second
 | 7 | opacity keyframes, then subtract | 3.25 |
 | 8 | find the null and count layers whose `parent_id` points to it (`get_comp`) | 4 |
 | 9 | mask properties | 170 |
-| 10 | layer blend mode | ADD |
+| 10 | layer blend mode (`blend_mode` in layer info) | ADD |
 
-Question 10 is deliberately not answerable with the inspection tools: `get_layer` and `get_comp` do not report a layer's blend mode (or its motion blur switch). With `run_jsx` disabled a model should fail it; with it enabled it can read `layer.blendingMode`. Either outcome is useful signal (see "Known gaps" below).
+Question 10 checks that blend modes are reported: `get_layer` / `get_comp` include each layer's `blend_mode` (and `motion_blur`).
 
 ## Running
 
-1. Open After Effects with the AE Motion MCP panel, and open `evals/fixtures/rocket_launch.aep` (File > Open Project). There is no tool to open a project yet.
+1. Open After Effects with the AE Motion MCP panel, and open `evals/fixtures/rocket_launch.aep` (File > Open Project, or the `open_project` tool).
 2. Build the server: `npm run build`.
 3. Run the harness from the MCP builder skill (needs Python with `anthropic` and `mcp`, and an `ANTHROPIC_API_KEY`; it calls the Claude API once per question, so it costs money):
 
@@ -35,11 +35,10 @@ python <mcp-builder skill>/scripts/evaluation.py \
   evals/ae-motion.eval.xml
 ```
 
-Add `-e AE_MCP_ALLOW_JSX=1` to let the model fall back to `run_jsx` (question 10 then becomes answerable).
 
 The report lists accuracy, tool calls per question and the model's feedback on the tools: read the feedback, it is the point of the exercise.
 
-## Known gaps found while writing these
+## Gaps found while writing these (fixed)
 
-- **No tool opens a project.** Writing the evaluation needed `run_jsx` (`app.open`) to load the fixture.
-- **Blend mode and motion blur are not reported** by `get_layer` / `get_comp`, although `set_layer` sets both.
+- There was no tool to open a project (writing the evaluation needed `run_jsx`): `open_project` now exists.
+- Blend mode and motion blur were not reported by `get_layer` / `get_comp`: layer info now includes `blend_mode` and `motion_blur`.

@@ -1,6 +1,19 @@
 // Project and composition commands. (src/tools/project.ts)
 // Paths arrive already sandboxed and slash-normalised by the server.
 
+// Open a project file. Refuses to throw away unsaved changes unless discard_unsaved is true; then the current project
+// is closed without saving first, so After Effects never shows a "save changes?" dialog (which would block the bridge).
+C.open_project = function (a) {
+  need(a, ["path"]);
+  var f = new File(a.path), p = app.project;
+  if (!/\.(aep|aepx)$/i.test(a.path)) fail("BAD_ARGS", "Project path must end in .aep or .aepx");
+  if (!f.exists) fail("NOT_FOUND", "Project file not found: " + a.path);
+  if (p && p.dirty && a.discard_unsaved !== true) fail("BAD_ARGS", "The open project has unsaved changes", "Save them with save_project first, or pass discard_unsaved: true to throw them away");
+  if (p && p.dirty) p.close(CloseOptions.DO_NOT_SAVE_CHANGES);
+  if (!app.open(f)) fail("AE_ERROR", "After Effects could not open " + a.path);
+  return C.get_project();
+};
+
 C.save_project = function (a) {
   var p = app.project, f;
   if (has(a, "path")) {

@@ -15,6 +15,13 @@ export function registerProjectTools(r: ToolRegistry): void {
     { paths: ["path"], idempotent: true },
   );
 
+  r.bridged(
+    "open_project",
+    "Open an After Effects project (.aep or .aepx, inside the allowed folders), replacing the open one. If the open project has unsaved changes it refuses, unless discard_unsaved is true (those changes are then lost; use save_project first to keep them). Returns the new project like get_project. Cannot be undone.",
+    { path: z.string(), discard_unsaved: z.boolean().optional() },
+    { paths: ["path"] },
+  );
+
   r.bridged("create_comp", "Create a composition and open it in the viewer.", {
     name: z.string(), width: dimension(), height: dimension(), fps: fps(), duration: z.number().positive(), bg_color: Color.optional(),
   },

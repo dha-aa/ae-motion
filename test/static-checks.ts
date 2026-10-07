@@ -13,7 +13,7 @@ import { buildHost, emittedPath, HOST_OUT, HOST_SOURCES } from "../scripts/build
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 
-const EXPECTED_TOOLS = 65; // update when adding or removing a tool
+const EXPECTED_TOOLS = 66; // update when adding or removing a tool
 const SERVER_ONLY_TOOLS = new Set(["render_start", "render_status", "render_cancel", "check_for_updates"]); // implemented in TypeScript, no host command
 const HOST_ONLY_COMMANDS = new Set(["get_selection", "prepare_render"]); // used by a resource / render_start, not tools
 

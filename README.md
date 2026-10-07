@@ -6,6 +6,10 @@ An [MCP](https://modelcontextprotocol.io) server that lets Claude (or any MCP cl
 
 Ask for "a 5 second lower third with an eased slide-in", and the model creates the comp, adds layers, sets keyframes, checks a preview frame and kicks off a render, all in the project you have open.
 
+[![Watch the AE Motion MCP demo on YouTube](https://img.youtube.com/vi/6FuX7ySiHes/maxresdefault.jpg)](https://youtu.be/6FuX7ySiHes)
+
+*▶ Watch the demo on YouTube (click the image).*
+
 ```
 MCP client --stdio--> MCP server (Node) --HTTP 127.0.0.1 + token--> CEP panel in AE --> ExtendScript
 ```
@@ -119,12 +123,12 @@ If a call fails, the error includes a code and a hint. See [Troubleshooting](#tr
 
 ## What it can do
 
-65 tools in eleven groups. The full reference, with behavior notes, is in [docs/tools.md](docs/tools.md).
+66 tools in eleven groups. The full reference, with behavior notes, is in [docs/tools.md](docs/tools.md).
 
 | Group | Tools |
 |---|---|
 | Inspect | `get_project`, `get_comp`, `get_layer`, `list_properties`, `get_keyframes`, `find_effects` |
-| Project | `save_project`, `create_comp`, `set_comp`, `import_footage`, `delete_item` |
+| Project | `open_project`, `save_project`, `create_comp`, `set_comp`, `import_footage`, `delete_item` |
 | Layers | `add_layer`, `set_layer`, `link_layers`, `replace_source`, `delete_layer`, `duplicate_layer`, `reorder_layer`, `precompose` |
 | Timeline | `split_layer`, `delete_range`, `insert_time`, `shift_layers`, `sequence_layers`, `align_to_markers`, `trim_comp`, `set_playhead`, `add_marker`, `update_marker`, `list_markers`, `delete_marker` |
 | Masks and mattes | `add_mask`, `set_track_matte` |

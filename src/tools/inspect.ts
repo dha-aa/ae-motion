@@ -21,7 +21,7 @@ export function registerInspectTools(r: ToolRegistry): void {
 
   r.bridged(
     "get_comp",
-    "Get composition settings (size, fps, duration, work area, playhead time, marker count) and its layers (id, name, kind, in/out/start, parent, flags).",
+    "Get composition settings (size, fps, duration, work area, playhead time, marker count, motion blur, frame blending) and its layers (id, name, kind, in/out/start, parent, blend mode, flags such as motion blur, 3D, shy, solo, lock).",
     { comp_id: id("Comp") },
     ro,
   );
