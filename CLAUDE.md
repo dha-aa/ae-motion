@@ -40,7 +40,7 @@ Tests, `scripts/` and the skill driver are TypeScript that Node (22.18+) runs di
 - `src/render/aerender.ts` (find aerender / written file), `src/render/manager.ts` (`RenderManager`), `src/render/image.ts` (shrink previews, contact sheets).
 - `host/*.ts` (pilot: `core/layout.ts`, `commands/design.ts`) are TypeScript compiled by `tsc -p tsconfig.host.json` to `build/host/` against AE 22.0 + ES3 lib types (`types-for-adobe`); the rest of `host/` is `.jsx`. Script mode: all top-level names are global and shared (type names merge with AE/ScriptUI globals, so prefix them); `.jsx` helpers used from `.ts` get JSDoc types (`fail` returns never). Details in `docs/development.md`.
 - `host/` — ExtendScript sources: `json.jsx` polyfill, `core/` helpers, `commands/`, `dispatch.jsx`. `scripts/build-host.ts` wraps them in one closure (`var AEM = (function () { var C = {}; ... })()`) and writes `panel/host/host.jsx`, which is **generated and gitignored — never edit it**. New host files go in `MODULES` in the build script; top-level names must be unique across `host/` (the build checks).
-- `panel/` — the CEP extension as installed (manifest, `main.js` HTTP bridge with serial queue, `index.html`).
+- `panel/` — the CEP extension as installed (manifest, `main.js` HTTP bridge with serial queue and the Update button, `index.html`). The installers add `install.json` (repo path + `PATH`, since AE started from the Dock cannot find Homebrew/nvm `node`); the button runs `git pull --ff-only` + the installer from there, `$.evalFile`s the new host.jsx and reloads the panel.
 
 ## Versions and updates
 

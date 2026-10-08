@@ -195,7 +195,7 @@ Panel logs are in `~/Library/Logs/CSXS/` on macOS and `%TEMP%` (`csxs*.log`) on 
 
 You find out about new versions in three places:
 
-- **The After Effects panel** shows the installed version and, when a newer release exists, a line like `v2.1.0 available`.
+- **The After Effects panel** shows the installed version and, when a newer release exists, a line like `v2.1.0 available` with an **Update to v2.1.0** button.
 - **Your AI client:** `get_project` (usually the first call) includes an `update` note with the new version and the command to run, so the model can tell you. You can also ask "check for updates" (`check_for_updates`).
 - **GitHub:** releases are git tags `vX.Y.Z`; what changed is in [CHANGELOG.md](CHANGELOG.md).
 
@@ -203,7 +203,9 @@ How the check works: the MCP server asks GitHub for the repository's version tag
 
 ## Updating and uninstalling
 
-**Update:** in the repo folder, `git pull`, then run the installer again (`bash scripts/install.sh`, or `./scripts/install.ps1` on Windows; it rebuilds and replaces the installed panel). Reopen the AE Motion MCP panel (or restart After Effects) and restart the MCP server from your client. The panel's Version line shows the new version.
+**Update from the panel:** click **Update to vX.Y.Z** (or **Reinstall**) in the AE Motion MCP panel, then click again to confirm. It runs `git pull` and the installer in your ae-motion folder, shows the output, and restarts the panel with the new version; then restart your AI client so it uses the new server. The panel finds the folder and your `git` / `node` / `npm` through `install.json`, which the installer writes, so a panel installed before this button existed needs one manual update first. If `git pull` fails (local changes, a branch without an upstream), update by hand.
+
+**Update by hand:** in the repo folder, `git pull`, then run the installer again (`bash scripts/install.sh`, or `./scripts/install.ps1` on Windows; it rebuilds and replaces the installed panel). Reopen the AE Motion MCP panel (or restart After Effects) and restart the MCP server from your client. The panel's Version line shows the new version.
 
 **Uninstall:**
 

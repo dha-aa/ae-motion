@@ -11,6 +11,12 @@
   #status.ok { color: #7fd17f; }
   #status.bad { color: #ff8a80; }
   #update { color: #ffd479; }
+  .actions { margin-top: 8px; display: flex; gap: 8px; align-items: center; }
+  button { background: #3a3a3a; color: #e0e0e0; border: 1px solid #555; border-radius: 3px; padding: 3px 10px; font: inherit; cursor: pointer; }
+  button:hover:not(:disabled) { background: #4a4a4a; }
+  button:disabled { opacity: 0.5; cursor: default; }
+  #update-log { margin: 6px 0 0; padding: 6px; background: #1b1b1b; border-radius: 3px; white-space: pre-wrap; word-break: break-word; font: 11px/1.4 ui-monospace, Menlo, monospace; color: #bbb; }
+  #update-log.bad { color: #ff8a80; }
 </style>
 </head>
 <body>
@@ -21,6 +27,8 @@
   <div class="row"><span class="k">Last error</span><span id="err">-</span></div>
   <div class="row"><span class="k">Version</span><span id="version">-</span></div>
   <div class="row" id="update-row" style="display:none"><span class="k">Update</span><span id="update" class="bad"></span></div>
+  <div class="actions"><button id="update-btn" data-label="Reinstall" title="git pull, then re-run the installer, then restart this panel">Reinstall</button></div>
+  <pre id="update-log" style="display:none"></pre>
   <script src="main.js"></script>
 </body>
 </html>

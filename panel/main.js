@@ -6,9 +6,12 @@
 // server reads on every call. See docs/architecture.md ("Wire protocol").
 //
 // Updates: the MCP server checks for new releases (at most daily) and caches the answer in update.json next to the
-// bridge file; this panel only reads that file (no network) and shows a line when a newer version exists.
+// bridge file; this panel only reads that file (no network) and shows a line when a newer version exists. Its Update
+// button runs `git pull` and the installer in the repo named by install.json (written by the installer), then loads
+// the new host script and restarts the panel.
 (function () {
   var http = require("http");
+  var childProcess = require("child_process");
   var fs = require("fs");
   var os = require("os");
   var path = require("path");
@@ -82,6 +85,95 @@
     });
   }
 
+  // ----- Update button -----
+  var panelDir = (function () {
+    var p = decodeURIComponent(window.location.pathname);
+    if (/^\/[A-Za-z]:/.test(p)) p = p.slice(1); // Windows: /C:/... -> C:/...
+    return path.dirname(p);
+  })();
+  var updating = false, armed = null;
+
+  function readInstall() {
+    try { return JSON.parse(fs.readFileSync(path.join(panelDir, "install.json"), "utf8").replace(/^\uFEFF/, "")); } catch (e) { return null; }
+  }
+  function showLog(text, ok) {
+    var el = $("update-log");
+    el.style.display = "";
+    el.className = ok === false ? "bad" : "";
+    el.textContent = text.split("\n").filter(function (l) { return l.trim(); }).slice(-8).join("\n");
+  }
+
+  // Load the freshly installed host script, close the bridge and reload the panel (main.js and index.html).
+  function restartPanel() {
+    var host = path.join(panelDir, "host", "host.jsx");
+    cep.evalScript("$.evalFile(" + JSON.stringify(host) + ")", function () {
+      var done = false, go = function () { if (!done) { done = true; window.location.reload(); } };
+      try { server.close(go); } catch (e) {}
+      setTimeout(go, 1500); // close waits for open connections; do not wait forever
+    });
+  }
+
+  function runUpdate() {
+    var inst = readInstall(), win = process.platform === "win32", cmd, args, child, out = "";
+    if (!inst || !inst.repo || !fs.existsSync(inst.repo)) {
+      return showLog("Cannot find the ae-motion folder: re-run the installer once from it (scripts/install.sh or install.ps1) to enable this button.", false);
+    }
+    var git = fs.existsSync(path.join(inst.repo, ".git"));
+    if (win) {
+      cmd = "powershell.exe";
+      args = ["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command",
+        (git ? "git pull --ff-only; if ($LASTEXITCODE -ne 0) { exit 1 }; " : "") + "& ./scripts/install.ps1"];
+    } else {
+      cmd = "/bin/bash";
+      args = ["-c", (git ? "git pull --ff-only && " : "") + "bash scripts/install.sh"];
+    }
+    updating = true;
+    $("update-btn").disabled = true;
+    showLog((git ? "git pull, then " : "") + "installing... (about a minute)");
+    var env = {}, k;
+    for (k in process.env) env[k] = process.env[k];
+    if (inst.path) env.PATH = inst.path + (win ? ";" : ":") + (env.PATH || "");
+    try {
+      child = childProcess.spawn(cmd, args, { cwd: inst.repo, env: env });
+    } catch (e) {
+      updating = false; $("update-btn").disabled = false;
+      return showLog("Could not start the update: " + e.message, false);
+    }
+    child.stdout.on("data", function (d) { out += d; showLog(out); });
+    child.stderr.on("data", function (d) { out += d; showLog(out); });
+    child.on("error", function (e) { out += "\n" + e.message; });
+    child.on("close", function (code) {
+      updating = false;
+      $("update-btn").disabled = false;
+      if (code !== 0) return showLog(out + "\nUpdate failed (exit " + code + "). Fix the error above, or update by hand (README, Updating).", false);
+      try { window.localStorage.setItem("aem-updated", "1"); } catch (e) {}
+      showLog("Installed. Restarting the panel...");
+      setTimeout(restartPanel, 800);
+    });
+  }
+
+  // Two clicks: the first arms the button for a few seconds, so a stray click does not start an install.
+  function onUpdateClick() {
+    if (updating) return;
+    var b = $("update-btn");
+    if (!armed) {
+      b.textContent = "Click again to confirm";
+      armed = setTimeout(function () { armed = null; b.textContent = b.getAttribute("data-label"); }, 4000);
+      return;
+    }
+    clearTimeout(armed); armed = null;
+    b.textContent = b.getAttribute("data-label");
+    runUpdate();
+  }
+  function setButton(label) { var b = $("update-btn"); b.setAttribute("data-label", label); if (!armed && !updating) b.textContent = label; }
+  $("update-btn").addEventListener("click", onUpdateClick);
+  try {
+    if (window.localStorage.getItem("aem-updated")) {
+      window.localStorage.removeItem("aem-updated");
+      showLog("Updated. Restart your AI client (Claude Code / Claude Desktop) so it uses the new MCP server.");
+    }
+  } catch (e) {}
+
   // "2.10.0" > "2.9.1"
   function newer(a, b) {
     var x = String(a).split("."), y = String(b).split("."), i;
@@ -90,13 +182,17 @@
   }
   var version = null;
   function checkUpdate() {
-    var info, row = $("update-row");
+    var info = null, row = $("update-row");
     if (!version) return;
-    try { info = JSON.parse(fs.readFileSync(path.join(path.dirname(bridgeFile), "update.json"), "utf8")); } catch (e) { return; }
+    try { info = JSON.parse(fs.readFileSync(path.join(path.dirname(bridgeFile), "update.json"), "utf8")); } catch (e) {}
     if (info && info.latest && newer(info.latest, version)) {
-      $("update").textContent = "v" + info.latest + " available: git pull, re-run the installer";
+      $("update").textContent = "v" + info.latest + " available";
+      setButton("Update to v" + info.latest);
       row.style.display = "";
-    } else row.style.display = "none";
+    } else {
+      row.style.display = "none";
+      setButton("Reinstall");
+    }
   }
   cep.evalScript("AEM.version", function (v) {
     version = v && v !== "undefined" && v.indexOf("Error") === -1 ? v : null;
