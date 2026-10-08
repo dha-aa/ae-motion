@@ -2,6 +2,18 @@
 
 All notable changes. Versions follow [semantic versioning](https://semver.org); each release is a git tag `vX.Y.Z`, which is what the update check looks for.
 
+## 2.3.0 — 2026-10-08
+
+### Added
+- **Update button in the After Effects panel:** "Update to vX.Y.Z" (or "Reinstall") runs `git pull` and the installer, shows the output, loads the new host script and restarts the panel. The installers now write `install.json` (repo folder, and a PATH that finds git, node and npm, which After Effects started from the Dock cannot). A panel installed before 2.3.0 needs one manual update first.
+- `load_tools`: with `AE_MCP_TOOLSETS` (e.g. `core`: about 7.5k tokens of tool definitions instead of 16k) the server adds the left-out tool groups during the session and tells the client (`tools/list_changed`); the new tools also run through `batch`. The README's Claude Desktop example uses `core`.
+
+### Fixed
+- `set_anchor`'s description named a wrong argument (`to`; it is `anchor`).
+
+### Removed
+- The MCP evaluation (`evals/`) and its fixture project.
+
 ## 2.2.0 — 2026-10-08
 
 ### Added
