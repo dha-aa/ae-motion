@@ -1,14 +1,16 @@
 # AE Motion MCP
 
-[![CI](https://github.com/dha-aa/ae-motion/actions/workflows/ci.yml/badge.svg)](https://github.com/dha-aa/ae-motion/actions/workflows/ci.yml)
+
+
+
+
 
 An [MCP](https://modelcontextprotocol.io) server that lets Claude (or any MCP client) build, animate, preview and render motion graphics in a live Adobe After Effects project.
 
 Ask for "a 5 second lower third with an eased slide-in", and the model creates the comp, adds layers, sets keyframes, checks a preview frame and kicks off a render, all in the project you have open.
 
-[![Watch the AE Motion MCP demo on YouTube](https://img.youtube.com/vi/6FuX7ySiHes/maxresdefault.jpg)](https://youtu.be/6FuX7ySiHes)
+https://github.com/user-attachments/assets/95b0ac02-32f9-4f46-922e-a25be7e6f431
 
-*▶ Watch the demo on YouTube (click the image).*
 
 ```
 MCP client --stdio--> MCP server (Node) --HTTP 127.0.0.1 + token--> CEP panel in AE --> ExtendScript
