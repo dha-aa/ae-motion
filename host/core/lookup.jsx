@@ -9,7 +9,9 @@ var ALIAS = {
   // after set_layer separate_dimensions: true
   x_position: ["ADBE Transform Group", "ADBE Position_0"],
   y_position: ["ADBE Transform Group", "ADBE Position_1"],
-  z_position: ["ADBE Transform Group", "ADBE Position_2"]
+  z_position: ["ADBE Transform Group", "ADBE Position_2"],
+  // audio levels in dB, [left, right] (a single number sets both: coerce)
+  volume: ["ADBE Audio Group", "ADBE Audio Levels"]
 };
 
 function getItem(id) {

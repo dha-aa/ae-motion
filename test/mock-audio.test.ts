@@ -33,8 +33,19 @@ function loudness(beats, { dur = 8, gain = () => 1, noise = 0.03, pad = 0 } = {}
 const grid = (bpm, first, dur = 8) => { const out = []; for (let t = first; t < dur - 1e-9; t += 60 / bpm) out.push(t); return out; };
 
 class Prop {
-  constructor(v) { this._v = v; this.keys = []; this.expression = ""; }
+  constructor(v, matchName = "") { this._v = v; this.keys = []; this.expression = ""; this.matchName = matchName; this.propertyType = 1; this.dimensionsSeparated = false; }
+  // keys ease in and out (smoothstep), so the fastest frame of a segment is its middle
+  valueAtTime(t) {
+    const k = this.keys;
+    if (!k.length) return this._v;
+    if (t <= k[0].t) return k[0].v;
+    if (t >= k[k.length - 1].t) return k[k.length - 1].v;
+    const i = k.findIndex((x) => x.t > t), a = k[i - 1], b = k[i], u = (t - a.t) / (b.t - a.t), e = u * u * (3 - 2 * u);
+    return Array.isArray(a.v) ? a.v.map((x, j) => x + (b.v[j] - x) * e) : a.v + (b.v - a.v) * e;
+  }
+  setValue(v) { this._v = v; }
   get canSetExpression() { return true; }
+  get canVaryOverTime() { return true; }
   get expressionEnabled() { return this.expression !== ""; }
   get expressionError() { return ""; }
   get value() { return this._v; }
@@ -50,17 +61,19 @@ function makeWorld(amplitude, { menu = true } = {}) {
   let nextId = 10;
   class CompItem {} class AVLayer {} class TextLayer {} class ShapeLayer {} class CameraLayer {} class LightLayer {} class Stub {}
   class MarkerValue { constructor(c) { this.comment = c; } }
-  const layers = new Map(), log = { menuRuns: 0, audibleDuringRun: null, workAreaDuringRun: null };
+  const layers = new Map(), log = { menuRuns: 0, audibleDuringRun: null, workAreaDuringRun: null, imports: 0, sourcesRemoved: 0 };
+  const items = [];
   const comp = Object.assign(new CompItem(), {
     id: 1, name: "Main", width: 1280, height: 720, duration: 10, frameRate: FPS, frameDuration: 1 / FPS, workAreaStart: 2, workAreaDuration: 5,
     numLayers: 0, _layers: [], markerProperty: new Prop(null), layer: (i) => comp._layers[i - 1], openInViewer() {},
   });
   const add = (l, top = false) => {
     Object.assign(l, { id: nextId++, containingComp: comp, selected: false, enabled: true, parent: null, startTime: 0, label: 0, locked: false });
-    const tg = { "ADBE Scale": new Prop([100, 100, 100]), "ADBE Opacity": new Prop(100), "ADBE Position": new Prop([0, 0, 0]) };
-    const markers = new Prop(null), effects = l.effects || [];
-    l.property = (n) => n === "ADBE Transform Group" ? { property: (m) => tg[m] } : n === "ADBE Marker" ? markers : n === "ADBE Effect Parade" ? { numProperties: effects.length, property: (i) => effects[i - 1] } : null;
-    l.tg = tg; l.markers = markers;
+    const tg = { "ADBE Scale": new Prop([100, 100, 100]), "ADBE Opacity": new Prop(100), "ADBE Position": new Prop([640, 360, 0]), "ADBE Rotate Z": new Prop(0) };
+    const markers = new Prop(null), effects = l.effects || [], levels = new Prop([0, 0], "ADBE Audio Levels"), groups = l.groups || {};
+    l.property = (n) => n === "ADBE Transform Group" ? { property: (m) => tg[m] } : n === "ADBE Marker" ? markers : n === "ADBE Effect Parade" ? { numProperties: effects.length, property: (i) => effects[i - 1] }
+      : n === "ADBE Audio Group" ? { property: () => levels } : groups[n] || null;
+    l.tg = tg; l.markers = markers; l.levels = levels;
     l.remove = () => { comp._layers.splice(comp._layers.indexOf(l), 1); layers.delete(l.id); reindex(); };
     if (top) comp._layers.unshift(l); else comp._layers.push(l);
     layers.set(l.id, l); reindex();
@@ -68,9 +81,28 @@ function makeWorld(amplitude, { menu = true } = {}) {
   };
   const reindex = () => { comp._layers.forEach((x, i) => (x.index = i + 1)); comp.numLayers = comp._layers.length; };
   const audioLayer = (name) => add(Object.assign(new AVLayer(), { name, hasAudio: true, audioEnabled: true, inPoint: 0, outPoint: 8 }));
-  const plain = (name) => add(Object.assign(new AVLayer(), { name, hasAudio: false, audioEnabled: false, inPoint: 0, outPoint: 8 }));
+  const plain = (name, Kind = AVLayer, extra = {}) => add(Object.assign(new Kind(), { name, hasAudio: false, hasVideo: true, audioEnabled: false, inPoint: 0, outPoint: 8 }, extra));
+  // a group of properties as list_properties walks them
+  const group = (children) => ({ propertyType: 3, numProperties: children.length, property: (i) => children[i - 1] });
+  const keyed = (matchName, keys) => { const p = new Prop(0, matchName); p.keys = keys.map(([t, v]) => ({ t, v })); return p; };
+  // a sound layer from a footage item: in/out follow startTime, like After Effects
+  const soundLayer = (item) => {
+    const l = add(Object.assign(new AVLayer(), { name: item.name, hasAudio: true, hasVideo: false, audioEnabled: true }));
+    let out = null;
+    Object.defineProperty(l, "inPoint", { get: () => l.startTime });
+    Object.defineProperty(l, "outPoint", { get: () => (out === null ? l.startTime + item.duration : out), set: (v) => (out = v) });
+    return l;
+  };
+  comp.layers = { add: (item) => soundLayer(item) };
+  class FootageItem {}
+  class File { constructor(p) { this.fsName = p; this.exists = !/missing/.test(p); } }
+  class ImportOptions { constructor(f) { this.file = f; } canImportAs() { return true; } }
   const app = {
-    project: { itemByID: (id) => (id === 1 ? comp : null), layerByID: (id) => layers.get(id) || null },
+    project: {
+      itemByID: (id) => (id === 1 ? comp : null), layerByID: (id) => layers.get(id) || null,
+      get numItems() { return items.length; }, item: (i) => items[i - 1],
+      importFile(io) { log.imports++; const it = Object.assign(new FootageItem(), { name: io.file.fsName.split("/").pop(), file: io.file, hasAudio: true, duration: 1, remove() {} }); items.push(it); return it; },
+    },
     beginUndoGroup() {}, endUndoGroup() {},
     findMenuCommandId: (n) => (menu && n === "Convert Audio to Keyframes" ? 5015 : 0),
     executeCommand(id) {
@@ -81,19 +113,25 @@ function makeWorld(amplitude, { menu = true } = {}) {
       // the slider keys After Effects writes: one per frame of the work area, for left, right and both channels
       const slider = () => { const p = new Prop(0); amplitude.forEach((v, k) => { const t = k / FPS; if (t >= comp.workAreaStart - 1e-9 && t < comp.workAreaStart + comp.workAreaDuration - 1e-9) p.keys.push({ t, v }); }); return p; };
       const fx = [1, 2, 3].map(() => { const s = slider(); return { property: () => s }; });
-      add(Object.assign(new AVLayer(), { name: "Audio Amplitude", hasAudio: false, audioEnabled: false, inPoint: 0, outPoint: 10, effects: fx }), true);
+      // a null's source is a solid item in the project, which outlives the layer unless it is removed too
+      const src = { name: "Audio Amplitude", usedIn: [], remove() { log.sourcesRemoved++; } };
+      const nl = add(Object.assign(new AVLayer(), { name: "Audio Amplitude", hasAudio: false, audioEnabled: false, inPoint: 0, outPoint: 10, effects: fx, source: src }), true);
+      const rm = nl.remove; nl.remove = () => { rm(); };
     },
   };
-  const ctx = { app, MarkerValue, CompItem, AVLayer, TextLayer, ShapeLayer, CameraLayer, LightLayer, FolderItem: Stub, FootageItem: Stub, SolidSource: Stub, PropertyValueType: {}, PropertyType: {} };
+  const ctx = { app, MarkerValue, CompItem, AVLayer, TextLayer, ShapeLayer, CameraLayer, LightLayer, FolderItem: Stub, FootageItem, SolidSource: Stub, File, ImportOptions,
+    ImportAsType: { FOOTAGE: 1 }, PropertyValueType: { OneD: 1, TwoD: 2, ThreeD: 3, COLOR: 4, TwoD_SPATIAL: 5, ThreeD_SPATIAL: 6, SHAPE: 7, TEXT_DOCUMENT: 8, NO_VALUE: 9, MARKER: 10, CUSTOM_VALUE: 11 }, PropertyType: { PROPERTY: 1, INDEXED_GROUP: 2, NAMED_GROUP: 3 } };
   vm.createContext(ctx);
   vm.runInContext(SRC, ctx);
   const call = (cmd, args = {}) => JSON.parse(ctx.AEM.dispatch(JSON.stringify({ cmd, args })));
-  return { call, comp, audioLayer, plain, log };
+  return { call, comp, audioLayer, plain, log, group, keyed, TextLayer, ShapeLayer };
 }
 
 const results = [];
 const t = (name, fn) => { try { fn(); results.push([name, true]); } catch (e) { results.push([name, false, e.message]); } };
 const ok = (r) => { assert.equal(r.ok, true, JSON.stringify(r.error)); return r.result; };
+const plainArr = (v) => JSON.parse(JSON.stringify(v)); // host-realm arrays compared as plain values
+const near = (a, b, m = "", tol = 1e-6) => assert.ok(Math.abs(a - b) <= tol, `${m}: expected ${b}, got ${a}`);
 const fails = (r, code) => { assert.equal(r.ok, false, "should fail"); if (code) assert.equal(r.error.code, code, JSON.stringify(r.error)); return r.error; };
 /** Every true beat found within one frame, and nothing extra. */
 const sameBeats = (found, truth) => {
@@ -144,6 +182,7 @@ t("only the analysed layer is audible during the menu command; audio, work area 
   assert.equal(vo.audioEnabled, true, "other audio restored");
   assert.deepEqual([w.comp.workAreaStart, w.comp.workAreaDuration], [2, 5], "work area restored");
   assert.ok(!w.comp._layers.some((l) => /Amplitude/.test(l.name)), "amplitude null removed");
+  assert.equal(w.log.sourcesRemoved, 1, "and its source item, so the project does not fill with Audio Amplitude solids");
 });
 
 t("bpm grid, every nth beat, layer markers, and replacing earlier beat markers but not others", () => {
@@ -178,6 +217,62 @@ t("errors: no audio, no menu command, silent track", () => {
   assert.equal(a2.audioEnabled, true);
   const w3 = makeWorld(new Array(240).fill(0)), a3 = w3.audioLayer("silent.wav"), l3 = w3.plain("L");
   fails(w3.call("audio_react", { audio_layer_id: a3.id, layer_ids: [l3.id], path: "scale", from: [100, 100], to: [120, 120] }), "BAD_ARGS");
+});
+
+t("find_sound_cues: whoosh at a move's fastest frame, impact on an abrupt landing, pop on a scale pop, typing and swipe with durations", () => {
+  const w = makeWorld([]);
+  const car = w.plain("Car"); car.tg["ADBE Position"].keys = [{ t: 1, v: [-300, 400, 0] }, { t: 2, v: [600, 400, 0] }];
+  const ball = w.plain("Ball"); ball.tg["ADBE Position"].keys = [{ t: 3, v: [640, 0, 0] }, { t: 3.4, v: [640, 650, 0] }];
+  ball.tg["ADBE Position"].valueAtTime = function (t) { const [a, b] = this.keys; const u = Math.max(0, Math.min(1, (t - a.t) / (b.t - a.t))); return [640, 650 * u * u, 0]; }; // falls and hits the floor
+  const title = w.plain("25 lakh", w.TextLayer, { inPoint: 4.35 });
+  title.tg["ADBE Scale"].keys = [{ t: 4.35, v: [0, 0, 100] }, { t: 4.55, v: [112, 112, 100] }, { t: 4.7, v: [100, 100, 100] }];
+  const line = w.plain("For your future", w.TextLayer, { inPoint: 5, groups: { "ADBE Text Properties": w.group([w.group([w.group([w.keyed("ADBE Text Percent Start", [[5.15, 0], [6, 100]])])])]) } });
+  const arrow = w.plain("Arrow", w.ShapeLayer, { groups: { "ADBE Root Vectors Group": w.group([w.group([w.keyed("ADBE Vector Trim End", [[4.05, 0], [4.45, 100]])])]) } });
+  w.audioLayer("music.wav");
+  const r = ok(w.call("find_sound_cues", { comp_id: 1 }));
+  const by = (layer, event) => r.cues.find((c) => c.layer === layer && c.event === event) ?? assert.fail(`no ${event} cue on ${layer}: ${JSON.stringify(r.cues)}`);
+  const none = (layer, event) => !r.cues.some((c) => c.layer === layer && c.event === event);
+  near(by("Car", "move").t, 1.5, "whoosh at the middle of an eased move", 1 / FPS);
+  assert.equal(by("Car", "move").sound, "whoosh");
+  assert.ok(none("Car", "land"), "an eased stop is not an impact");
+  near(by("Ball", "land").t, 3.4, "impact when the falling ball stops", 1e-6);
+  assert.equal(by("Ball", "land").sound, "impact");
+  near(by("25 lakh", "pop_in").t, 4.55, "pop at the scale peak (snapped to a frame)", 0.5 / FPS + 1e-9);
+  assert.ok(none("25 lakh", "appear"), "the entrance merges into the stronger pop");
+  assert.deepEqual([by("For your future", "type_on").sound, +by("For your future", "type_on").duration.toFixed(3)], ["typing", 0.85]);
+  assert.deepEqual([by("Arrow", "draw_on").sound, +by("Arrow", "draw_on").duration.toFixed(3)], ["swipe", 0.4]);
+  assert.ok(!r.cues.some((c) => c.layer === "music.wav"), "audio layers have no cues");
+  const ts = r.cues.map((c) => c.t); assert.deepEqual(ts, [...ts].sort((x, y) => x - y), "in time order");
+  assert.equal(ok(w.call("find_sound_cues", { comp_id: 1, start: 4, end: 5 })).cues.every((c) => c.t >= 4 && c.t <= 5), true);
+  assert.equal(ok(w.call("find_sound_cues", { comp_id: 1, max: 2 })).count, 2);
+});
+
+t("add_sfx: the sound's loudest frame lands on time; fades, volume, one import per file, peak measured once", () => {
+  // a whoosh file: loudest 0.4 s in
+  const whoosh = Array.from({ length: 30 }, (_, k) => 30 * Math.exp(-(((k - 12) / 4) ** 2)));
+  const w = makeWorld(whoosh), music = w.audioLayer("music.wav");
+  const r = ok(w.call("add_sfx", { comp_id: 1, path: "/sfx/whoosh.wav", time: 1.5, volume: -9, fade_in: 0.1, fade_out: 0.2 }));
+  near(r.peak_offset, 0.4, "peak found", 1e-9); near(r.start, 1.1, "starts 0.4 s early so the peak hits 1.5", 1e-9);
+  assert.deepEqual(w.log.audibleDuringRun, ["SFX: whoosh.wav"], "measured alone");
+  assert.equal(music.audioEnabled, true);
+  const sfx = w.comp._layers.find((l) => l.id === r.layer.id);
+  assert.equal(sfx.name, "SFX: whoosh.wav");
+  assert.deepEqual(sfx.levels.keys.map((k) => [+k.t.toFixed(3), k.v[0]]), [[1.1, -48], [1.2, -9], [1.9, -9], [2.1, -48]]);
+  const r2 = ok(w.call("add_sfx", { comp_id: 1, path: "/sfx/whoosh.wav", time: 4, align: "start", volume: -12 }));
+  near(r2.start, 4, "align start", 1e-9);
+  ok(w.call("add_sfx", { comp_id: 1, path: "/sfx/whoosh.wav", time: 6 }));
+  assert.equal(w.log.imports, 1, "imported once"); assert.equal(w.log.menuRuns, 1, "peak measured once");
+  assert.deepEqual(plainArr(w.comp._layers.find((l) => l.id === r2.layer.id).levels.value), [-12, -12]);
+  fails(w.call("add_sfx", { comp_id: 1, path: "/sfx/missing.wav", time: 1 }), "NOT_FOUND");
+  fails(w.call("add_sfx", { comp_id: 1, path: "/sfx/whoosh.wav", time: 1, fade_in: 0.8, fade_out: 0.8 }), "BAD_ARGS");
+});
+
+t("volume alias: a number sets both channels, in set_property and set_keyframes", () => {
+  const w = makeWorld([]), m = w.audioLayer("music.wav");
+  ok(w.call("set_property", { layer_id: m.id, path: "volume", value: -10 }));
+  assert.deepEqual(plainArr(m.levels.value), [-10, -10]);
+  ok(w.call("set_keyframes", { layer_id: m.id, path: "volume", keys: [{ t: 0, v: -48 }, { t: 1, v: 0 }] }));
+  assert.deepEqual(m.levels.keys.map((k) => plainArr(k.v)), [[-48, -48], [0, 0]]);
 });
 
 for (const [name, pass, msg] of results) console.log((pass ? "PASS" : "FAIL") + "  " + name + (pass ? "" : "\n      " + msg));
