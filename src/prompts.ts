@@ -25,7 +25,7 @@ const MOTION_GUIDE = [
   "- Address comps/layers by the numeric ids the tools return. Address properties by alias (position, scale, rotation, opacity, anchor) or match-name arrays; use list_properties to discover paths.",
   "- Every tool call is one undo step in After Effects (each step of a batch too).",
   'Recommended loop: get_project -> create_comp -> add_layer (background first) -> set_keyframes with ease_in/ease_out ("easy") -> preview_frame with several key times in one call (one tiled image) -> adjust -> render_start, then poll render_status.',
-  "Sound: find_sound_cues lists where the animation wants effects; place the user's sound files there with add_sfx (it lines up each sound's loudest moment). Keep effects below the music (about -6 to -12 dB).",
+  "Sound: find_sound_cues lists where the animation wants effects; place the user's sound files there with add_sfx (it lines up each sound's loudest moment). Keep effects below the music (about -6 to -12 dB); duck_music lowers the music under voice-over and effects.",
   "Build in few calls: batch the steps of a scene (add_layer, then set_keyframes on \"$1.id\", and so on). Prefer set_keyframes over many set_property calls. Use stagger for repeated elements. Do not assume effect names: find_effects first.",
   RUN_JSX_RULE,
 ].join("\n");

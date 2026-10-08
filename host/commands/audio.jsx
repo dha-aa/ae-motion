@@ -343,3 +343,80 @@ C.find_sound_cues = function (a) {
   }
   return { count: out.length, cues: out };
 };
+
+// ---- Ducking ----
+
+// When a layer's audio is actually audible, as [start, end] comp times: frames above a tenth of its loud level,
+// with gaps under 0.3 s bridged (pauses between words).
+function audibleSpans(l) {
+  var amp = amplitudeNull(l, false), ser = keySeries(channelSlider(amp, 3)), thr, out = [], i, on = -1, last = -1, fd = l.containingComp.frameDuration;
+  removeAmplitude(amp);
+  thr = quantile(ser.v, 0.9) * 0.1;
+  for (i = 0; i < ser.v.length; i++) {
+    if (ser.v[i] <= thr || ser.v[i] <= 0) continue;
+    if (on < 0 || ser.t[i] - last > 0.3) { if (on >= 0) out.push([on, last + fd]); on = ser.t[i]; }
+    last = ser.t[i];
+  }
+  if (on >= 0) out.push([on, last + fd]);
+  return out;
+}
+
+// Spans sorted and merged when closer than gap (so the music does not pump between close sounds).
+function mergeSpans(spans, gap) {
+  var out = [], i, s;
+  spans.sort(function (x, y) { return x[0] - y[0]; });
+  for (i = 0; i < spans.length; i++) {
+    s = spans[i];
+    if (out.length && s[0] - out[out.length - 1][1] < gap) out[out.length - 1][1] = Math.max(out[out.length - 1][1], s[1]);
+    else out.push([s[0], s[1]]);
+  }
+  return out;
+}
+
+C.duck_music = function (a) {
+  need(a, ["music_layer_id"]);
+  var music = getLayer(a.music_layer_id), c = music.containingComp, amount = has(a, "amount") ? a.amount : -10,
+    att = has(a, "attack") ? a.attack : 0.15, rel = has(a, "release") ? a.release : 0.4, mode = a.mode || "auto",
+    triggers = [], spans = [], i, l, sp, j, mk = music.property("ADBE Marker"), lv, mv, removed = 0, ex;
+  if (amount >= 0) fail("BAD_ARGS", "amount is the drop in dB and must be negative (e.g. -10)");
+  if (mode !== "auto" && mode !== "span" && mode !== "loudness") fail("BAD_ARGS", "mode must be auto, span or loudness");
+  if (!safe(function () { return music.hasAudio === true; })) fail("BAD_ARGS", "The music layer has no audio");
+  if (has(a, "under_layer_ids")) { for (i = 0; i < a.under_layer_ids.length; i++) triggers.push(getLayer(a.under_layer_ids[i])); }
+  else {
+    for (i = 1; i <= c.numLayers; i++) {
+      l = c.layer(i);
+      if (l !== music && hasAudioOn(l) && l.name.indexOf(AUDIO_NULL_PREFIX) !== 0) triggers.push(l);
+    }
+  }
+  if (!triggers.length) fail("BAD_ARGS", "Nothing to duck under: no other audio layers", "Add voice-over or sound effects first, or pass under_layer_ids");
+  for (i = 0; i < triggers.length; i++) {
+    l = triggers[i];
+    if (l.containingComp !== c) fail("BAD_ARGS", "under_layer_ids must be in the music's comp");
+    if (mode === "loudness" || (mode === "auto" && l.outPoint - l.inPoint > 2)) {
+      sp = audibleSpans(l); // long layers (voice-over): only where they are actually heard
+      for (j = 0; j < sp.length; j++) spans.push(sp[j]);
+    } else spans.push([Math.max(0, l.inPoint), Math.min(c.duration, l.outPoint)]);
+  }
+  spans = mergeSpans(spans, att + rel);
+  // the ducks are markers on the music, read by one expression: existing volume keys keep working, and a duck is
+  // moved or removed by editing its marker
+  for (i = mk.numKeys; i >= 1; i--) { if (mk.keyValue(i).comment === "duck") { mk.removeKey(i); removed++; } }
+  for (i = 0; i < spans.length; i++) {
+    mv = new MarkerValue("duck");
+    mv.duration = Math.max(c.frameDuration, spans[i][1] - spans[i][0]);
+    mk.setValueAtTime(spans[i][0], mv);
+  }
+  ex = "// ae-motion duck\n" +
+    "var m = thisLayer.marker, d = " + amount + ", att = " + att + ", rel = " + rel + ", g = 0, i, k, s, e, w;\n" +
+    "for (i = 1; i <= m.numKeys; i++) {\n" +
+    "  k = m.key(i); if (k.comment != \"duck\") continue;\n" +
+    "  s = k.time; e = k.time + k.duration;\n" +
+    "  if (time < s - att || time > e + rel) continue;\n" +
+    "  w = time < s ? (time - s + att) / att : (time <= e ? 1 : 1 - (time - e) / rel);\n" +
+    "  g = Math.min(g, ease(w, 0, 1, 0, d));\n" +
+    "}\n" +
+    "value + [g, g];";
+  lv = music.property("ADBE Audio Group").property("ADBE Audio Levels");
+  lv.expression = ex;
+  return { music_layer: layerRef(music), ducks: spans.length, spans: spans.slice(0, 100), amount: amount, replaced: removed, valid: !lv.expressionError, error: lv.expressionError || undefined };
+};

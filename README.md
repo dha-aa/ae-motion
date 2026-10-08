@@ -123,7 +123,7 @@ If a call fails, the error includes a code and a hint. See [Troubleshooting](#tr
 
 ## What it can do
 
-72 tools in twelve groups. The full reference, with behavior notes, is in [docs/tools.md](docs/tools.md).
+73 tools in twelve groups. The full reference, with behavior notes, is in [docs/tools.md](docs/tools.md).
 
 | Group | Tools |
 |---|---|
@@ -137,7 +137,7 @@ If a call fails, the error includes a code and a hint. See [Troubleshooting](#tr
 | 3D and camera | `get_camera`, `set_camera`, `camera_move`, `camera_shake`, `camera_rig`, `set_3d`, `set_light`, `set_3d_view` |
 | Preview and render | `preview_frame`, `render_start`, `render_status`, `render_cancel` |
 | Escape hatch | `run_jsx` (disabled unless `AE_MCP_ALLOW_JSX=1`) |
-| Audio | `beat_markers`, `audio_react`, `find_sound_cues`, `add_sfx` |
+| Audio | `beat_markers`, `audio_react`, `find_sound_cues`, `add_sfx`, `duck_music` |
 | Server | `check_for_updates`, `batch` (many steps in one call), `load_tools` (only with `AE_MCP_TOOLSETS`) |
 
 Also: resources `ae://project` and `ae://selection`, and the prompt `motion-guide` (conventions and a recommended build loop).
