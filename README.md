@@ -1,15 +1,10 @@
 # AE Motion MCP
 
-
-
-
-
-
 An [MCP](https://modelcontextprotocol.io) server that lets Claude (or any MCP client) build, animate, preview and render motion graphics in a live Adobe After Effects project.
 
 Ask for "a 5 second lower third with an eased slide-in", and the model creates the comp, adds layers, sets keyframes, checks a preview frame and kicks off a render, all in the project you have open.
 
-https://github.com/user-attachments/assets/95b0ac02-32f9-4f46-922e-a25be7e6f431
+https://github.com/user-attachments/assets/8d46df59-cd4c-42e1-ab7e-8ba83552bb27
 
 
 ```
