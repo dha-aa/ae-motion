@@ -60,6 +60,7 @@ function startServer(extraEnv: Record<string, string> = {}) {
   });
   let buf = "";
   const waiters = new Map<number, (reply: RpcReply) => void>();
+  const notifications: string[] = []; // methods of server notifications, in order
   p.stdout.on("data", (d) => {
     buf += d;
     let i;
@@ -70,6 +71,7 @@ function startServer(extraEnv: Record<string, string> = {}) {
       try {
         const j = JSON.parse(line);
         if (j.id !== undefined && waiters.has(j.id)) { waiters.get(j.id)!(j); waiters.delete(j.id); }
+        else if (j.id === undefined && j.method) notifications.push(j.method);
       } catch {}
     }
   });
@@ -86,7 +88,7 @@ function startServer(extraEnv: Record<string, string> = {}) {
     await call("initialize", { protocolVersion: "2024-11-05", capabilities: {}, clientInfo: { name: "t", version: "0" } });
     p.stdin.write(JSON.stringify({ jsonrpc: "2.0", method: "notifications/initialized" }) + "\n");
   };
-  return { p, call, exited, init };
+  return { p, call, exited, init, notifications };
 }
 
 const alive = (pid: number): boolean => { try { process.kill(pid, 0); return true; } catch { return false; } };
@@ -274,6 +276,36 @@ const results: [name: string, pass: boolean][] = [];
   s.p.stdin.end();
   await Promise.race([s.exited, sleep(3000)]);
   s.p.kill();
+}
+
+// Phase I: AE_MCP_TOOLSETS leaves groups out; load_tools adds them during the session.
+{
+  const s = startServer({ AE_MCP_TOOLSETS: "core" });
+  const initReply = await s.call("initialize", { protocolVersion: "2024-11-05", capabilities: {}, clientInfo: { name: "t", version: "0" } });
+  s.p.stdin.write(JSON.stringify({ jsonrpc: "2.0", method: "notifications/initialized" }) + "\n");
+  const listNames = async (srv: { call: typeof s.call }): Promise<string[]> => (((await srv.call("tools/list", {})).result as Json | undefined)?.tools ?? []).map((t: Json) => t.name);
+  const names = (): Promise<string[]> => listNames(s);
+  const before = await names();
+  results.push(["I: a partial toolset lists load_tools and not the other groups' tools", before.includes("load_tools") && before.includes("batch") && before.includes("add_layer") && !before.includes("camera_move") && /load_tools/.test((initReply.result as Json | undefined)?.instructions ?? "")]);
+
+  const r = await s.call("tools/call", { name: "load_tools", arguments: { groups: ["scene3d"] } });
+  let body: Json = {};
+  try { body = JSON.parse(textOf(r)); } catch {}
+  await sleep(200);
+  const after = await names();
+  results.push(["I: load_tools registers the group, reports its tools and sends tools/list_changed", body.loaded?.[0] === "scene3d" && body.tools?.includes("camera_move") && after.includes("camera_move") && s.notifications.includes("notifications/tools/list_changed")]);
+
+  calls.length = 0;
+  const viaBatch = await s.call("tools/call", { name: "batch", arguments: { steps: [{ tool: "set_light", args: { layer_id: 3, intensity: 50 } }] } });
+  const again = JSON.parse(textOf(await s.call("tools/call", { name: "load_tools", arguments: { groups: ["scene3d"] } })));
+  results.push(["I: loaded tools run through batch; loading a group twice adds nothing", viaBatch.result?.isError !== true && calls.join(",") === "set_light" && again.loaded.length === 0]);
+
+  const all = startServer();
+  await all.init();
+  const allNames = await listNames(all);
+  results.push(["I: with every group loaded there is no load_tools", !allNames.includes("load_tools") && allNames.includes("camera_move")]);
+
+  for (const x of [s, all]) { x.p.stdin.end(); await Promise.race([x.exited, sleep(3000)]); x.p.kill(); }
 }
 
 // Phase G: update check against a fake GitHub tags API.

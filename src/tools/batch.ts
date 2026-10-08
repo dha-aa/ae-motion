@@ -52,7 +52,7 @@ export function registerBatchTool(r: ToolRegistry): void {
         // the error, plus how far the batch got (earlier steps are not undone)
         const fail = (code: ErrorCode, message: string, hint: string): CallToolResult =>
           json({ error: { code, message: `Step ${step} (${tool}): ${message}`, hint }, steps: i, ...(i && a.results !== "none" ? { results: out() } : {}) }, true);
-        if (!spec || NOT_IN_BATCH.has(tool)) return fail("BAD_ARGS", spec ? "not allowed in batch" : "unknown or unavailable tool", "Use the tool directly, outside batch");
+        if (!spec || NOT_IN_BATCH.has(tool)) return fail("BAD_ARGS", spec ? "not allowed in batch" : "unknown or unavailable tool", spec ? "Use the tool directly, outside batch" : "Check the name; if its group is not loaded, call load_tools first");
         let resolved: unknown;
         try {
           resolved = resolveRefs(args, results, step);

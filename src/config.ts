@@ -52,15 +52,18 @@ export function aerenderOverride(): string | undefined {
 /** Tool groups (src/tools/<group>.ts). */
 export const TOOLSETS = ["inspect", "project", "layers", "timeline", "masks", "animate", "scene3d", "design", "output", "scripting", "meta"] as const;
 export type Toolset = (typeof TOOLSETS)[number];
+/** Groups that are always registered, whatever AE_MCP_TOOLSETS says. */
+export const ALWAYS_ON: readonly Toolset[] = ["inspect", "meta"];
 
 /**
- * Which tool groups to register (AE_MCP_TOOLSETS, comma separated; default: all). Fewer tools means a smaller tool
- * list in every request. inspect and meta are always on. "core" = inspect, project, layers, animate, output.
+ * Which tool groups to register at startup (AE_MCP_TOOLSETS, comma separated; default: all). Fewer tools means a
+ * smaller tool list in every request; when some are left out, load_tools adds them during the session. inspect and
+ * meta are always on. "core" = inspect, project, layers, animate, output.
  */
 export function enabledToolsets(): Set<Toolset> {
   const env = process.env.AE_MCP_TOOLSETS?.trim();
   if (!env || env === "all") return new Set(TOOLSETS);
-  const out = new Set<Toolset>(["inspect", "meta"]);
+  const out = new Set<Toolset>(ALWAYS_ON);
   for (const raw of env.split(",").map((s) => s.trim().toLowerCase()).filter(Boolean)) {
     if (raw === "core") for (const g of ["project", "layers", "animate", "output"] as const) out.add(g);
     else if ((TOOLSETS as readonly string[]).includes(raw)) out.add(raw as Toolset);
