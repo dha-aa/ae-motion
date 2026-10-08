@@ -47,7 +47,7 @@ class Prop {
   get canSetExpression() { return true; }
   get canVaryOverTime() { return true; }
   get expressionEnabled() { return this.expression !== ""; }
-  get expressionError() { return ""; }
+  get expressionError() { return /^\/\/ ae-motion duck/.test(this.expression) && !/value \+ \[g, g\];$/.test(this.expression) ? "bad" : ""; }
   get value() { return this._v; }
   get numKeys() { return this.keys.length; }
   keyTime(i) { return this.keys[i - 1].t; }
@@ -111,7 +111,8 @@ function makeWorld(amplitude, { menu = true } = {}) {
       log.audibleDuringRun = comp._layers.filter((l) => l.hasAudio && l.audioEnabled).map((l) => l.name);
       log.workAreaDuringRun = [comp.workAreaStart, comp.workAreaDuration];
       // the slider keys After Effects writes: one per frame of the work area, for left, right and both channels
-      const slider = () => { const p = new Prop(0); amplitude.forEach((v, k) => { const t = k / FPS; if (t >= comp.workAreaStart - 1e-9 && t < comp.workAreaStart + comp.workAreaDuration - 1e-9) p.keys.push({ t, v }); }); return p; };
+      const series = typeof amplitude === "function" ? amplitude(log.audibleDuringRun[0]) : amplitude;
+      const slider = () => { const p = new Prop(0); series.forEach((v, k) => { const t = k / FPS; if (t >= comp.workAreaStart - 1e-9 && t < comp.workAreaStart + comp.workAreaDuration - 1e-9) p.keys.push({ t, v }); }); return p; };
       const fx = [1, 2, 3].map(() => { const s = slider(); return { property: () => s }; });
       // a null's source is a solid item in the project, which outlives the layer unless it is removed too
       const src = { name: "Audio Amplitude", usedIn: [], remove() { log.sourcesRemoved++; } };
@@ -273,6 +274,31 @@ t("volume alias: a number sets both channels, in set_property and set_keyframes"
   assert.deepEqual(plainArr(m.levels.value), [-10, -10]);
   ok(w.call("set_keyframes", { layer_id: m.id, path: "volume", keys: [{ t: 0, v: -48 }, { t: 1, v: 0 }] }));
   assert.deepEqual(m.levels.keys.map((k) => plainArr(k.v)), [[-48, -48], [0, 0]]);
+});
+
+t("duck_music: under a voice-over only where it is heard, under short effects for their length; markers + one expression", () => {
+  // voice-over 1-7 s that talks 1-3 s and 5-7 s (a pause in between); a 0.5 s effect at 3.6 s; music under both
+  const vo = Array.from({ length: 240 }, (_, k) => ((k >= 30 && k < 90) || (k >= 150 && k < 210) ? 20 + (k % 3) : 0.2));
+  const w = makeWorld((name) => (name === "voice.wav" ? vo : [])), music = w.audioLayer("music.wav"), voice = w.audioLayer("voice.wav"), sfx = w.audioLayer("SFX: pop.wav");
+  voice.inPoint = 0; voice.outPoint = 8; sfx.inPoint = 3.6; sfx.outPoint = 4.1;
+  music.levels.keys = [{ t: 0, v: [-48, -48] }, { t: 1, v: [0, 0] }]; // an existing fade-in
+  const r = ok(w.call("duck_music", { music_layer_id: music.id, amount: -12 }));
+  const spans = r.spans.map(([a, b]) => [+a.toFixed(3), +b.toFixed(3)]);
+  assert.deepEqual(spans, [[1, 3], [3.6, 4.1], [5, 7]], "voice ducked only while talking; the effect for its length");
+  assert.equal(r.valid, true);
+  assert.deepEqual(music.markers.keys.map((k) => [+k.t.toFixed(3), k.v.comment, +k.v.duration.toFixed(3)]), [[1, "duck", 2], [3.6, "duck", 0.5], [5, "duck", 2]]);
+  const ex = music.levels.expression;
+  assert.match(ex, /^\/\/ ae-motion duck\n/); assert.match(ex, /d = -12, att = 0\.15, rel = 0\.4/);
+  assert.equal(music.levels.keys.length, 2, "the fade-in keys are kept");
+  // re-run with span mode: the voice counts as a whole, close ducks merge, old duck markers are replaced but others kept
+  music.markers.setValueAtTime(7.5, Object.assign(Object.create(null), { comment: "outro" }));
+  const r2 = ok(w.call("duck_music", { music_layer_id: music.id, mode: "span" }));
+  assert.deepEqual(r2.spans.map(([a, b]) => [+a.toFixed(3), +b.toFixed(3)]), [[0, 8]]);
+  assert.equal(r2.replaced, 3);
+  assert.deepEqual(music.markers.keys.map((k) => k.v.comment), ["duck", "outro"]);
+  fails(w.call("duck_music", { music_layer_id: music.id, amount: 6 }), "BAD_ARGS");
+  const w2 = makeWorld([]), lone = w2.audioLayer("music.wav");
+  fails(w2.call("duck_music", { music_layer_id: lone.id }), "BAD_ARGS");
 });
 
 for (const [name, pass, msg] of results) console.log((pass ? "PASS" : "FAIL") + "  " + name + (pass ? "" : "\n      " + msg));

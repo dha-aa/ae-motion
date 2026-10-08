@@ -44,4 +44,14 @@ export function registerAudioTools(r: ToolRegistry): void {
     },
     { paths: ["path"], destructive: false },
   );
+
+  r.bridged(
+    "duck_music",
+    'Lower the music under voice-over and sound effects (default: every other audio layer): by amount dB (default -10), easing down over attack (0.15 s) before each sound and back up over release (0.4 s). Long layers duck only where they are actually heard (mode auto; span = whole layer, loudness = always measure). Ducks are "duck" markers on the music read by one expression, so its volume keys keep working; re-running replaces them.',
+    {
+      music_layer_id: id("Music layer"), under_layer_ids: LayerIds.optional(), amount: z.number().max(0).optional(),
+      attack: z.number().min(0).optional(), release: z.number().min(0).optional(), mode: z.enum(["auto", "span", "loudness"]).optional(),
+    },
+    { idempotent: true },
+  );
 }

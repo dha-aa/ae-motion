@@ -2,6 +2,11 @@
 
 All notable changes. Versions follow [semantic versioning](https://semver.org); each release is a git tag `vX.Y.Z`, which is what the update check looks for.
 
+## Unreleased
+
+### Added
+- `duck_music`: lower the music under voice-over and sound effects, with eased attack and release; long layers duck only where they are heard. Ducks are "duck" markers on the music read by one expression, so its own volume keys keep working.
+
 ## 2.6.0 — 2026-10-09
 
 ### Added
