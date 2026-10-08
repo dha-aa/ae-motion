@@ -103,11 +103,14 @@ claude mcp add ae-motion -- node /absolute/path/to/ae-motion/dist/index.js
   "mcpServers": {
     "ae-motion": {
       "command": "node",
-      "args": ["/absolute/path/to/ae-motion/dist/index.js"]
+      "args": ["/absolute/path/to/ae-motion/dist/index.js"],
+      "env": { "AE_MCP_TOOLSETS": "core" }
     }
   }
 }
 ```
+
+`AE_MCP_TOOLSETS: core` starts Claude Desktop with the core tools only (about 7.5k tokens of tool definitions instead of 16k on every message); the model adds 3D, timeline, masks, design or scripting with `load_tools` when it needs them. Leave it out to load everything. Claude Code does not need it: it loads MCP tools only when they are used.
 
 **Other clients**: any client that can launch a stdio MCP server works with `node /absolute/path/to/ae-motion/dist/index.js`.
 
@@ -137,7 +140,7 @@ If a call fails, the error includes a code and a hint. See [Troubleshooting](#tr
 | 3D and camera | `get_camera`, `set_camera`, `camera_move`, `camera_shake`, `camera_rig`, `set_3d`, `set_light`, `set_3d_view` |
 | Preview and render | `preview_frame`, `render_start`, `render_status`, `render_cancel` |
 | Escape hatch | `run_jsx` (disabled unless `AE_MCP_ALLOW_JSX=1`) |
-| Server | `check_for_updates`, `batch` (many steps in one call) |
+| Server | `check_for_updates`, `batch` (many steps in one call), `load_tools` (only with `AE_MCP_TOOLSETS`) |
 
 Also: resources `ae://project` and `ae://selection`, and the prompt `motion-guide` (conventions and a recommended build loop).
 
@@ -153,7 +156,7 @@ All settings are environment variables on the MCP server process. The one except
 |---|---|
 | `AE_MCP_ALLOWED_DIRS` | Folders (separated by the OS path delimiter, `:` or `;`) that tools may read from and write to. Default: your home folder. The temp folder is always allowed. |
 | `AE_MCP_ALLOW_JSX` | Set to `1` to enable `run_jsx`. |
-| `AE_MCP_TOOLSETS` | Load only some tool groups, to send the model fewer tool definitions (cheaper requests): a comma list of `project`, `layers`, `timeline`, `masks`, `animate`, `scene3d`, `design`, `output`, `scripting`, or `core` (= project, layers, animate, output: 38 tools, about half the tokens of all 67). `inspect`, `check_for_updates` and `batch` are always on. Default: all. |
+| `AE_MCP_TOOLSETS` | Load only some tool groups, to send the model fewer tool definitions (cheaper requests): a comma list of `project`, `layers`, `timeline`, `masks`, `animate`, `scene3d`, `design`, `output`, `scripting`, or `core` (= project, layers, animate, output: about 7.5k tokens of definitions instead of 16k). `inspect`, `check_for_updates` and `batch` are always on, and `load_tools` adds the other groups during a session (the client is told to refresh its tool list; the new tools also run through `batch`). Default: all. |
 | `AE_AERENDER` | Full path to `aerender` if auto-detection fails. |
 | `AE_MCP_BRIDGE_FILE` | Override the bridge file (default `~/.ae-motion-mcp/bridge.json`). |
 | `AE_MCP_UPDATE_CHECK` | Set to `0` to turn off the daily check for new releases (see [Updates](#updates)). |
@@ -192,7 +195,7 @@ Panel logs are in `~/Library/Logs/CSXS/` on macOS and `%TEMP%` (`csxs*.log`) on 
 
 You find out about new versions in three places:
 
-- **The After Effects panel** shows the installed version and, when a newer release exists, a line like `v2.1.0 available`.
+- **The After Effects panel** shows the installed version and, when a newer release exists, a line like `v2.1.0 available` with an **Update to v2.1.0** button.
 - **Your AI client:** `get_project` (usually the first call) includes an `update` note with the new version and the command to run, so the model can tell you. You can also ask "check for updates" (`check_for_updates`).
 - **GitHub:** releases are git tags `vX.Y.Z`; what changed is in [CHANGELOG.md](CHANGELOG.md).
 
@@ -200,7 +203,9 @@ How the check works: the MCP server asks GitHub for the repository's version tag
 
 ## Updating and uninstalling
 
-**Update:** in the repo folder, `git pull`, then run the installer again (`bash scripts/install.sh`, or `./scripts/install.ps1` on Windows; it rebuilds and replaces the installed panel). Reopen the AE Motion MCP panel (or restart After Effects) and restart the MCP server from your client. The panel's Version line shows the new version.
+**Update from the panel:** click **Update to vX.Y.Z** (or **Reinstall**) in the AE Motion MCP panel, then click again to confirm. It runs `git pull` and the installer in your ae-motion folder, shows the output, and restarts the panel with the new version; then restart your AI client so it uses the new server. The panel finds the folder and your `git` / `node` / `npm` through `install.json`, which the installer writes, so a panel installed before this button existed needs one manual update first. If `git pull` fails (local changes, a branch without an upstream), update by hand.
+
+**Update by hand:** in the repo folder, `git pull`, then run the installer again (`bash scripts/install.sh`, or `./scripts/install.ps1` on Windows; it rebuilds and replaces the installed panel). Reopen the AE Motion MCP panel (or restart After Effects) and restart the MCP server from your client. The panel's Version line shows the new version.
 
 **Uninstall:**
 

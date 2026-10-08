@@ -45,7 +45,7 @@ export function isNewer(a: string, b: string): boolean {
 }
 
 export function updateCommand(): string {
-  return `cd "${REPO_ROOT}" && git pull && bash scripts/install.sh   (Windows: git pull; ./scripts/install.ps1), then reopen the After Effects panel and restart your MCP client`;
+  return `click Update in the After Effects panel (or: cd "${REPO_ROOT}" && git pull && bash scripts/install.sh; Windows: git pull; ./scripts/install.ps1, then reopen the panel), then restart your MCP client`;
 }
 
 function readCache(): Cache | null {

@@ -1,6 +1,6 @@
 # Installs the AE Motion MCP panel (Windows) and builds the MCP server.
 #   1. npm install; npm run build   (dist\ and panel\host\host.jsx)
-#   2. copy panel\ into the CEP extensions folder
+#   2. copy panel\ into the CEP extensions folder, plus install.json (repo path, PATH) for the panel's Update button
 #   3. allow unsigned CEP panels (PlayerDebugMode)
 $ErrorActionPreference = "Stop"
 $here = Split-Path -Parent $PSScriptRoot
@@ -20,6 +20,8 @@ try {
 if (Test-Path $dest) { Remove-Item -Recurse -Force $dest }
 New-Item -ItemType Directory -Force -Path $dest | Out-Null
 Copy-Item -Recurse -Force (Join-Path $here "panel\*") $dest
+# For the panel's Update button: where the repo is, and a PATH that finds git, node and npm.
+@{ repo = $here; path = $env:PATH } | ConvertTo-Json -Compress | Set-Content -Encoding UTF8 (Join-Path $dest "install.json")
 
 # Allow unsigned CEP panels
 foreach ($v in 9, 10, 11, 12) {

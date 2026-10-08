@@ -136,6 +136,8 @@ export interface BridgedSpec {
 export class ToolRegistry {
   /** Every bridged tool registered so far, for batch. */
   readonly bridgedTools = new Map<string, BridgedSpec>();
+  /** Every tool registered so far, in order (load_tools reports what it added). */
+  readonly names: string[] = [];
 
   constructor(
     private readonly server: McpServer,
@@ -150,6 +152,7 @@ export class ToolRegistry {
         return errorResult(toErrorBody(e));
       }
     };
+    this.names.push(name);
     const config = { title: opts.title ?? titleFromName(name), description, inputSchema: deepStrict(z.object(shape)), annotations: annotationsFor(opts) };
     // The SDK's generic callback type does not line up with zod's inferred output type; the shape is the same.
     this.server.registerTool(name, config as any, handler as any);
