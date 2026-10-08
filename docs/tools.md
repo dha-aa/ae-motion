@@ -1,6 +1,6 @@
 # Tool reference
 
-68 tools, grouped the same way as the source (`src/tools/<group>.ts` on the server, `host/commands/<group>.jsx` in After Effects). Every tool's full argument schema and description is served by the MCP `tools/list` call, so your client always sees the current details. This page gives the overview and the behavior you can't read off a schema.
+70 tools, grouped the same way as the source (`src/tools/<group>.ts` on the server, `host/commands/<group>.jsx` in After Effects). Every tool's full argument schema and description is served by the MCP `tools/list` call, so your client always sees the current details. This page gives the overview and the behavior you can't read off a schema.
 
 ## Conventions
 
@@ -45,6 +45,8 @@
 | | `align_to_markers` | Start layers on consecutive comp or layer markers, optionally trimming each at the next (cut to a beat) |
 | | `trim_comp` | Trim the comp to its work area or to its layers |
 | | `set_playhead` | Move the current-time indicator |
+| | `beat_markers` | Mark an audio layer's beats (comp markers, or the layer's with `on: "layer"`; comment `"beat"`). Detected from loudness through After Effects' Convert Audio to Keyframes (`sensitivity` 0-1, `min_gap`), or a `bpm` grid from `offset`; `every: 4` keeps one per bar; earlier `"beat"` markers in the range are replaced. Returns the times and the tempo |
+| | `audio_react` | Drive a property of many layers with an audio layer's loudness (`from` at the track's quiet level, `to` at its peaks, `smoothing` frames, `channel`): one expression per layer, reading a shared `Audio Amplitude: <layer>` null (kept and reused; do not rename it) |
 | | `add_marker`, `update_marker`, `list_markers`, `delete_marker` | Layer and comp markers with comment, duration, chapter, url, label; edit or move one in place |
 | Masks and mattes | `add_mask` | Add a rect, ellipse, polygon or bezier-path mask with mode, feather, opacity, expansion |
 | | `set_track_matte` | Use a layer as an alpha or luma track matte, or remove the matte |
@@ -128,7 +130,8 @@ The timeline tools work like the editing commands in the After Effects timeline.
 - **Cut:** `split_layer` splits one or more layers at a time, like Cmd/Ctrl+Shift+D. The first part stays on the original layer; a copy above it holds the second part.
 - **Remove a section:** `delete_range` takes out `start` to `end`. Layers inside the range are deleted, layers crossing an edge are trimmed, and layers spanning the range are split with the middle removed. With `ripple` (the default) later material moves earlier to close the gap; `ripple: false` leaves the gap. `shorten_comp` also shortens the comp when rippling, and `move_markers` deletes comp markers inside the range and pulls later ones in.
 - **Make room:** `insert_time` is the reverse: it opens a gap of `duration` at `at`, moving later layers and splitting layers that span the point, lengthens the comp (`extend_comp`, default on) and with `move_markers` moves later comp markers too.
-- **Cut to a beat:** put markers on the beats (`add_marker`, or use an audio layer's markers with `marker_layer_id`), then `align_to_markers` starts layer *i* on marker *i*; `trim_to_next` ends each layer at the following marker.
+- **Cut to a beat:** `beat_markers` puts markers on the music's beats (or place them with `add_marker`, or use an audio layer's markers with `marker_layer_id`), then `align_to_markers` starts layer *i* on marker *i*; `trim_to_next` ends each layer at the following marker. Detection works best on music with clear drums; for soft or ambient tracks pass the `bpm`.
+- **Move to the music:** `audio_react` makes layers pulse, bounce or glow with the loudness, e.g. `path: "scale", from: [100, 100], to: [125, 125]`.
 - **Swap shots:** `replace_source` changes what a layer shows without touching its timing, keyframes or effects.
 - **Tidy up:** `trim_comp` with `to: work_area` (like Composition > Trim Comp to Work Area) or `to: layers` moves everything so the range starts at 0 and sets the duration to it.
 - **Arrange:** `shift_layers` moves layers in time, `sequence_layers` places them end to end (with optional `overlap`), and `reorder_layer` changes stacking order.

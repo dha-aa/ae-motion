@@ -2,6 +2,12 @@
 
 All notable changes. Versions follow [semantic versioning](https://semver.org); each release is a git tag `vX.Y.Z`, which is what the update check looks for.
 
+## 2.5.0 — 2026-10-09
+
+### Added
+- `beat_markers`: put markers on an audio layer's beats, detected from loudness (After Effects' Convert Audio to Keyframes) or from a BPM grid; returns the beat times and the tempo. With `align_to_markers` this cuts layers to the music.
+- `audio_react`: drive any property of many layers with the music's loudness (pulse, bounce, glow), through one shared amplitude null.
+
 ## 2.4.1 — 2026-10-08
 
 ### Fixed

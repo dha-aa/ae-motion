@@ -14,10 +14,10 @@ import { Ajv2020 } from "ajv/dist/2020.js";
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 
-const EXPECTED_TOOLS = 68; // update when adding or removing a tool
+const EXPECTED_TOOLS = 70; // update when adding or removing a tool
 // Tool definitions are sent to the model on every request, so their size is a cost. Raise this only on purpose
-// (measured at about 60k chars for 66 tools).
-const TOOLS_LIST_BUDGET = 63_000;
+// (raised to 66k for the audio tools in 2.5.0: about 64.5k chars for 70 tools).
+const TOOLS_LIST_BUDGET = 66_000;
 const SERVER_ONLY_TOOLS = new Set(["render_start", "render_status", "render_cancel", "check_for_updates", "batch", "load_tools"]); // implemented in TypeScript, no host command
 const HOST_ONLY_COMMANDS = new Set(["get_selection", "prepare_render"]); // used by a resource / render_start, not tools
 

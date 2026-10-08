@@ -28,15 +28,16 @@ Tests, `scripts/` and the skill driver are TypeScript that Node (22.18+) runs di
 4. `mock-shapes.test.ts` — path (shape) values for masks/shape layers, ellipse vertex order, comp motion blur.
 5. `mock-design.test.ts` — bounds/align/distribute maths, anchors, switches, solids, precompose leave-attributes, style/shape validation.
 6. `mock-keyframes.test.ts` — edit_keyframes, copy_animation, stagger fidelity, separate dimensions, auto-orient (models the ease/bezier and roving quirks).
-7. `aerender-discovery.test.ts` — `findAerender` (`dist/render/aerender.js`) against fake install layouts.
-8. `preview-image.test.ts` — preview PNG shrinking and contact sheets (`src/render/image.ts`).
-9. `server.test.ts` — the built server over stdio with a fake bridge and fake `aerender`: render lifecycle, preview wait, path sandboxing, run_jsx gate.
+7. `mock-audio.test.ts` — beat_markers / audio_react against a fake "Convert Audio to Keyframes" fed by synthesized drum tracks with known beats (detection within a frame, tempo, muting and work-area restore).
+8. `aerender-discovery.test.ts` — `findAerender` (`dist/render/aerender.js`) against fake install layouts.
+9. `preview-image.test.ts` — preview PNG shrinking and contact sheets (`src/render/image.ts`).
+10. `server.test.ts` — the built server over stdio with a fake bridge and fake `aerender`: render lifecycle, preview wait, path sandboxing, run_jsx gate.
 
 ## Layout
 
 - `src/index.ts` entry (stdio, shutdown) · `src/server.ts` `createServer(bridge)` · `src/config.ts` every env var + version · `src/errors.ts` `ErrorCode`, `AeToolError` · `src/bridge.ts` `Bridge` + `HttpBridge` · `src/sandbox.ts` · `src/resources.ts` · `src/prompts.ts`
 - `src/tools/registry.ts` — `ToolRegistry.bridged(name, desc, shape, { paths?, readOnly?, destructive?, idempotent?, openWorld?, tooLargeHint? })` (validate, sandbox `paths`, forward to the host command of the same name) and `ToolRegistry.tool(...)` for server-side logic. It makes every input schema strict at all depths (unknown keys rejected), adds a title + all four MCP annotations (non-read-only tools default to destructive), returns compact JSON and replaces results over `CHARACTER_LIMIT` (25k chars) with an error. `src/tools/schemas.ts` shared zod schemas.
-- `src/tools/<group>.ts` ↔ `host/commands/<group>.jsx`: inspect, project, layers, timeline (+markers), masks, animate (+`text.jsx`), scene3d, design (align, anchors, add_shape, layer styles, text to shapes), output (preview/render), scripting (run_jsx).
+- `src/tools/<group>.ts` ↔ `host/commands/<group>.jsx`: inspect, project, layers, timeline (+markers, + `audio.jsx`: beat_markers, audio_react), masks, animate (+`text.jsx`), scene3d, design (align, anchors, add_shape, layer styles, text to shapes), output (preview/render), scripting (run_jsx).
 - `src/render/aerender.ts` (find aerender / written file), `src/render/manager.ts` (`RenderManager`), `src/render/image.ts` (shrink previews, contact sheets).
 - `host/*.ts` (pilot: `core/layout.ts`, `commands/design.ts`) are TypeScript compiled by `tsc -p tsconfig.host.json` to `build/host/` against AE 22.0 + ES3 lib types (`types-for-adobe`); the rest of `host/` is `.jsx`. Script mode: all top-level names are global and shared (type names merge with AE/ScriptUI globals, so prefix them); `.jsx` helpers used from `.ts` get JSDoc types (`fail` returns never). Details in `docs/development.md`.
 - `host/` — ExtendScript sources: `json.jsx` polyfill, `core/` helpers, `commands/`, `dispatch.jsx`. `scripts/build-host.ts` wraps them in one closure (`var AEM = (function () { var C = {}; ... })()`) and writes `panel/host/host.jsx`, which is **generated and gitignored — never edit it**. New host files go in `MODULES` in the build script; top-level names must be unique across `host/` (the build checks).
@@ -80,6 +81,7 @@ Tests, `scripts/` and the skill driver are TypeScript that Node (22.18+) runs di
 - `moveTo()` on a property invalidates that object, and menu commands can invalidate held references: read first, re-fetch after.
 - Menu commands act on the selection in the viewer (`selectOnly`); names are localized, so `findMenuCommandId(name) || id` (Create Shapes from Text 3781, Layer Styles 9000-9008: drop shadow, inner shadow, outer glow, inner glow, bevel, satin, color overlay, gradient overlay, stroke).
 - Gradient colors can't be set by script. First stroke dash lists all 3 pairs (unused ones don't render, can't be removed). Leave-attributes precompose needs one layer with a source.
+- Convert Audio to Keyframes (`amplitudeNull`, `host/commands/audio.jsx`) analyses the comp's audible audio in the work area, so it runs with only the chosen layer audible and the work area set to it, then restores both; it adds a null with Left/Right/Both Channels sliders keyed per frame (found by index: names are localized). Verified live in AE 26.3 (120 BPM test track: 16/16 beats within half a frame, tempo 120).
 - Mock tests: arrays created outside the vm context fail the host's `instanceof Array`; build them in the context (`inner()` in mock-design).
 - Setting a key's temporal ease switches it to bezier: restore ease first, interpolation type last (`restoreKey`).
 - Roving keys re-time whenever other keys change; `replaceKeys` un-roves first and re-applies roving at the end, or old keys can't be found and get duplicated. Copy/move keys with `snapKey`/`restoreKey`/`replaceKeys` (`host/core/keys.jsx`) so no key setting is lost.

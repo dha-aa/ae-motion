@@ -38,6 +38,7 @@ export const MODULES = [
   "commands/project.jsx",
   "commands/layers.jsx",
   "commands/timeline.jsx",
+  "commands/audio.jsx",
   "commands/masks.jsx",
   "commands/animate.jsx",
   "commands/text.jsx",
