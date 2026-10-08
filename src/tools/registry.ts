@@ -127,7 +127,16 @@ function capSize(result: CallToolResult, hint?: string): CallToolResult {
   });
 }
 
+/** What batch needs to run a bridged tool itself: its strict schema and path arguments. */
+export interface BridgedSpec {
+  schema: z.ZodTypeAny;
+  paths: string[];
+}
+
 export class ToolRegistry {
+  /** Every bridged tool registered so far, for batch. */
+  readonly bridgedTools = new Map<string, BridgedSpec>();
+
   constructor(
     private readonly server: McpServer,
     readonly deps: ToolDeps,
@@ -149,6 +158,7 @@ export class ToolRegistry {
   bridged<S extends z.ZodRawShape>(name: string, description: string, shape: S, opts: BridgedOptions = {}): void {
     const paths = opts.paths ?? [];
     for (const k of paths) if (!(k in shape)) throw new Error(`bridged("${name}"): path argument "${k}" is not in the schema`);
+    this.bridgedTools.set(name, { schema: deepStrict(z.object(shape)), paths });
     this.tool(
       name,
       description,

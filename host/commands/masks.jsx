@@ -25,7 +25,7 @@ C.set_track_matte = function (a) {
   if (!tm) fail("BAD_ARGS", "type must be alpha, alpha_inverted, luma or luma_inverted");
   if (!has(a, "matte_layer_id")) {
     l.trackMatteType = TrackMatteType.NO_TRACK_MATTE;
-    return { layer: layerInfo(l), matte_layer_id: null };
+    return { layer: layerRef(l), matte_layer_id: null };
   }
   matte = getLayer(a.matte_layer_id);
   if (matte.containingComp.id !== comp.id) fail("BAD_ARGS", "Matte layer is in a different comp");
@@ -37,5 +37,5 @@ C.set_track_matte = function (a) {
     if (l.index === 1 || comp.layer(l.index - 1).id !== matte.id) fail("UNSUPPORTED", "This After Effects version needs the matte layer directly above the target layer", "Use reorder_layer to place the matte directly above it, then retry");
     l.trackMatteType = TrackMatteType[tm];
   }
-  return { layer: layerInfo(l), matte_layer_id: matte.id, type: mt };
+  return { layer: layerRef(l), matte_layer_id: matte.id, type: mt };
 };

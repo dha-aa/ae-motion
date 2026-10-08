@@ -44,15 +44,6 @@ function applyKeyMeta(prop, idx, k) {
   }
 }
 
-// Compact {t, v} list (first 200 keys), returned by set_keyframes.
-function keyList(prop) {
-  var out = [], i, v;
-  for (i = 1; i <= prop.numKeys && i <= 200; i++) {
-    v = prop.keyValue(i);
-    out.push({ t: prop.keyTime(i), v: v instanceof Array ? copyArr(v) : v });
-  }
-  return out;
-}
 
 // ---------- full-fidelity key snapshots ----------
 // A snapshot holds everything about a key: value, interpolation, temporal ease and continuity, and for spatial

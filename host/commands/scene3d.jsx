@@ -259,7 +259,7 @@ C.set_3d = function (a) {
     for (k in MATERIAL) { if (MATERIAL.hasOwnProperty(k) && has(m, k)) setAt(grp.property(MATERIAL[k]), m[k], t); }
   }
   k = xformInfo(l, t === null ? 0 : t);
-  return { layer: layerInfo(l), three_d: l.threeDLayer === true, position: k.position, orientation: k.orientation, rotation: k.rotation };
+  return { layer: layerRef(l), three_d: l.threeDLayer === true, position: k.position, orientation: k.orientation, rotation: k.rotation };
 };
 
 C.set_light = function (a) {

@@ -20,6 +20,7 @@ const SERVER = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", 
 const TOKEN = "testtoken";
 let prepareOk = true;
 const received: Record<string, Json> = {}; // command -> args of the last call the fake bridge received
+const calls: string[] = []; // every command the fake bridge received, in order
 
 const bridge = http.createServer((req, res) => {
   let body = "";
@@ -29,6 +30,9 @@ const bridge = http.createServer((req, res) => {
     if (req.headers["x-ae-token"] !== TOKEN) { res.statusCode = 401; return res.end("{}"); }
     const { cmd, args } = JSON.parse(body);
     received[cmd] = args;
+    calls.push(cmd);
+    if (cmd === "add_layer") return res.end(JSON.stringify({ ok: true, result: { id: 42, name: args.options?.name ?? "L" } }));
+    if (cmd === "delete_layer" && args.layer_id === 13) return res.end(JSON.stringify({ ok: false, error: { code: "NOT_FOUND", message: "No layer with id 13", hint: "Use get_comp" } }));
     if (cmd === "prepare_render") {
       if (!prepareOk) return res.end(JSON.stringify({ ok: false, error: { code: "BAD_ARGS", message: "Project has never been saved" } }));
       return res.end(JSON.stringify({ ok: true, result: { project_path: "/tmp/x.aep", comp_name: "C", total_frames: 10, aerender_dir: DIR } }));
@@ -219,6 +223,53 @@ const results: [name: string, pass: boolean][] = [];
   let body: Json = {};
   try { body = JSON.parse(text(big)); } catch {}
   results.push(["F: an over-limit response becomes an error with the tool's hint", big.result?.isError === true && /over the 25000 limit/.test(body.error?.message ?? "") && /group_path/.test(body.error?.hint ?? "")]);
+
+  s.p.stdin.end();
+  await Promise.race([s.exited, sleep(3000)]);
+  s.p.kill();
+}
+
+// Phase H: batch runs bridged tools in order with the same validation, sandbox and references to earlier results.
+{
+  const s = startServer();
+  await s.init();
+  const callTool = (name: string, args: Json) => s.call("tools/call", { name, arguments: args });
+  const body = async (name: string, args: Json): Promise<[Json, boolean]> => {
+    const r = await callTool(name, args);
+    let b: Json = {};
+    try { b = JSON.parse(textOf(r)); } catch {}
+    return [b, r.result?.isError === true];
+  };
+
+  calls.length = 0;
+  const [ok] = await body("batch", { steps: [
+    { tool: "add_layer", args: { comp_id: 1, kind: "null", options: { name: "Ctrl" } } },
+    { tool: "set_layer", args: { layer_id: "$1.id", label: 3 } },
+    { tool: "link_layers", args: { layer_ids: [5, 6], parent_id: "$1.id" } },
+  ] });
+  results.push(["H: batch runs the steps in order and fills $N.path references", calls.join(",") === "add_layer,set_layer,link_layers" && received.set_layer?.layer_id === 42 && received.link_layers?.parent_id === 42 && ok.steps === 3 && ok.results?.[0]?.id === 42]);
+
+  calls.length = 0;
+  const [bad, badErr] = await body("batch", { steps: [{ tool: "set_layer", args: { layer_id: 1, label: 2 } }, { tool: "set_layer", args: { layer_id: 1, colour: 2 } }, { tool: "set_layer", args: { layer_id: 1 } }] });
+  results.push(["H: an invalid step stops the batch and reports how far it got", badErr && calls.length === 1 && bad.steps === 1 && /Step 2 \(set_layer\)/.test(bad.error?.message ?? "") && /colour/.test(bad.error?.message ?? "")]);
+
+  calls.length = 0;
+  const [failed, failedErr] = await body("batch", { steps: [{ tool: "delete_layer", args: { layer_id: 13 } }, { tool: "set_layer", args: { layer_id: 1 } }] });
+  results.push(["H: a host error stops the batch with the host's code", failedErr && failed.error?.code === "NOT_FOUND" && calls.length === 1]);
+
+  calls.length = 0;
+  const [outside, outsideErr0] = await body("batch", { steps: [{ tool: "import_footage", args: { path: "/etc/passwd" } }] });
+  const outsideErr = outsideErr0 && outside.error?.code === "FORBIDDEN";
+  await body("batch", { steps: [{ tool: "import_footage", args: { path: path.join(DIR, "a.png") } }] });
+  const sandboxed = calls.length === 1 && !String(received.import_footage?.path).includes("\\");
+  calls.length = 0;
+  const [, refErr] = await body("batch", { steps: [{ tool: "set_layer", args: { layer_id: "$1.id" } }] });
+  const [, jsxErr] = await body("batch", { steps: [{ tool: "run_jsx", args: { code: "1" } }] });
+  const [, openErr] = await body("batch", { steps: [{ tool: "open_project", args: { path: path.join(DIR, "x.aep") } }] });
+  results.push(["H: paths are sandboxed, forward references, run_jsx and open_project are refused", sandboxed && outsideErr && refErr && jsxErr && openErr && calls.length === 0]);
+
+  const [last] = await body("batch", { steps: [{ tool: "add_layer", args: { comp_id: 1, kind: "null" } }, { tool: "set_layer", args: { layer_id: "$1.id" } }], results: "none" });
+  results.push(["H: results none returns only the step count", JSON.stringify(last) === '{"steps":2}']);
 
   s.p.stdin.end();
   await Promise.race([s.exited, sleep(3000)]);

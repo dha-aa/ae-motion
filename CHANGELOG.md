@@ -2,6 +2,17 @@
 
 All notable changes. Versions follow [semantic versioning](https://semver.org); each release is a git tag `vX.Y.Z`, which is what the update check looks for.
 
+## 2.2.0 — 2026-10-08
+
+### Added
+- `batch`: run up to 50 tool calls in one call, with `"$N.path"` references to earlier results (`"$1.id"`). Each step is validated and sandboxed like a direct call. Building a scene takes a couple of calls instead of dozens, the largest token saving.
+- `preview_frame` takes up to 9 times and returns them tiled into one contact sheet, and a `size` option.
+
+### Changed
+- `preview_frame` shrinks the image it returns (768 px on the longest edge by default; the full-size PNG stays on disk): about 440 tokens instead of 1,530 for a full HD frame, and six frames in one sheet about 670 instead of 9,200.
+- Shorter results: tools that change layers return `{id, index, name}` (timeline tools and `duplicate_layer` add timing, `set_layer` the fields passed), `set_keyframes` returns `num_keys`, comp info and `list_properties` leave out defaults.
+- Smaller tool list (about 16.9k tokens, from 21.8k in 2.1.0 and 25.9k in 2.0.0): shorter descriptions, refs inlined, numeric bounds left to validation, the shape spec referenced instead of repeated.
+
 ## 2.1.0 — 2026-10-08
 
 ### Added

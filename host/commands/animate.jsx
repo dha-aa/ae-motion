@@ -35,7 +35,7 @@ C.set_keyframes = function (a) {
     for (i = 0; i < keys.length; i++) p.setValueAtTime(keys[i].t, keys[i].v);
   }
   for (i = 0; i < a.keys.length; i++) { idx = p.nearestKeyIndex(a.keys[i].t); applyKeyMeta(p, idx, a.keys[i]); }
-  return { num_keys: p.numKeys, keys: keyList(p) };
+  return { num_keys: p.numKeys }; // the keys are what was passed; get_keyframes reads them back
 };
 
 // Find the key an edit addresses: by 1-based index, or by time (the key within half a frame of t).
@@ -218,7 +218,7 @@ C.apply_preset = function (a) {
   var l = getLayer(a.layer_id), f = new File(a.ffx_path);
   if (!f.exists) fail("NOT_FOUND", "Preset not found: " + a.ffx_path);
   l.applyPreset(f);
-  return layerInfo(l);
+  return layerRef(l);
 };
 
 C.stagger = function (a) {

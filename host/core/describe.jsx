@@ -40,14 +40,51 @@ function layerInfo(l) {
   return o;
 }
 
+// What tools that change layers return: enough to address the layer again (get_layer has the rest).
+function layerRef(l) { return { id: l.id, index: l.index, name: l.name }; }
+
+// layerRef plus timing, for the timeline tools.
+function layerTiming(l) {
+  var o = layerRef(l), st = safe(function () { return l.stretch; });
+  o["in"] = l.inPoint; o.out = l.outPoint; o.start = l.startTime;
+  if (st !== undefined && st !== 100) o.stretch = st;
+  return o;
+}
+
+var LAYER_FIELDS = {
+  name: function (l) { return l.name; }, start: function (l) { return l.startTime; }, "in": function (l) { return l.inPoint; },
+  out: function (l) { return l.outPoint; }, stretch: function (l) { return l.stretch; }, parent_id: function (l) { return l.parent ? l.parent.id : null; },
+  enabled: function (l) { return l.enabled; }, locked: function (l) { return l.locked; }, shy: function (l) { return l.shy; },
+  solo: function (l) { return l.solo; }, label: function (l) { return l.label; }, three_d: function (l) { return l.threeDLayer; },
+  blend_mode: function (l) { return blendModeName(l.blendingMode); }, motion_blur: function (l) { return l.motionBlur; }
+};
+
+// layerRef plus the layer fields named in args, read back (set_layer). Changing any timing field reports all three
+// (setting in moves out, and so on).
+function layerFieldsSet(l, args) {
+  var o = layerRef(l), k;
+  for (k in args) {
+    if (!args.hasOwnProperty(k) || !LAYER_FIELDS.hasOwnProperty(k)) continue;
+    if (k === "start" || k === "in" || k === "out" || k === "stretch") { o.start = l.startTime; o["in"] = l.inPoint; o.out = l.outPoint; }
+    o[k] = safe(function () { return LAYER_FIELDS[k](l); });
+  }
+  return o;
+}
+
+// A comp as JSON, leaving out settings at their defaults (square pixels, work area = whole comp, playhead at 0,
+// motion blur and frame blending off, no markers; the shutter only when motion blur is on).
 function compInfo(c, withLayers) {
   var o = {
     id: c.id, name: c.name, width: c.width, height: c.height, fps: c.frameRate, duration: c.duration,
-    pixel_aspect: c.pixelAspect, bg_color: [c.bgColor[0], c.bgColor[1], c.bgColor[2]], num_layers: c.numLayers,
-    work_area_start: c.workAreaStart, work_area_duration: c.workAreaDuration, time: c.time,
-    motion_blur: c.motionBlur, shutter_angle: c.shutterAngle, shutter_phase: c.shutterPhase, frame_blending: c.frameBlending,
-    num_markers: safe(function () { return c.markerProperty.numKeys; })
-  };
+    bg_color: [c.bgColor[0], c.bgColor[1], c.bgColor[2]], num_layers: c.numLayers
+  }, nm = safe(function () { return c.markerProperty.numKeys; });
+  if (c.pixelAspect !== 1) o.pixel_aspect = c.pixelAspect;
+  if (c.workAreaStart !== 0 || Math.abs(c.workAreaDuration - c.duration) > 1e-6) { o.work_area_start = c.workAreaStart; o.work_area_duration = c.workAreaDuration; }
+  if (c.time !== 0) o.time = c.time;
+  if (c.motionBlur) o.motion_blur = true;
+  if (c.motionBlur) { o.shutter_angle = c.shutterAngle; o.shutter_phase = c.shutterPhase; } // they only matter with blur on
+  if (c.frameBlending) o.frame_blending = true;
+  if (nm) o.num_markers = nm;
   if (withLayers) { o.layers = []; for (var i = 1; i <= c.numLayers; i++) o.layers.push(layerInfo(c.layer(i))); }
   return o;
 }
@@ -82,14 +119,15 @@ function safeVal(p, time) {
   return undefined;
 }
 
-// Walk a property group down to maxDepth (list_properties).
+// Walk a property group down to maxDepth (list_properties). Groups have type group | indexed_group.
 function walk(g, depth, maxDepth, time) {
   var out = [], i, p, node, v;
   for (i = 1; i <= g.numProperties; i++) {
     p = g.property(i);
     node = { name: p.name, match_name: p.matchName, index: i };
     if (p.propertyType === PropertyType.PROPERTY) {
-      node.type = "property"; node.value_type = vt(p); node.num_keys = p.numKeys;
+      // a property is the node with a value_type (no type field); num_keys only when it is animated
+      node.value_type = vt(p); if (p.numKeys) node.num_keys = p.numKeys;
       if (p.canSetExpression && p.expressionEnabled) node.expression = p.expression;
       v = safeVal(p, time); if (v !== undefined) node.value = v;
     } else {
