@@ -9,7 +9,7 @@ import { id, LayerIds, Pt, ShapeLayerSpec, Time, Value } from "./schemas.js";
 export function registerDesignTools(r: ToolRegistry): void {
   r.bridged(
     "align_layers",
-    "Align and/or distribute 2D layers by their visible content (text glyphs, shape bounds), like the Align panel. align: left | h_center | right | top | v_center | bottom | center (both axes). to: comp (default), selection (the box around all the given layers) or layer (to_layer_id). margin insets from the target's edges in pixels. distribute: horizontal | vertical spaces the layers' centers evenly between the outermost two (3+ layers). Animated positions keep their motion (every key moves). Bounds are measured at time (default 0). 3D layers are refused (their screen position depends on the camera). Returns each layer's new bounds.",
+    "Align and/or distribute 2D layers by their visible content, like the Align panel. to: comp (default), selection (box around the layers) or layer (to_layer_id). margin insets from the target's edges. distribute spaces centers evenly between the outermost two (3+ layers). Animated positions keep their motion. Bounds measured at time (default 0). 3D layers are refused. Returns the new bounds.",
     {
       layer_ids: LayerIds,
       align: z.enum(["left", "h_center", "right", "top", "v_center", "bottom", "center"]).optional(),
@@ -21,7 +21,7 @@ export function registerDesignTools(r: ToolRegistry): void {
 
   r.bridged(
     "set_anchor",
-    "Move a layer's anchor point onto its content: center (default), top_left, top, top_right, left, right, bottom_left, bottom or bottom_right, or point [x,y] in layer pixels. keep_position (default true) moves the layer so nothing shifts on screen. Use it before scaling or rotating text and shapes around their middle. Refuses an animated anchor point; 3D layers need zero X/Y rotation and orientation unless keep_position is false.",
+    "Move a layer's anchor point onto its content (to, default center) or to point [x,y] in layer px. keep_position (default true) keeps it in place on screen. Refuses an animated anchor; 3D layers need zero X/Y rotation unless keep_position is false.",
     {
       layer_id: id("Layer"),
       anchor: z.enum(["center", "top_left", "top", "top_right", "left", "right", "bottom_left", "bottom", "bottom_right"]).optional(),
@@ -32,7 +32,7 @@ export function registerDesignTools(r: ToolRegistry): void {
 
   r.bridged(
     "add_shape",
-    "Add another shape group to an existing shape layer, on top of its other shapes: rect, ellipse, star, polygon or path, with fill and/or stroke, fill_opacity / stroke_opacity, dashes [dash, gap, ...], line_cap (butt|round|square), line_join (miter|round|bevel), and a group name, position (offset inside the layer), rotation and opacity. Returns the group's path (and, for paths, the path property to animate with set_keyframes). Gradient colors cannot be set from scripts, so gradients are not offered.",
+    "Add a shape group on top of an existing shape layer's shapes, with fill and/or stroke. position is the offset inside the layer. Returns the group's path (and a path shape's property, to animate with set_keyframes). Gradients cannot be set by script.",
     { layer_id: id("Shape layer"), shape: ShapeLayerSpec },
     { destructive: false },
   );
@@ -46,7 +46,7 @@ export function registerDesignTools(r: ToolRegistry): void {
 
   r.bridged(
     "add_layer_style",
-    "Turn on a layer style and set its parameters: drop_shadow, inner_shadow, outer_glow, inner_glow, bevel_emboss, satin, color_overlay, gradient_overlay or stroke. params maps parameter names (without the style prefix, e.g. distance, size, opacity, color, blur) to values; the response lists every parameter name, and path + \"<style>/<name>\" is the property path for set_property / set_keyframes. enabled: false turns the style off again (styles cannot be deleted by script). Uses the Layer Styles menu, so it opens the comp in the viewer and changes the selection.",
+    "Turn on a layer style and set its params (names without the style prefix, e.g. distance, size, opacity, color). The response lists every param name; path + '<style>/<name>' is the property path for set_property / set_keyframes. enabled false turns it off (styles cannot be deleted). Opens the comp in the viewer and changes the selection.",
     {
       layer_id: id("Layer"),
       style: z.enum(["drop_shadow", "inner_shadow", "outer_glow", "inner_glow", "bevel_emboss", "satin", "color_overlay", "gradient_overlay", "stroke"]),

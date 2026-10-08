@@ -6,7 +6,7 @@ import { id, Pt, ShapeSpec } from "./schemas.js";
 export function registerMaskTools(r: ToolRegistry): void {
   r.bridged(
     "add_mask",
-    "Add a mask to a layer. shape: rect or ellipse (position and size in layer pixels, default full layer), polygon (points) or path (vertices with optional tangents). mode: add | subtract | intersect | lighten | darken | difference | none. feather is a uniform blur in pixels (feather_xy sets x and y separately). Returns the mask's property path; animate its ADBE Mask Shape, ADBE Mask Feather, ADBE Mask Opacity or ADBE Mask Offset with set_keyframes using that path plus the match name.",
+    "Add a mask. rect/ellipse use position and size in layer px (default full layer). feather in px (feather_xy for x and y). Returns the mask's path; animate ADBE Mask Shape / Feather / Opacity / Offset under it with set_keyframes.",
     {
       layer_id: id("Layer"), shape: ShapeSpec, mode: z.enum(["add", "subtract", "intersect", "lighten", "darken", "difference", "none"]).optional(),
       inverted: z.boolean().optional(), feather: z.number().min(0).optional(), feather_xy: Pt.optional(), opacity: z.number().min(0).max(100).optional(),

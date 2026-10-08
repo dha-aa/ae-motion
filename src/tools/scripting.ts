@@ -11,7 +11,7 @@ import { fromBridge, type ToolRegistry } from "./registry.js";
 export function registerScriptingTools(r: ToolRegistry): void {
   r.tool(
     "run_jsx",
-    "LAST RESORT: run arbitrary ExtendScript in After Effects and return its result. Use it only when no dedicated tool can do the job: first look for one (layers, keyframes, effects via find_effects/apply_effect, properties via list_properties/add_property/set_property, design, timeline, 3D tools). Raw scripts skip input validation, the file-path sandbox and the tools' error hints, and can break the project. Keep scripts short and read-only where possible; the call is still one undo step. Disabled unless AE_MCP_ALLOW_JSX=1.",
+    "LAST RESORT: run ExtendScript in After Effects and return the result. Only when no dedicated tool can do it (list_properties / add_property / set_property reach almost any property). Skips validation, the path sandbox and error hints. Disabled unless AE_MCP_ALLOW_JSX=1.",
     { code: z.string() },
     async (a) => {
       if (!jsxEnabled()) throw new AeToolError("FORBIDDEN", "run_jsx is disabled", "Set AE_MCP_ALLOW_JSX=1 in the MCP server environment to enable it");

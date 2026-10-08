@@ -11,7 +11,7 @@
 - Results leave out default values to save tokens. Layer info includes `parent_id`, `enabled: false`, `locked`, `shy`, `solo`, `three_d`, `motion_blur`, `stretch` and `blend_mode` only when they differ from the defaults (no parent, enabled, off, 100, `NORMAL`). Keys include spatial tangents and `roving` / `auto_bezier` / `continuous` only when non-zero or true. `set_text` reads back only the fields you set (plus `skipped`), and `edit_keyframes` returns only the keys it set or moved; `get_text` / `get_keyframes` return everything.
 - `AE_MCP_TOOLSETS` limits which tool groups are loaded (see the README's Configuration). With `core`, the groups below other than project, layers, animate, output and inspect are absent.
 - Every mutating call is one undo step in After Effects. If a tool fails midway, its partial changes stay in that undo group, so undo once to revert.
-- A good build loop: `get_project`, `create_comp`, `add_layer` (background first), `set_keyframes` with easing, `preview_frame` at key moments, adjust, then `render_start` and poll `render_status`. Prefer `set_keyframes` over many `set_property` calls, use `stagger` for repeated elements, and call `find_effects` rather than guessing effect match names.
+- A good build loop: `get_project`, `create_comp`, `add_layer` (background first), `set_keyframes` with easing, `preview_frame` at key moments (several times in one call), adjust, then `render_start` and poll `render_status`. Prefer `set_keyframes` over many `set_property` calls, use `stagger` for repeated elements, and call `find_effects` rather than guessing effect match names.
 
 ## Tools
 
@@ -74,7 +74,7 @@
 | | `set_3d` | Make a layer 3D; set position, rotation, orientation, scale and material options (shadows, shininess, metal) |
 | | `set_light` | Light type, intensity, color, cone, falloff, shadows, and placement |
 | | `set_3d_view` | Switch the viewer's 3D view: active camera, default, front, left, top, back, right, bottom, custom 1 to 3 |
-| Preview and render | `preview_frame` | Render one frame to PNG and return it as an image |
+| Preview and render | `preview_frame` | Render frames to PNG and return them as one image: a single time, or up to 9 tiled into a contact sheet. The image sent back is shrunk (default 768 px on the longest edge, 1152 for a sheet; `size` changes it), since image tokens grow with pixels: a full HD frame costs ~1,500 tokens, the default ~440, six frames in one sheet ~670. The full-size PNGs stay in the temp folder |
 | | `render_start` | Save the project and start a background `aerender` job |
 | | `render_status` | State, percent, log tail and the file actually written |
 | | `render_cancel` | Cancel a running render job |

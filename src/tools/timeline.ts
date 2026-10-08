@@ -32,7 +32,7 @@ export function registerTimelineTools(r: ToolRegistry): void {
 
   r.bridged(
     "delete_range",
-    "Remove a time range from a comp's layers. Layers fully inside are deleted, layers crossing an edge are trimmed, layers spanning the range are split and the middle removed. ripple (default true) closes the gap by moving later material earlier; ripple false leaves the gap (a lift). layer_ids limits the edit (default: all unlocked layers). shorten_comp also shortens the comp duration when rippling. Times snap to frames. Markers are not moved.",
+    "Remove a time range: layers inside are deleted, crossing ones trimmed, spanning ones split. ripple (default true) closes the gap; false leaves it. layer_ids limits it (default all unlocked). shorten_comp shortens the comp when rippling. Times snap to frames; markers do not move.",
     {
       comp_id: id("Comp"), start: Time, end: Time, ripple: z.boolean().optional(), layer_ids: z.array(z.number().int()).min(1).optional(),
       shorten_comp: z.boolean().optional(), move_markers: z.boolean().optional().describe("Also ripple comp markers: delete those inside the range, move later ones earlier (needs ripple)"),
@@ -41,7 +41,7 @@ export function registerTimelineTools(r: ToolRegistry): void {
 
   r.bridged(
     "insert_time",
-    "Ripple insert, the counterpart of delete_range: open a gap of duration seconds at comp time at. Layers starting at or after it move later, layers spanning it are split there and their second part moves. extend_comp (default true) lengthens the comp by the same amount. layer_ids limits the edit (default: all unlocked layers). move_markers also moves comp markers at or after the point (layer markers always move with their layer). Times snap to frames unless snap is false.",
+    "Ripple insert (counterpart of delete_range): open a gap of duration seconds at `at`. Layers after it move later; layers spanning it are split and the second part moves. extend_comp (default true) lengthens the comp. layer_ids limits it (default all unlocked). move_markers also moves comp markers. Times snap to frames unless snap is false.",
     {
       comp_id: id("Comp"), at: Time, duration: z.number().positive(), layer_ids: z.array(z.number().int()).min(1).optional(),
       extend_comp: z.boolean().optional(), move_markers: z.boolean().optional(), snap: z.boolean().optional(),
