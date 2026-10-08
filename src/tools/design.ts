@@ -21,7 +21,7 @@ export function registerDesignTools(r: ToolRegistry): void {
 
   r.bridged(
     "set_anchor",
-    "Move a layer's anchor point onto its content (to, default center) or to point [x,y] in layer px. keep_position (default true) keeps it in place on screen. Refuses an animated anchor; 3D layers need zero X/Y rotation unless keep_position is false.",
+    "Move a layer's anchor point onto its content (anchor: center by default, top_left and so on) or to point [x,y] in layer px. keep_position (default true) keeps it in place on screen. Refuses an animated anchor; 3D layers need zero X/Y rotation unless keep_position is false.",
     {
       layer_id: id("Layer"),
       anchor: z.enum(["center", "top_left", "top", "top_right", "left", "right", "bottom_left", "bottom", "bottom_right"]).optional(),
