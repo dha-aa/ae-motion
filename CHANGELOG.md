@@ -2,7 +2,7 @@
 
 All notable changes. Versions follow [semantic versioning](https://semver.org); each release is a git tag `vX.Y.Z`, which is what the update check looks for.
 
-## Unreleased
+## 2.6.0 — 2026-10-09
 
 ### Added
 - `find_sound_cues`: list where a comp's animation wants sound effects (whoosh at a move's peak speed, impact on abrupt landings, pop on scale pops, typing, swipe), from its keyframes.
