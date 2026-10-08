@@ -1,6 +1,6 @@
 # Tool reference
 
-70 tools, grouped the same way as the source (`src/tools/<group>.ts` on the server, `host/commands/<group>.jsx` in After Effects). Every tool's full argument schema and description is served by the MCP `tools/list` call, so your client always sees the current details. This page gives the overview and the behavior you can't read off a schema.
+72 tools, grouped the same way as the source (`src/tools/<group>.ts` on the server, `host/commands/<group>.jsx` in After Effects). Every tool's full argument schema and description is served by the MCP `tools/list` call, so your client always sees the current details. This page gives the overview and the behavior you can't read off a schema.
 
 ## Conventions
 
@@ -45,8 +45,6 @@
 | | `align_to_markers` | Start layers on consecutive comp or layer markers, optionally trimming each at the next (cut to a beat) |
 | | `trim_comp` | Trim the comp to its work area or to its layers |
 | | `set_playhead` | Move the current-time indicator |
-| | `beat_markers` | Mark an audio layer's beats (comp markers, or the layer's with `on: "layer"`; comment `"beat"`). Detected from loudness through After Effects' Convert Audio to Keyframes (`sensitivity` 0-1, `min_gap`), or a `bpm` grid from `offset`; `every: 4` keeps one per bar; earlier `"beat"` markers in the range are replaced. Returns the times and the tempo |
-| | `audio_react` | Drive a property of many layers with an audio layer's loudness (`from` at the track's quiet level, `to` at its peaks, `smoothing` frames, `channel`): one expression per layer, reading a shared `Audio Amplitude: <layer>` null (kept and reused; do not rename it) |
 | | `add_marker`, `update_marker`, `list_markers`, `delete_marker` | Layer and comp markers with comment, duration, chapter, url, label; edit or move one in place |
 | Masks and mattes | `add_mask` | Add a rect, ellipse, polygon or bezier-path mask with mode, feather, opacity, expansion |
 | | `set_track_matte` | Use a layer as an alpha or luma track matte, or remove the matte |
@@ -82,6 +80,10 @@
 | | `render_status` | State, percent, log tail and the file actually written |
 | | `render_cancel` | Cancel a running render job |
 | Escape hatch | `run_jsx` | Last resort: run arbitrary ExtendScript (disabled unless `AE_MCP_ALLOW_JSX=1`). Its description, the server instructions and `motion-guide` all tell models to use a dedicated tool whenever one exists |
+| Audio | `beat_markers` | Mark an audio layer's beats (comp markers, or the layer's with `on: "layer"`; comment `"beat"`). Detected from loudness through After Effects' Convert Audio to Keyframes (`sensitivity` 0-1, `min_gap`), or a `bpm` grid from `offset`; `every: 4` keeps one per bar; earlier `"beat"` markers in the range are replaced. Returns the times and the tempo |
+| | `audio_react` | Drive a property of many layers with an audio layer's loudness (`from` at the track's quiet level, `to` at its peaks, `smoothing` frames, `channel`): one expression per layer, reading a shared `Audio Amplitude: <layer>` null (kept and reused; do not rename it) |
+| | `find_sound_cues` | List the moments in a comp's animation that want a sound effect, from its keyframes: fast moves and spins (whoosh, at the frame of peak speed), abrupt landings (impact), scale pops (pop, at the scale peak), type-ons (typing) and draw-ons (swipe, with their duration), plain entrances (pop). Cues of one layer that are one sound are merged. Read-only |
+| | `add_sfx` | Place a sound file so it hits at `time`: `align: "peak"` (default) measures the file's loudest frame (Convert Audio to Keyframes, cached) and lines it up, `"start"` puts the first frame there. `volume` in dB (default -6), `fade_in` / `fade_out`, `max_duration`. A file is imported once and reused |
 | Server | `check_for_updates` | Is a newer release out? Current and latest version and the update command (see README, Updates) |
 | Server | `load_tools` | Present only when `AE_MCP_TOOLSETS` leaves groups out: adds the named groups (`timeline`, `masks`, `scene3d`, `design`, `scripting` and so on) during the session and returns their tool names. The server sends `tools/list_changed`; clients that ignore it can still run the new tools through `batch` |
 | Server | `batch` | Run up to 50 tool calls in order in one call. A string `"$N.path"` in a step's args is replaced by that value from step N's result (`"$1.id"`, `"$2.layers.0.id"`). Every step is checked before any runs (tool, references, arguments; a reference's value is unknown until its step runs, so only type errors at a reference are let through), and all problems are listed at once with nothing changed. Each step gets the same validation and path sandbox as a direct call and is its own undo step; a step that fails in After Effects stops the batch and returns the results so far (`results: "last"` / `"none"` returns less). Not for `preview_frame`, `render_*`, `run_jsx` or `open_project`. Every tool call is a round trip that re-reads the conversation, so batching a scene's steps is the biggest token saving |
@@ -132,6 +134,7 @@ The timeline tools work like the editing commands in the After Effects timeline.
 - **Make room:** `insert_time` is the reverse: it opens a gap of `duration` at `at`, moving later layers and splitting layers that span the point, lengthens the comp (`extend_comp`, default on) and with `move_markers` moves later comp markers too.
 - **Cut to a beat:** `beat_markers` puts markers on the music's beats (or place them with `add_marker`, or use an audio layer's markers with `marker_layer_id`), then `align_to_markers` starts layer *i* on marker *i*; `trim_to_next` ends each layer at the following marker. Detection works best on music with clear drums; for soft or ambient tracks pass the `bpm`.
 - **Move to the music:** `audio_react` makes layers pulse, bounce or glow with the loudness, e.g. `path: "scale", from: [100, 100], to: [125, 125]`.
+- **Sound effects:** `find_sound_cues` lists where the animation wants a sound and which kind; `add_sfx` places your sound file on each cue with its loudest moment on the cue (a whoosh peaks mid-move, a pop hits on the landing). Keep effects about 6-12 dB under the music; `volume` (audio levels in dB, a number sets both channels) works in `set_property` / `set_keyframes` for fades and ducking. ae-motion cannot hear the result: listen to the mix.
 - **Swap shots:** `replace_source` changes what a layer shows without touching its timing, keyframes or effects.
 - **Tidy up:** `trim_comp` with `to: work_area` (like Composition > Trim Comp to Work Area) or `to: layers` moves everything so the range starts at 0 and sets the duration to it.
 - **Arrange:** `shift_layers` moves layers in time, `sequence_layers` places them end to end (with optional `overlap`), and `reorder_layer` changes stacking order.

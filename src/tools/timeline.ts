@@ -1,7 +1,7 @@
-/** Timeline editing, marker and audio tools. Host side: host/commands/timeline.jsx, host/commands/audio.jsx. */
+/** Timeline editing and marker tools. Host side: host/commands/timeline.jsx. */
 import { z } from "zod";
 import type { ToolRegistry } from "./registry.js";
-import { id, Label, LayerIds, PropPath, Time, Value } from "./schemas.js";
+import { id, Label, LayerIds, Time } from "./schemas.js";
 
 const MarkerTarget = {
   layer_id: z.number().int().optional().describe("Layer id (omit for a comp marker)"),
@@ -90,27 +90,6 @@ export function registerTimelineTools(r: ToolRegistry): void {
       from_index: z.number().int().min(1).optional(), trim_to_next: z.boolean().optional(),
     },
     { idempotent: true },
-  );
-
-  r.bridged(
-    "beat_markers",
-    'Mark the beats of an audio layer (comp markers, or the layer\'s with on: "layer"; comment "beat") for align_to_markers or keyframes. Detected from loudness (clear drums work best; sensitivity 0-1), or a bpm grid from offset; every: 4 = one per bar. Replaces earlier "beat" markers in range. Returns times and tempo.',
-    {
-      audio_layer_id: id("Audio layer"), bpm: z.number().positive().optional(), offset: Time.optional().describe("First bpm beat (default: in point)"),
-      every: z.number().int().min(1).optional(), sensitivity: z.number().min(0).max(1).optional(), min_gap: z.number().min(0).optional().describe("Min seconds between beats (0.2)"),
-      start: Time.optional(), end: Time.optional(), on: z.enum(["comp", "layer"]).optional(), replace: z.boolean().optional(),
-      keep_amplitude: z.boolean().optional(),
-    },
-    { tooLargeHint: "Limit start/end or use every" },
-  );
-
-  r.bridged(
-    "audio_react",
-    "Drive a property with an audio layer's loudness (pulse, bounce, glow): from at the quiet level, to at the peaks, smoothed over smoothing frames. One expression on every layer, via a shared amplitude null.",
-    {
-      audio_layer_id: id("Audio layer"), layer_ids: LayerIds, path: PropPath, from: Value, to: Value,
-      channel: z.enum(["both", "left", "right"]).optional(), smoothing: z.number().int().min(1).max(30).optional(),
-    },
   );
 
   r.bridged(

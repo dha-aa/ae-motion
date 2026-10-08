@@ -15,6 +15,7 @@ function coerce(prop, v) {
   }
   if (t === V.NO_VALUE || t === V.CUSTOM_VALUE || t === V.MARKER) fail("BAD_ARGS", "Property type '" + vt(prop) + "' cannot be set with this tool", "Use run_jsx if AE_MCP_ALLOW_JSX=1");
   if (t === V.COLOR && v instanceof Array && v.length === 3) return rgba(v);
+  if (typeof v === "number" && prop.matchName === "ADBE Audio Levels") return [v, v];
   return v;
 }
 

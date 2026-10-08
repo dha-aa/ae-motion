@@ -5,6 +5,7 @@
  *   src/tools/project.ts   <-> host/commands/project.jsx
  *   src/tools/layers.ts    <-> host/commands/layers.jsx
  *   src/tools/timeline.ts  <-> host/commands/timeline.jsx   (incl. markers)
+ *   src/tools/audio.ts     <-> host/commands/audio.jsx      (beats, audio_react, sound effects)
  *   src/tools/masks.ts     <-> host/commands/masks.jsx
  *   src/tools/animate.ts   <-> host/commands/animate.jsx, host/commands/text.jsx
  *   src/tools/scene3d.ts   <-> host/commands/scene3d.jsx
@@ -21,6 +22,7 @@ import { registerAnimateTools } from "./animate.js";
 import { registerDesignTools } from "./design.js";
 import { registerInspectTools } from "./inspect.js";
 import { registerLayerTools } from "./layers.js";
+import { registerAudioTools } from "./audio.js";
 import { registerBatchTool } from "./batch.js";
 import { registerMetaTools } from "./meta.js";
 import { registerMaskTools } from "./masks.js";
@@ -34,7 +36,7 @@ import { registerTimelineTools } from "./timeline.js";
 const GROUPS: Record<Toolset, (r: ToolRegistry) => void> = {
   inspect: registerInspectTools, project: registerProjectTools, layers: registerLayerTools, timeline: registerTimelineTools,
   masks: registerMaskTools, animate: registerAnimateTools, scene3d: registerScene3dTools, design: registerDesignTools,
-  output: registerOutputTools, scripting: registerScriptingTools, meta: registerMetaTools,
+  output: registerOutputTools, audio: registerAudioTools, scripting: registerScriptingTools, meta: registerMetaTools,
 };
 
 /** What each group that can be loaded later holds, for load_tools' description. */
@@ -47,6 +49,7 @@ const GROUP_SUMMARY: Partial<Record<Toolset, string>> = {
   scene3d: "3D layers, cameras, lights, camera moves/rigs/shake, 3D views",
   design: "align, anchors, add shapes, layer styles, text to shapes",
   output: "preview_frame, renders",
+  audio: "beat markers, audio-reactive expressions, sound-effect cues and placement",
   scripting: "run_jsx (also needs AE_MCP_ALLOW_JSX=1)",
 };
 

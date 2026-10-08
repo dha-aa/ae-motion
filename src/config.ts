@@ -50,7 +50,7 @@ export function aerenderOverride(): string | undefined {
 }
 
 /** Tool groups (src/tools/<group>.ts). */
-export const TOOLSETS = ["inspect", "project", "layers", "timeline", "masks", "animate", "scene3d", "design", "output", "scripting", "meta"] as const;
+export const TOOLSETS = ["inspect", "project", "layers", "timeline", "masks", "animate", "scene3d", "design", "output", "audio", "scripting", "meta"] as const;
 export type Toolset = (typeof TOOLSETS)[number];
 /** Groups that are always registered, whatever AE_MCP_TOOLSETS says. */
 export const ALWAYS_ON: readonly Toolset[] = ["inspect", "meta"];

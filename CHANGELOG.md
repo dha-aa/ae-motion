@@ -2,6 +2,19 @@
 
 All notable changes. Versions follow [semantic versioning](https://semver.org); each release is a git tag `vX.Y.Z`, which is what the update check looks for.
 
+## Unreleased
+
+### Added
+- `find_sound_cues`: list where a comp's animation wants sound effects (whoosh at a move's peak speed, impact on abrupt landings, pop on scale pops, typing, swipe), from its keyframes.
+- `add_sfx`: place a sound file so its loudest moment lands on a cue (or its start), with volume in dB, fades and trimming; repeated files are imported once.
+- A `volume` property alias (audio levels in dB; a number sets both channels) for `set_property`, `set_keyframes` and `edit_keyframes`.
+
+### Changed
+- The audio tools (`beat_markers`, `audio_react` and the two above) are their own tool group, `audio` in `AE_MCP_TOOLSETS` (not part of `core`).
+
+### Fixed
+- The amplitude analysis left an "Audio Amplitude" solid in the project each time; its source item is now removed with it.
+
 ## 2.5.0 — 2026-10-09
 
 ### Added
