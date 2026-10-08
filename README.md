@@ -123,14 +123,14 @@ If a call fails, the error includes a code and a hint. See [Troubleshooting](#tr
 
 ## What it can do
 
-68 tools in eleven groups. The full reference, with behavior notes, is in [docs/tools.md](docs/tools.md).
+70 tools in eleven groups. The full reference, with behavior notes, is in [docs/tools.md](docs/tools.md).
 
 | Group | Tools |
 |---|---|
 | Inspect | `get_project`, `get_comp`, `get_layer`, `list_properties`, `get_keyframes`, `find_effects` |
 | Project | `open_project`, `save_project`, `create_comp`, `set_comp`, `import_footage`, `delete_item` |
 | Layers | `add_layer`, `set_layer`, `link_layers`, `replace_source`, `delete_layer`, `duplicate_layer`, `reorder_layer`, `precompose` |
-| Timeline | `split_layer`, `delete_range`, `insert_time`, `shift_layers`, `sequence_layers`, `align_to_markers`, `trim_comp`, `set_playhead`, `add_marker`, `update_marker`, `list_markers`, `delete_marker` |
+| Timeline | `split_layer`, `delete_range`, `insert_time`, `shift_layers`, `sequence_layers`, `align_to_markers`, `beat_markers`, `audio_react`, `trim_comp`, `set_playhead`, `add_marker`, `update_marker`, `list_markers`, `delete_marker` |
 | Masks and mattes | `add_mask`, `set_track_matte` |
 | Design | `align_layers`, `set_anchor`, `add_shape`, `add_layer_style`, `text_to_shapes` |
 | Animate | `set_property`, `set_keyframes`, `edit_keyframes`, `copy_animation`, `set_expression`, `add_property`, `apply_effect`, `edit_effect`, `apply_preset`, `set_text`, `get_text`, `find_fonts`, `stagger`, `add_shape_modifier` |
