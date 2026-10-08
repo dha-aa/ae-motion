@@ -182,7 +182,12 @@ type ListHandler = (request: unknown, extra: unknown) => Promise<{ tools: Record
 // up front on every request.
 const BOUNDS = new Set(["minimum", "maximum", "exclusiveMinimum", "exclusiveMaximum", "minItems", "maxItems"]);
 
-/** A copy of an input schema with local $refs inlined (a ref path is longer than what it points to) and bounds dropped. */
+/**
+ * A copy of an input schema with local $refs inlined (a ref path is longer than what it points to) and bounds dropped.
+ * Tuples (zod's draft-07 `items: [a, b]`) become one `items` schema when the members are alike, else `prefixItems`:
+ * without the $schema header clients read the schema as draft 2020-12, where an `items` array is invalid (the Claude
+ * API refused add_layer, set_layer and set_text over box_size / solid_size).
+ */
 export function slimSchema(root: Record<string, unknown>): Record<string, unknown> {
   const at = (ref: string): unknown => ref.slice(2).split("/").reduce<unknown>((o, k) => (o as Record<string, unknown>)?.[k], root);
   const walk = (v: unknown): unknown => {
@@ -195,6 +200,12 @@ export function slimSchema(root: Record<string, unknown>): Record<string, unknow
     }
     const out: Record<string, unknown> = {};
     for (const [k, x] of Object.entries(o)) if (k !== "$schema" && !BOUNDS.has(k)) out[k] = walk(x);
+    if (Array.isArray(out.items)) {
+      const members = out.items as unknown[], first = JSON.stringify(members[0]);
+      if (members.every((m) => JSON.stringify(m) === first)) out.items = members[0];
+      else { out.prefixItems = members; delete out.items; }
+      delete out.additionalItems;
+    }
     return out;
   };
   return walk(root) as Record<string, unknown>;

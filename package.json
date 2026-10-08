@@ -1,6 +1,6 @@
 {
   "name": "ae-motion-mcp",
-  "version": "2.4.0",
+  "version": "2.4.1",
   "description": "MCP server for building, animating, previewing and rendering motion graphics in Adobe After Effects",
   "keywords": [
     "mcp",
@@ -46,6 +46,7 @@
   "devDependencies": {
     "@types/node": "^22.20.5",
     "@types/pngjs": "^6.0.5",
+    "ajv": "^8.20.0",
     "types-for-adobe": "^7.2.6",
     "typescript": "^5.4.0"
   }
