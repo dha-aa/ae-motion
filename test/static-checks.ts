@@ -13,7 +13,7 @@ import { buildHost, emittedPath, HOST_OUT, HOST_SOURCES } from "../scripts/build
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 
-const EXPECTED_TOOLS = 67; // update when adding or removing a tool
+const EXPECTED_TOOLS = 68; // update when adding or removing a tool
 // Tool definitions are sent to the model on every request, so their size is a cost. Raise this only on purpose
 // (measured at about 60k chars for 66 tools).
 const TOOLS_LIST_BUDGET = 63_000;

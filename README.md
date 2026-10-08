@@ -126,7 +126,7 @@ If a call fails, the error includes a code and a hint. See [Troubleshooting](#tr
 
 ## What it can do
 
-67 tools in eleven groups. The full reference, with behavior notes, is in [docs/tools.md](docs/tools.md).
+68 tools in eleven groups. The full reference, with behavior notes, is in [docs/tools.md](docs/tools.md).
 
 | Group | Tools |
 |---|---|
@@ -136,7 +136,7 @@ If a call fails, the error includes a code and a hint. See [Troubleshooting](#tr
 | Timeline | `split_layer`, `delete_range`, `insert_time`, `shift_layers`, `sequence_layers`, `align_to_markers`, `trim_comp`, `set_playhead`, `add_marker`, `update_marker`, `list_markers`, `delete_marker` |
 | Masks and mattes | `add_mask`, `set_track_matte` |
 | Design | `align_layers`, `set_anchor`, `add_shape`, `add_layer_style`, `text_to_shapes` |
-| Animate | `set_property`, `set_keyframes`, `edit_keyframes`, `copy_animation`, `set_expression`, `add_property`, `apply_effect`, `edit_effect`, `apply_preset`, `set_text`, `get_text`, `stagger`, `add_shape_modifier` |
+| Animate | `set_property`, `set_keyframes`, `edit_keyframes`, `copy_animation`, `set_expression`, `add_property`, `apply_effect`, `edit_effect`, `apply_preset`, `set_text`, `get_text`, `find_fonts`, `stagger`, `add_shape_modifier` |
 | 3D and camera | `get_camera`, `set_camera`, `camera_move`, `camera_shake`, `camera_rig`, `set_3d`, `set_light`, `set_3d_view` |
 | Preview and render | `preview_frame`, `render_start`, `render_status`, `render_cancel` |
 | Escape hatch | `run_jsx` (disabled unless `AE_MCP_ALLOW_JSX=1`) |

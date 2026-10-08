@@ -1,6 +1,6 @@
 # Tool reference
 
-67 tools, grouped the same way as the source (`src/tools/<group>.ts` on the server, `host/commands/<group>.jsx` in After Effects). Every tool's full argument schema and description is served by the MCP `tools/list` call, so your client always sees the current details. This page gives the overview and the behavior you can't read off a schema.
+68 tools, grouped the same way as the source (`src/tools/<group>.ts` on the server, `host/commands/<group>.jsx` in After Effects). Every tool's full argument schema and description is served by the MCP `tools/list` call, so your client always sees the current details. This page gives the overview and the behavior you can't read off a schema.
 
 ## Conventions
 
@@ -29,7 +29,7 @@
 | | `set_comp` | Change a comp's name, size, fps, duration, background, pixel aspect, work area, or motion blur (switch, shutter angle, phase) |
 | | `import_footage` | Import a file or image sequence |
 | | `delete_item` | Delete a comp, footage item or folder (refuses used items unless `force`) |
-| Layers | `add_layer` | Add a solid, text (point or box), shape (rect, ellipse, star, polygon, path), null, adjustment, footage, precomp, camera or light layer; optional `position` and `three_d` place it as it is created |
+| Layers | `add_layer` | Add a solid, text (point or box), shape (rect, ellipse, star, polygon, path), null, adjustment, footage, precomp, camera or light layer; optional `position` and `three_d` place it as it is created. Text layers also take `text_style` (any of `set_text`'s styling fields) and any layer with content takes `anchor` (as `set_anchor`); they apply in that order, then `position`, so `{text_style: {...}, anchor: "center", position: [x, y]}` creates styled text centered on a point in one call |
 | | `set_layer` | Name, timing, time stretch, parent, blend mode, visibility, 3D, shy, solo, lock, label, motion blur, time remap, separate dimensions, auto-orient along path, frame blending, quality, collapse transformations, guide, adjustment, effects / audio on-off, preserve transparency, solid color and size |
 | | `replace_source` | Swap the footage, comp or solid a layer shows, keeping its timing, keyframes and effects |
 | | `link_layers` | Parent several layers to a layer, unlink them, or create a null and parent them all to it in one call |
@@ -57,13 +57,14 @@
 | | `set_keyframes` | Replace all keyframes on a property, with interpolation and easing; also path keyframes (mask and shape morphs) |
 | | `edit_keyframes` | Edit single keys: add or update (value, easing, curved motion-path tangents, auto-bezier, roving), move, delete |
 | | `copy_animation` | Copy a property's animation, with every key setting and any expression, to other layers, with offset and stagger |
-| | `set_expression` | Set or clear an expression and report syntax errors |
+| | `set_expression` | Set or clear an expression and report syntax errors. `layer_ids` sets the same expression on that property of many layers in one call (every layer is checked first; errors are listed per layer) |
 | | `add_property` | Add a text animator, its properties and range selector (layer styles cannot be created by scripts) |
 | | `apply_effect` | Add an effect by match name and set its parameters |
 | | `edit_effect` | Remove, enable or disable an effect |
 | | `apply_preset` | Apply an `.ffx` animation preset |
 | | `set_text` | Text content and full styling: font, size, fill and stroke, leading, tracking, scale, caps, super/subscript, indents, spacing, justification, box size; reads values back |
 | | `get_text` | Read a text layer's content and styling |
+| | `find_fonts` | Search installed fonts by family, style or PostScript name (every word must match); returns the PostScript names `set_text` takes. After Effects 24.0+ |
 | | `stagger` | Offset existing keyframes across layers (keeps easing and path curves) |
 | | `add_shape_modifier` | Add Trim Paths, Repeater or Round Corners to a shape group |
 | 3D and camera | `get_camera` | Read a camera: lens (zoom, focal length, field of view), depth of field, iris, position, point of interest, and what drives each property |
@@ -81,7 +82,7 @@
 | Escape hatch | `run_jsx` | Last resort: run arbitrary ExtendScript (disabled unless `AE_MCP_ALLOW_JSX=1`). Its description, the server instructions and `motion-guide` all tell models to use a dedicated tool whenever one exists |
 | Server | `check_for_updates` | Is a newer release out? Current and latest version and the update command (see README, Updates) |
 | Server | `load_tools` | Present only when `AE_MCP_TOOLSETS` leaves groups out: adds the named groups (`timeline`, `masks`, `scene3d`, `design`, `scripting` and so on) during the session and returns their tool names. The server sends `tools/list_changed`; clients that ignore it can still run the new tools through `batch` |
-| Server | `batch` | Run up to 50 tool calls in order in one call. A string `"$N.path"` in a step's args is replaced by that value from step N's result (`"$1.id"`, `"$2.layers.0.id"`). Each step gets the same validation and path sandbox as a direct call and is its own undo step; the batch stops at the first error and returns the results so far (`results: "last"` / `"none"` returns less). Not for `preview_frame`, `render_*`, `run_jsx` or `open_project`. Every tool call is a round trip that re-reads the conversation, so batching a scene's steps is the biggest token saving |
+| Server | `batch` | Run up to 50 tool calls in order in one call. A string `"$N.path"` in a step's args is replaced by that value from step N's result (`"$1.id"`, `"$2.layers.0.id"`). Every step is checked before any runs (tool, references, arguments; a reference's value is unknown until its step runs, so only type errors at a reference are let through), and all problems are listed at once with nothing changed. Each step gets the same validation and path sandbox as a direct call and is its own undo step; a step that fails in After Effects stops the batch and returns the results so far (`results: "last"` / `"none"` returns less). Not for `preview_frame`, `render_*`, `run_jsx` or `open_project`. Every tool call is a round trip that re-reads the conversation, so batching a scene's steps is the biggest token saving |
 
 Resources: `ae://project` (same as `get_project`) and `ae://selection` (layers selected in the active comp). Prompt: `motion-guide`.
 
@@ -157,7 +158,7 @@ The camera tools use After Effects' coordinates: x to the right, y **down**, z i
 - `set_3d_view` runs After Effects' own View > Switch 3D View command. It only changes what the editor shows: `preview_frame` and renders always use the active camera. Running it clears the layer selection and cannot be undone from a script. `active_camera` needs a camera in the comp (the menu item is named after it).
 - Camera rigs, shake and look-at are expressions with a marker comment on the first line (`// ae-motion rig`, `// ae-motion shake`, `// ae-motion look-at`). `camera_move` keys a rig's controls, works underneath a shake, and refuses any other expression on position or point of interest. Do not rename a rig's control layers.
 - Focal length assumes a 36 mm film width, so `focal_length` and `fov` are converted to zoom pixels using the comp width.
-- `set_text` styling applies to the whole layer; anything After Effects refuses is listed in `skipped` instead of failing the call. Point text cannot be turned into box text after creation (create it with `add_layer` `options.box_size`).
+- `set_text` styling applies to the whole layer; anything After Effects refuses is listed in `skipped` instead of failing the call. A font that is not installed is refused (`NOT_FOUND`, before anything changes) on After Effects 24.0+, where it can be checked; earlier versions keep the old font silently. Point text cannot be turned into box text after creation (create it with `add_layer` `options.box_size`).
 
 ## Errors
 

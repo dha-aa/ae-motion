@@ -66,12 +66,46 @@ C.get_text = function (a) {
 };
 
 // Attributes After Effects refuses are reported in "skipped" instead of failing the whole call.
+// app.fonts (After Effects 24.0+) as a flat list of Font objects (allFonts groups them by family).
+function allFonts() {
+  var out = [], groups, i, j;
+  if (!app.fonts || !app.fonts.allFonts) fail("UNSUPPORTED", "Listing fonts needs After Effects 24.0 or later", "Pass the font's PostScript name to set_text directly");
+  groups = app.fonts.allFonts;
+  for (i = 0; i < groups.length; i++) {
+    if (groups[i] instanceof Array || (groups[i] && typeof groups[i].length === "number" && !groups[i].postScriptName)) { for (j = 0; j < groups[i].length; j++) out.push(groups[i][j]); }
+    else out.push(groups[i]);
+  }
+  return out;
+}
+
+// Refuse a font that is not installed: After Effects would silently keep the old one. Older versions cannot check.
+function checkFont(name) {
+  var found;
+  if (!app.fonts || !app.fonts.getFontsByPostScriptName) return;
+  found = app.fonts.getFontsByPostScriptName(name);
+  if (!found || found.length === 0) fail("NOT_FOUND", "Font not installed: " + name, "Use a PostScript name from find_fonts (e.g. find_fonts query \"" + name.split("-")[0] + "\")");
+}
+
+C.find_fonts = function (a) {
+  var fonts = allFonts(), words = String(a.query || "").toLowerCase().split(" "), limit = a.limit || 30, out = [], total = 0, i, j, f, hay, ok;
+  for (i = 0; i < fonts.length; i++) {
+    f = fonts[i];
+    hay = (f.familyName + " " + f.styleName + " " + f.postScriptName).toLowerCase();
+    ok = true;
+    for (j = 0; j < words.length; j++) { if (words[j] && hay.indexOf(words[j]) === -1) { ok = false; break; } }
+    if (!ok) continue;
+    total++;
+    if (out.length < limit) out.push({ font: f.postScriptName, family: f.familyName, style: f.styleName });
+  }
+  return { total: total, fonts: out };
+};
+
 C.set_text = function (a) {
   need(a, ["layer_id"]);
   var prop = textProp(a), doc, k, skipped = {}, hasKeys = prop.numKeys > 0, rb, out;
   doc = has(a, "time") ? prop.valueAtTime(a.time, false) : prop.value;
   if (has(a, "text")) doc.text = a.text;
-  if (a.font) doc.font = a.font;
+  if (a.font) { checkFont(a.font); doc.font = a.font; }
   if (a.color) { doc.fillColor = [a.color[0], a.color[1], a.color[2]]; doc.applyFill = true; }
   if (a.stroke_color) { doc.strokeColor = [a.stroke_color[0], a.stroke_color[1], a.stroke_color[2]]; doc.applyStroke = true; }
   if (has(a, "stroke_width") && !has(a, "stroke")) doc.applyStroke = true;

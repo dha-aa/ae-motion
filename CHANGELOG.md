@@ -2,6 +2,17 @@
 
 All notable changes. Versions follow [semantic versioning](https://semver.org); each release is a git tag `vX.Y.Z`, which is what the update check looks for.
 
+## Unreleased
+
+### Added
+- `find_fonts`: search installed fonts by family, style or PostScript name (After Effects 24.0+).
+- `add_layer` takes `text_style` (set_text's styling) and `anchor` (as set_anchor), applied before `position`: styled, centered text in one call instead of four.
+- `set_expression` takes `layer_ids`: one shared expression on many layers in one call.
+
+### Changed
+- `batch` checks every step before running any and lists all problems at once; a bad argument no longer leaves a half-run batch.
+- `set_text` (and `add_layer` `text_style`) refuse a font that is not installed instead of silently keeping the old one (After Effects 24.0+).
+
 ## 2.3.0 — 2026-10-08
 
 ### Added

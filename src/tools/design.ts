@@ -4,7 +4,7 @@
  */
 import { z } from "zod";
 import type { ToolRegistry } from "./registry.js";
-import { id, LayerIds, Pt, ShapeLayerSpec, Time, Value } from "./schemas.js";
+import { Anchor, id, LayerIds, Pt, ShapeLayerSpec, Time, Value } from "./schemas.js";
 
 export function registerDesignTools(r: ToolRegistry): void {
   r.bridged(
@@ -24,7 +24,7 @@ export function registerDesignTools(r: ToolRegistry): void {
     "Move a layer's anchor point onto its content (anchor: center by default, top_left and so on) or to point [x,y] in layer px. keep_position (default true) keeps it in place on screen. Refuses an animated anchor; 3D layers need zero X/Y rotation unless keep_position is false.",
     {
       layer_id: id("Layer"),
-      anchor: z.enum(["center", "top_left", "top", "top_right", "left", "right", "bottom_left", "bottom", "bottom_right"]).optional(),
+      anchor: Anchor.optional(),
       point: Pt.optional(), keep_position: z.boolean().optional(), time: Time.optional(),
     },
     { idempotent: true },
