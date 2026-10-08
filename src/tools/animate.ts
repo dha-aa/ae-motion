@@ -16,7 +16,7 @@ export function registerAnimateTools(r: ToolRegistry): void {
 
   r.bridged(
     "set_keyframes",
-    "Replace all keyframes on a property. Each key: {t, v, interp?: linear|bezier|hold, ease_in?, ease_out?}. For path properties (ADBE Mask Shape, a shape layer's ADBE Vector Shape) v is a shape spec ({type: rect|ellipse, position?, size?}, {type: polygon, points} or {type: path, vertices, in_tangents?, out_tangents?, closed?}); keep the same vertex count across keys for a clean morph. Fails if the property has an active expression.",
+    "Replace all keys on a property. Path properties (ADBE Mask Shape, ADBE Vector Shape) take a shape spec as v; keep the vertex count the same across keys for clean morphs. Fails if an expression is active.",
     {
       layer_id: id("Layer"), path: PropPath,
       keys: z.array(z.object({ t: z.number().min(0), v: ValueOrShape, interp: z.enum(["linear", "bezier", "hold"]).optional(), ease_in: Ease.optional(), ease_out: Ease.optional() })).min(1),
@@ -26,7 +26,7 @@ export function registerAnimateTools(r: ToolRegistry): void {
 
   r.bridged(
     "edit_keyframes",
-    "Edit single keys on one property without rewriting the others; edits run in order. Address a key by t (seconds; matches a key within half a frame) or index (1-based, from get_keyframes). action set: create a key at t (v, or the current value) or update one (v, interp, ease_in, ease_out; spatial properties such as position also take spatial_in / spatial_out motion-path tangents relative to the key, auto_bezier, continuous and roving). action move: move a key to `to` seconds, keeping every setting. action delete: remove a key. Returns all keys as get_keyframes does.",
+    "Edit single keys on one property, in order, leaving the others. Address a key by t (within half a frame) or index (1-based). set creates a key at t (v or the current value) or updates one; spatial_in/out are motion-path tangents relative to the key. move keeps every setting. Returns the edited keys (get_keyframes lists all).",
     {
       layer_id: id("Layer"), path: PropPath,
       edits: z.array(z.object({
@@ -45,7 +45,7 @@ export function registerAnimateTools(r: ToolRegistry): void {
 
   r.bridged(
     "copy_animation",
-    "Copy one property's animation from a layer to other layers: every key with its interpolation, easing and motion-path tangents (or the static value), plus any expression. The targets' existing keys on that property are replaced. to_path copies onto a different property of the same value type (default: the same path). offset_seconds moves the keys in time; stagger_seconds adds i * stagger_seconds for the i-th target.",
+    "Copy a property's keys (with easing and tangents) or static value, plus any expression, to other layers, replacing their keys. to_path targets another property of the same type. offset_seconds shifts the keys; the i-th target also gets i * stagger_seconds.",
     {
       from_layer_id: id("Source layer"), path: PropPath, to_layer_ids: LayerIds, to_path: PropPath.optional(),
       offset_seconds: z.number().optional(), stagger_seconds: z.number().optional(),
@@ -54,7 +54,7 @@ export function registerAnimateTools(r: ToolRegistry): void {
 
   r.bridged(
     "add_property",
-    "Add a property or group to a layer, for things set_property cannot reach until they exist. Text animator: group_path ['ADBE Text Properties','ADBE Text Animators'], match_name ADBE Text Animator; then add properties with group_path = returned path + 'ADBE Text Animator Properties' (match_name ADBE Text Position 3D, ADBE Text Opacity, ADBE Text Fill Color, ADBE Text Tracking Amount...) and a range selector with group_path = returned path + 'ADBE Text Selectors', match_name ADBE Text Selector. Layer styles cannot be created by scripts in After Effects, so they are not supported. Returns the new property path for set_property / set_keyframes.",
+    "Add a property or group that set_property cannot reach until it exists. Text animator: group_path ['ADBE Text Properties','ADBE Text Animators'], match_name 'ADBE Text Animator'; then add properties under returned path + 'ADBE Text Animator Properties' (e.g. ADBE Text Opacity, ADBE Text Position 3D, ADBE Text Fill Color) and a selector under returned path + 'ADBE Text Selectors' (ADBE Text Selector). Returns the new property path.",
     { layer_id: id("Layer"), match_name: z.string(), group_path: PropPath.optional() },
     { destructive: false },
   );
@@ -89,7 +89,7 @@ export function registerAnimateTools(r: ToolRegistry): void {
 
   r.bridged(
     "set_text",
-    "Set text content and any character or paragraph styling on a text layer; only the fields you pass change, and the result reads the values back (skipped lists anything After Effects refused). font is the PostScript name. Character: size, color, tracking, leading (turns auto leading off), auto_leading, baseline_shift, horizontal_scale and vertical_scale (percent, 100 = normal), faux_bold, faux_italic, all_caps, small_caps, superscript, subscript, ligatures, tsume. Stroke: stroke_color (turns the stroke on), stroke_width, stroke (on/off), stroke_over_fill, fill (on/off). Paragraph: justification (left, center, right, justify, justify_center, justify_right, justify_all), first_line_indent, left_indent, right_indent, space_before, space_after, box_size [w,h] (resizes box text; point text cannot be converted, create box text with add_layer options.box_size). Pass time to set the text at a time as a keyframe. Styling applies to the whole layer; for per-character changes use text animators (add_property).",
+    "Set text and character/paragraph styling on a whole text layer; only the fields you pass change, and the result reads them back (skipped lists what After Effects refused). font is the PostScript name. leading turns auto leading off; stroke_color turns the stroke on; horizontal/vertical_scale in percent. box_size resizes box text (point text cannot become box text: use add_layer options.box_size). time sets a keyframe. Per-character styling: text animators (add_property).",
     {
       layer_id: id("Layer"), time: z.number().min(0).optional(), text: z.string().optional(), font: z.string().optional(),
       size: z.number().positive().optional(), color: Color.optional(), tracking: z.number().optional(),
@@ -121,7 +121,7 @@ export function registerAnimateTools(r: ToolRegistry): void {
 
   r.bridged(
     "add_shape_modifier",
-    "Add a modifier to a shape layer's group: trim_paths (ADBE Vector Trim Start / End / Offset), repeater (ADBE Vector Repeater Copies / Offset, plus a Transform group) or round_corners (ADBE Vector RoundCorner Radius). params maps a property name or match name to a value. group_index is the 1-based shape group (default 1). Returns the modifier's property path and property names, ready for set_keyframes and list_properties.",
+    "Add trim_paths, repeater or round_corners to a shape group (group_index, default 1). params maps property names or match names to values. Returns the modifier's path and property names for set_keyframes.",
     { layer_id: id("Layer"), modifier: z.enum(["trim_paths", "repeater", "round_corners"]), group_index: z.number().int().min(1).optional(), params: z.record(Value).optional() },
     { destructive: false },
   );

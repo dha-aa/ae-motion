@@ -129,7 +129,7 @@ C.set_anchor = function (a: SetAnchorArgs) {
     offsetPosition(l, d[0], d[1]);
   }
   an.setValue(oa.length > 2 ? [na[0], na[1], oa[2]] : na);
-  return { layer: layerInfo(l), anchor: copyArr(an.value), position: copyArr(tp(l, "ADBE Position").value), bounds: compBounds(l, t) };
+  return { layer: layerRef(l), anchor: copyArr(an.value), position: copyArr(tp(l, "ADBE Position").value), bounds: compBounds(l, t) };
 };
 
 // Add a shape group (on top of the existing ones) to a shape layer.
@@ -154,7 +154,7 @@ C.text_to_shapes = function (a: TextToShapesArgs) {
   runMenu("Create Shapes from Text", 3781);
   if (c.numLayers !== n0 + 1 || l.index < 2) fail("AE_ERROR", "After Effects did not create the outline layer");
   const made = c.layer(l.index - 1);
-  return { shape_layer: layerInfo(made), groups: group(made, "ADBE Root Vectors Group").numProperties, text_layer: layerInfo(l) };
+  return { shape_layer: layerRef(made), groups: group(made, "ADBE Root Vectors Group").numProperties, text_layer: layerRef(l) };
 };
 
 // Turn on a layer style and set its parameters (property names without the style prefix, e.g. distance, color).

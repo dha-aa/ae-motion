@@ -8,7 +8,7 @@ C.split_layer = function (a) {
   for (i = 0; i < ls.length; i++) {
     if (!(t > ls[i].inPoint + EPS && t < ls[i].outPoint - EPS)) fail("BAD_ARGS", "Time " + t + " is not inside layer " + ls[i].id + " (" + ls[i].inPoint + " to " + ls[i].outPoint + ")");
   }
-  for (i = 0; i < ls.length; i++) { d = splitAt(ls[i], t); out.push({ first: layerInfo(ls[i]), second: layerInfo(d) }); }
+  for (i = 0; i < ls.length; i++) { d = splitAt(ls[i], t); out.push({ first: layerTiming(ls[i]), second: layerTiming(d) }); }
   return { time: t, splits: out };
 };
 
@@ -17,7 +17,7 @@ C.shift_layers = function (a) {
   var ls = pickLayers(a.layer_ids), out = [], i;
   assertUnlocked(ls);
   for (i = 0; i < ls.length; i++) shiftLayer(ls[i], a.offset_seconds);
-  for (i = 0; i < ls.length; i++) out.push(layerInfo(ls[i]));
+  for (i = 0; i < ls.length; i++) out.push(layerTiming(ls[i]));
   return { layers: out };
 };
 
@@ -32,7 +32,7 @@ C.sequence_layers = function (a) {
   for (i = 0; i < ls.length; i++) {
     shiftLayer(ls[i], t - ls[i].inPoint);
     t = ls[i].outPoint - ov;
-    out.push(layerInfo(ls[i]));
+    out.push(layerTiming(ls[i]));
   }
   return { layers: out };
 };
@@ -209,7 +209,7 @@ C.align_to_markers = function (a) {
       next = prop.keyTime(first + i + 1);
       if (ls[i].outPoint > next + EPS) ls[i].outPoint = next;
     }
-    out.push(layerInfo(ls[i]));
+    out.push(layerTiming(ls[i]));
   }
   return { layers: out };
 };

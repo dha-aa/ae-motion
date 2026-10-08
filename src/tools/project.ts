@@ -29,7 +29,7 @@ export function registerProjectTools(r: ToolRegistry): void {
 
   r.bridged(
     "set_comp",
-    "Change composition settings. Only the fields you pass change: name, width, height, fps, duration, bg_color, pixel_aspect, work_area ({start, duration} in seconds, must fit inside the comp), and motion blur: motion_blur (the comp switch; layers with set_layer motion_blur only render blurred while it is on), shutter_angle (degrees, 0-720, default 180) and shutter_phase (degrees, -360 to 360), and frame_blending (the comp switch that set_layer frame_blending needs to render).",
+    "Change comp settings; only the fields you pass change. work_area must fit inside the comp. motion_blur and frame_blending are the comp switches the layer switches need to render; shutter_angle default 180.",
     {
       comp_id: id("Comp"), name: z.string().optional(), width: dimension().optional(), height: dimension().optional(),
       fps: fps().optional(), duration: z.number().positive().optional(), bg_color: Color.optional(), pixel_aspect: z.number().positive().optional(),

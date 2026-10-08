@@ -1,6 +1,6 @@
 # Tool reference
 
-66 tools, grouped the same way as the source (`src/tools/<group>.ts` on the server, `host/commands/<group>.jsx` in After Effects). Every tool's full argument schema and description is served by the MCP `tools/list` call, so your client always sees the current details. This page gives the overview and the behavior you can't read off a schema.
+67 tools, grouped the same way as the source (`src/tools/<group>.ts` on the server, `host/commands/<group>.jsx` in After Effects). Every tool's full argument schema and description is served by the MCP `tools/list` call, so your client always sees the current details. This page gives the overview and the behavior you can't read off a schema.
 
 ## Conventions
 
@@ -8,10 +8,10 @@
 - Comps, layers and project items are addressed by the numeric ids the tools return (`get_project`, `get_comp`).
 - Properties are addressed by alias (`position`, `scale`, `rotation`, `opacity`, `anchor`) or by an array of match names and 1-based indexes, e.g. `["ADBE Effect Parade", "ADBE Gaussian Blur 2", "ADBE Gaussian Blur 2-0001"]`. Use `list_properties` to discover paths.
 - Coordinates: x to the right, y **down**, z into the screen.
-- Results leave out default values to save tokens. Layer info includes `parent_id`, `enabled: false`, `locked`, `shy`, `solo`, `three_d`, `motion_blur`, `stretch` and `blend_mode` only when they differ from the defaults (no parent, enabled, off, 100, `NORMAL`). Keys include spatial tangents and `roving` / `auto_bezier` / `continuous` only when non-zero or true. `set_text` reads back only the fields you set (plus `skipped`), and `edit_keyframes` returns only the keys it set or moved; `get_text` / `get_keyframes` return everything.
+- Results are kept short to save tokens. Tools that change layers return the layer's `{id, index, name}`; the timeline tools and `duplicate_layer` add `in`/`out`/`start`, and `set_layer` adds the fields you passed, read back (all timing fields when one changes). `set_keyframes` returns `num_keys`. Read tools give the rest. Comp info lists `pixel_aspect`, the work area, `time`, `motion_blur` (with the shutter settings), `frame_blending` and `num_markers` only when they are not the defaults (square pixels, whole comp, 0, off, off, 0). `list_properties` marks groups with `type` and properties with `value_type`, with `num_keys` only when animated. Layer info includes `parent_id`, `enabled: false`, `locked`, `shy`, `solo`, `three_d`, `motion_blur`, `stretch` and `blend_mode` only when they differ from the defaults (no parent, enabled, off, 100, `NORMAL`). Keys include spatial tangents and `roving` / `auto_bezier` / `continuous` only when non-zero or true. `set_text` reads back only the fields you set (plus `skipped`), and `edit_keyframes` returns only the keys it set or moved; `get_text` / `get_keyframes` return everything.
 - `AE_MCP_TOOLSETS` limits which tool groups are loaded (see the README's Configuration). With `core`, the groups below other than project, layers, animate, output and inspect are absent.
 - Every mutating call is one undo step in After Effects. If a tool fails midway, its partial changes stay in that undo group, so undo once to revert.
-- A good build loop: `get_project`, `create_comp`, `add_layer` (background first), `set_keyframes` with easing, `preview_frame` at key moments, adjust, then `render_start` and poll `render_status`. Prefer `set_keyframes` over many `set_property` calls, use `stagger` for repeated elements, and call `find_effects` rather than guessing effect match names.
+- A good build loop: `get_project`, `create_comp`, `add_layer` (background first), `set_keyframes` with easing, `preview_frame` at key moments (several times in one call), adjust, then `render_start` and poll `render_status`. Prefer `set_keyframes` over many `set_property` calls, use `stagger` for repeated elements, and call `find_effects` rather than guessing effect match names.
 
 ## Tools
 
@@ -74,12 +74,13 @@
 | | `set_3d` | Make a layer 3D; set position, rotation, orientation, scale and material options (shadows, shininess, metal) |
 | | `set_light` | Light type, intensity, color, cone, falloff, shadows, and placement |
 | | `set_3d_view` | Switch the viewer's 3D view: active camera, default, front, left, top, back, right, bottom, custom 1 to 3 |
-| Preview and render | `preview_frame` | Render one frame to PNG and return it as an image |
+| Preview and render | `preview_frame` | Render frames to PNG and return them as one image: a single time, or up to 9 tiled into a contact sheet. The image sent back is shrunk (default 768 px on the longest edge, 1152 for a sheet; `size` changes it), since image tokens grow with pixels: a full HD frame costs ~1,500 tokens, the default ~440, six frames in one sheet ~670. The full-size PNGs stay in the temp folder |
 | | `render_start` | Save the project and start a background `aerender` job |
 | | `render_status` | State, percent, log tail and the file actually written |
 | | `render_cancel` | Cancel a running render job |
 | Escape hatch | `run_jsx` | Last resort: run arbitrary ExtendScript (disabled unless `AE_MCP_ALLOW_JSX=1`). Its description, the server instructions and `motion-guide` all tell models to use a dedicated tool whenever one exists |
 | Server | `check_for_updates` | Is a newer release out? Current and latest version and the update command (see README, Updates) |
+| Server | `batch` | Run up to 50 tool calls in order in one call. A string `"$N.path"` in a step's args is replaced by that value from step N's result (`"$1.id"`, `"$2.layers.0.id"`). Each step gets the same validation and path sandbox as a direct call and is its own undo step; the batch stops at the first error and returns the results so far (`results: "last"` / `"none"` returns less). Not for `preview_frame`, `render_*`, `run_jsx` or `open_project`. Every tool call is a round trip that re-reads the conversation, so batching a scene's steps is the biggest token saving |
 
 Resources: `ae://project` (same as `get_project`) and `ae://selection` (layers selected in the active comp). Prompt: `motion-guide`.
 

@@ -12,12 +12,14 @@
  *   src/tools/output.ts    <-> host/commands/output.jsx    (preview, render)
  *   src/tools/scripting.ts <-> host/commands/output.jsx    (run_jsx)
  *   src/tools/meta.ts      (server only: check_for_updates)
+ *   src/tools/batch.ts     (server only: batch, always on)
  */
 import { enabledToolsets, type Toolset } from "../config.js";
 import { registerAnimateTools } from "./animate.js";
 import { registerDesignTools } from "./design.js";
 import { registerInspectTools } from "./inspect.js";
 import { registerLayerTools } from "./layers.js";
+import { registerBatchTool } from "./batch.js";
 import { registerMetaTools } from "./meta.js";
 import { registerMaskTools } from "./masks.js";
 import { registerOutputTools } from "./output.js";
@@ -37,4 +39,6 @@ export function registerAllTools(r: ToolRegistry): void {
     ["scripting", registerScriptingTools], ["meta", registerMetaTools],
   ];
   for (const [name, register] of groups) if (on.has(name)) register(r);
+  registerBatchTool(r); // last: it runs the bridged tools registered above
+
 }

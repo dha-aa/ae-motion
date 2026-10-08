@@ -223,12 +223,24 @@ t("delete_item guards used items and non-empty folders", () => {
   fails(w.call("delete_item", { item_id: 99999 }), "NOT_FOUND");
 });
 
-t("set_playhead snaps and validates; get_comp reports timeline fields", () => {
+t("set_playhead snaps and validates; get_comp reports timeline fields only when not default", () => {
   const w = makeWorld(); const c = w.comp();
   const r = w.call("set_playhead", { comp_id: c.id, time: 2.01 }); ok(r); near(r.result.time, 2 + 0 / 30 + 0, "snapped"); assert.equal(r.result.frame, 60);
   fails(w.call("set_playhead", { comp_id: c.id, time: 99 }), "BAD_ARGS");
   const g = w.call("get_comp", { comp_id: c.id }); ok(g);
-  assert.ok("work_area_start" in g.result && "work_area_duration" in g.result && "time" in g.result && "num_markers" in g.result);
+  near(g.result.time, 2);
+  assert.ok(!("work_area_start" in g.result) && !("num_markers" in g.result) && !("motion_blur" in g.result) && !("pixel_aspect" in g.result), "defaults left out");
+  ok(w.call("set_comp", { comp_id: c.id, work_area: { start: 1, duration: 2 } }));
+  ok(w.call("add_marker", { comp_id: c.id, time: 1 }));
+  const g2 = w.call("get_comp", { comp_id: c.id }); ok(g2);
+  near(g2.result.work_area_start, 1); near(g2.result.work_area_duration, 2); assert.equal(g2.result.num_markers, 1);
+});
+
+t("set_layer returns the layer's ref plus only the fields passed (all timing when one changes)", () => {
+  const w = makeWorld(); const c = w.comp(); const a = w.layer(c, "a", 0, 10);
+  const r = w.call("set_layer", { layer_id: a.id, name: "b", in: 3, shy: false }); ok(r);
+  assert.deepEqual(Object.keys(r.result).sort(), ["id", "in", "index", "name", "out", "shy", "start"]);
+  assert.equal(r.result.name, "b"); near(r.result.in, 3); near(r.result.out, 10); assert.equal(r.result.shy, false);
 });
 
 t("set_layer in/out only changes what you pass", () => {

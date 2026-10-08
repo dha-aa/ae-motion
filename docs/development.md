@@ -156,6 +156,7 @@ Use semantic versioning: a breaking change (a removed or renamed tool or argumen
 | `mock-design.test.ts` | Bounds and alignment maths (rotation, scale, parents, animated and separated position), anchor points, layer switches, solids, precompose leave-attributes, layer style and shape validation |
 | `mock-keyframes.test.ts` | `edit_keyframes`, `copy_animation`, `stagger` fidelity, separate dimensions, auto-orient; the fake property models the ease-switches-to-bezier and roving re-time behaviors |
 | `aerender-discovery.test.ts` | `findAerender` against fake install layouts |
+| `preview-image.test.ts` | Shrinking preview PNGs and tiling contact sheets (`src/render/image.ts`) |
 | `server.test.ts` | The built server end to end over stdio, with a fake bridge and a fake `aerender`: render lifecycle (failed start keeps old output, jobs stop on disconnect, the real output file is reported), `preview_frame` waiting, path sandboxing, the `run_jsx` gate. Skipped on Windows (uses a bash script) |
 
 CI (`.github/workflows/ci.yml`) runs `npm run typecheck` and `npm test` on macOS, Linux and Windows with Node 22 and 24.

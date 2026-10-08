@@ -7,6 +7,7 @@ import os from "node:os";
 import path from "node:path";
 import { z } from "zod";
 import { TIMEOUTS } from "../config.js";
+import { contactSheet, shrinkPng } from "../render/image.js";
 import { toAe } from "../sandbox.js";
 import { errorResult, fromBridge, json, type ToolRegistry } from "./registry.js";
 import { id } from "./schemas.js";
@@ -38,24 +39,37 @@ export function registerOutputTools(r: ToolRegistry): void {
 
   r.tool(
     "preview_frame",
-    "Render a single frame of a comp to a PNG and return it as an image. Needs a recent After Effects version (comp.saveFrameToPng).",
-    { comp_id: id("Comp"), time: z.number().min(0) },
+    "Render comp frames and return them as one image (several times are tiled left to right, top to bottom). Images cost tokens by size: keep the default size, and pass several times in one call rather than calling once per time.",
+    {
+      comp_id: id("Comp"),
+      time: z.union([z.number().min(0), z.array(z.number().min(0)).min(1).max(9)]).describe("Seconds, or up to 9 times for a contact sheet"),
+      size: z.number().int().min(64).max(4096).optional().describe("Longest edge of the returned image in px (default 768, or 1152 for several times)"),
+    },
     async (a) => {
       fs.mkdirSync(PREVIEW_DIR, { recursive: true });
-      const out = path.join(PREVIEW_DIR, `preview_${a.comp_id}_${String(a.time).replace(".", "_")}_${Date.now()}.png`);
-      const res = await bridge.run("preview_frame", { comp_id: a.comp_id, time: a.time, output_path: toAe(out) }, TIMEOUTS.preview);
-      if (!res.ok) return fromBridge(res);
-      if (!(await waitForFile(out, TIMEOUTS.previewFile))) {
-        return errorResult({
-          code: "AE_ERROR",
-          message: `After Effects reported success but no PNG was written within ${TIMEOUTS.previewFile / 1000} seconds`,
-          hint: "Heavy 3D scenes can take a while; try again, or preview a simpler time",
-        });
+      const times = Array.isArray(a.time) ? a.time : [a.time];
+      const files: string[] = [];
+      for (const t of times) {
+        const out = path.join(PREVIEW_DIR, `preview_${a.comp_id}_${String(t).replace(".", "_")}_${Date.now()}.png`);
+        const res = await bridge.run("preview_frame", { comp_id: a.comp_id, time: t, output_path: toAe(out) }, TIMEOUTS.preview);
+        if (!res.ok) return fromBridge(res);
+        if (!(await waitForFile(out, TIMEOUTS.previewFile))) {
+          return errorResult({
+            code: "AE_ERROR",
+            message: `After Effects reported success but no PNG was written within ${TIMEOUTS.previewFile / 1000} seconds`,
+            hint: "Heavy 3D scenes can take a while; try again, or preview a simpler time",
+          });
+        }
+        files.push(out);
       }
+      const pngs = files.map((f) => fs.readFileSync(f));
+      // the files on disk stay full size; only the copy sent to the model is shrunk
+      const img = pngs.length === 1 ? shrinkPng(pngs[0], a.size ?? 768) : contactSheet(pngs, a.size ?? 1152);
+      const info = pngs.length === 1 ? { path: files[0] } : { times, dir: PREVIEW_DIR };
       return {
         content: [
-          { type: "text", text: JSON.stringify({ path: out }) },
-          { type: "image", data: fs.readFileSync(out).toString("base64"), mimeType: "image/png" },
+          { type: "text", text: JSON.stringify(info) },
+          { type: "image", data: img.toString("base64"), mimeType: "image/png" },
         ],
       };
     },

@@ -41,7 +41,7 @@ C.add_layer = function (a) {
   if (has(o, "start")) l.startTime = o.start;
   if (has(o, "in")) setIn(l, o["in"]);
   if (has(o, "out")) l.outPoint = o.out;
-  return layerInfo(l);
+  return layerRef(l);
 };
 
 C.set_layer = function (a) {
@@ -89,7 +89,7 @@ C.set_layer = function (a) {
   if (bm !== undefined) l.blendingMode = bm;
   if (a.parent_id === null) l.parent = null; else if (par) l.parent = par;
   if (a.locked === true) l.locked = true;
-  return layerInfo(l);
+  return layerFieldsSet(l, a);
 };
 
 // parent = x keeps the layer where it is on screen (After Effects compensates); setParentWithJump keeps its own values.
@@ -140,8 +140,8 @@ C.link_layers = function (a) {
     else if (a.jump === true) layers[i].setParentWithJump(par);
     else layers[i].parent = par;
   }
-  for (i = 0; i < layers.length; i++) out.push(layerInfo(layers[i]));
-  return { parent: par ? layerInfo(par) : null, created_null: made !== null, layers: out };
+  for (i = 0; i < layers.length; i++) out.push(layerRef(layers[i]));
+  return { parent: par ? layerRef(par) : null, created_null: made !== null, layers: out };
 };
 
 // Swap the footage / precomp / solid a layer shows, keeping its timing, keyframes and effects.
@@ -153,12 +153,12 @@ C.replace_source = function (a) {
   if (it === l.containingComp) fail("BAD_ARGS", "A comp cannot contain itself");
   try { l.replaceSource(it, a.fix_expressions !== false); }
   catch (e) { fail("BAD_ARGS", "After Effects refused the replacement: " + (e.message || e), "A precomp cannot contain the comp it is placed in"); }
-  return layerInfo(l);
+  return layerRef(l);
 };
 
 C.delete_layer = function (a) {
   need(a, ["layer_id"]);
-  var l = getLayer(a.layer_id), info = layerInfo(l);
+  var l = getLayer(a.layer_id), info = layerRef(l);
   l.remove();
   return { deleted: info };
 };
@@ -171,7 +171,7 @@ C.duplicate_layer = function (a) {
     d = l.duplicate();
     if (a.name) d.name = n === 1 ? a.name : a.name + " " + (i + 1);
     if (has(a, "offset_seconds")) shiftLayer(d, a.offset_seconds * (i + 1));
-    out.push(layerInfo(d));
+    out.push(layerTiming(d));
   }
   return { layers: out };
 };
@@ -198,7 +198,7 @@ C.reorder_layer = function (a) {
   } else if (to === "up") { if (l.index > 1) l.moveBefore(comp.layer(l.index - 1));
   } else if (to === "down") { if (l.index < comp.numLayers) l.moveAfter(comp.layer(l.index + 1));
   } else { fail("BAD_ARGS", "to must be top, bottom, up or down"); }
-  return layerInfo(l);
+  return layerRef(l);
 };
 
 C.precompose = function (a) {

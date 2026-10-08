@@ -35,9 +35,16 @@ export const ShapeSpec = z.object({
 /** A property value: number, boolean, string or number array (positions, scale in percent, colors 0-1). */
 export const Value = z.union([z.number(), z.string(), z.boolean(), z.array(z.number())]).describe("number, boolean or number array");
 /** Value, or a shape spec for path properties; only the tools that can set paths take it (it is large). */
+// The shape spec is advertised by reference to add_mask (writing it out costs ~700 characters per use) but still
+// fully validated: the custom check runs ShapeSpec, strict, and reports its issues.
+const ShapeSpecStrict = ShapeSpec.strict();
+const ShapeRef = z.record(z.unknown()).superRefine((v, ctx) => {
+  const r = ShapeSpecStrict.safeParse(v);
+  if (!r.success) for (const issue of r.error.issues) ctx.addIssue({ ...issue, message: `shape spec: ${issue.message}` } as z.IssueData);
+});
 export const ValueOrShape = z
-  .union([z.number(), z.string(), z.boolean(), z.array(z.number()), ShapeSpec])
-  .describe("number, boolean, number array, or a shape spec for path properties (mask / shape paths)");
+  .union([z.number(), z.string(), z.boolean(), z.array(z.number()), ShapeRef])
+  .describe("number, boolean, number array, or for path properties a shape spec as add_mask's shape");
 export const Ease = z
   .union([z.literal("easy"), z.object({ speed: z.number().default(0), influence: z.number().min(0.1).max(100).default(33.33) })])
   .describe('"easy" (easy ease) or {speed, influence}');

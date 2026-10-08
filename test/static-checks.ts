@@ -13,11 +13,11 @@ import { buildHost, emittedPath, HOST_OUT, HOST_SOURCES } from "../scripts/build
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 
-const EXPECTED_TOOLS = 66; // update when adding or removing a tool
+const EXPECTED_TOOLS = 67; // update when adding or removing a tool
 // Tool definitions are sent to the model on every request, so their size is a cost. Raise this only on purpose
-// (measured at about 78.5k chars, roughly 22k tokens, for 66 tools).
-const TOOLS_LIST_BUDGET = 82_000;
-const SERVER_ONLY_TOOLS = new Set(["render_start", "render_status", "render_cancel", "check_for_updates"]); // implemented in TypeScript, no host command
+// (measured at about 60k chars for 66 tools).
+const TOOLS_LIST_BUDGET = 63_000;
+const SERVER_ONLY_TOOLS = new Set(["render_start", "render_status", "render_cancel", "check_for_updates", "batch"]); // implemented in TypeScript, no host command
 const HOST_ONLY_COMMANDS = new Set(["get_selection", "prepare_render"]); // used by a resource / render_start, not tools
 
 let bad = 0;

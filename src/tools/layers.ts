@@ -6,7 +6,7 @@ import { Color, id, Label, LayerIds, LightType, ShapeLayerSpec, Size, V3 } from 
 export function registerLayerTools(r: ToolRegistry): void {
   r.bridged(
     "add_layer",
-    "Add a layer (text layers take options.box_size [w,h] for box text). kind: solid | text | shape | null | adjustment | footage | precomp | camera | light. options: name, color, size, duration, text, item_id (footage/precomp), center (camera/light), position ([x,y] or [x,y,z]; three values turn 3D on), three_d, light_type (point|spot|parallel|ambient), start/in/out, shape {type: rect|ellipse|star|polygon|path, size, fill, stroke, stroke_width, roundness, points, outer_radius, inner_radius (star/polygon), vertices/in_tangents/out_tangents/closed (path), plus fill_opacity, stroke_opacity, dashes, line_cap, line_join, name, position, rotation, opacity}. More shapes can be added to the layer with add_shape.",
+    "Add a layer. item_id: footage/precomp source. center: camera/light. position with 3 values turns 3D on. box_size: box text. shape: the first shape of a shape layer (as add_shape; more with add_shape).",
     {
       comp_id: id("Comp"),
       kind: z.enum(["solid", "text", "shape", "null", "adjustment", "footage", "precomp", "camera", "light"]),
@@ -24,7 +24,7 @@ export function registerLayerTools(r: ToolRegistry): void {
 
   r.bridged(
     "set_layer",
-    "Edit a layer: name, timing (start/in/out in seconds), time stretch (percent; 200 = half speed, negative reverses), parent (parent_id, or null to unparent), blend mode name (e.g. ADD, SCREEN, MULTIPLY), visibility, and flags: three_d, shy, solo, locked, label (0-16), motion_blur (renders only with set_comp motion_blur on), time_remap, separate_dimensions (position becomes x_position / y_position / z_position, each with its own keys and easing), auto_orient (path: rotate along the motion path, or off), frame_blending (off | frame_mix | pixel_motion; smooths slowed-down footage, renders only with set_comp frame_blending on), quality (best | draft | wireframe), collapse (collapse transformations / continuously rasterize, precomp and vector layers), guide (guide layer: visible in the comp, not rendered), adjustment (make it an adjustment layer or not), effects (effects on/off), audio (audio on/off), preserve_transparency, and for solid layers solid_color and solid_size [w,h] (they change the solid item, so every layer using that solid changes).",
+    "Edit a layer; only the fields you pass change. stretch: percent (200 = half speed, negative reverses). parent_id null unparents. blend_mode: e.g. ADD, SCREEN, MULTIPLY. motion_blur and frame_blending render only with the same switch on in set_comp. separate_dimensions splits position into x_position / y_position / z_position. auto_orient path rotates along the motion path. collapse: collapse transformations / continuously rasterize. guide: visible in the comp, not rendered. solid_color / solid_size change the solid item (every layer using it).",
     {
       layer_id: id("Layer"), name: z.string().optional(), start: z.number().optional(), in: z.number().optional(), out: z.number().optional(),
       parent_id: z.number().int().nullable().optional(), blend_mode: z.string().optional(), enabled: z.boolean().optional(),
@@ -40,7 +40,7 @@ export function registerLayerTools(r: ToolRegistry): void {
 
   r.bridged(
     "link_layers",
-    "Link (parent) layers so they follow another layer. Pass parent_id to make an existing layer the parent of every layer in layer_ids, or parent_id null to unlink them, or new_null {name?, position?, three_d?} to create a null object and parent them all to it. The null goes at the average of the layers' position values by default, is 3D if any of them is (or if position has 3 values), and is stacked above the top-most of them. Moving, rotating or scaling the parent then moves the children, so one null can drive a whole group. jump true uses setParentWithJump (the child keeps its own transform values, so it can visibly move). Everything is checked first: a self-link, a cycle, a locked layer or mixed comps change nothing.",
+    "Parent layer_ids to parent_id (null unlinks), or to a new_null created at their average position (3D if any of them is), stacked above them. jump true keeps each child's own transform values (it can visibly move). Self-links, cycles, locked layers or mixed comps are refused before anything changes.",
     {
       layer_ids: LayerIds, parent_id: z.number().int().nullable().optional(),
       new_null: z.object({ name: z.string().optional(), position: V3.optional(), three_d: z.boolean().optional() }).optional(), jump: z.boolean().optional(),

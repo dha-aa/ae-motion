@@ -4,7 +4,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const scripts = ["static-checks.ts", "mock-host.test.ts", "mock-camera.test.ts", "mock-shapes.test.ts", "mock-keyframes.test.ts", "mock-design.test.ts", "aerender-discovery.test.ts", "server.test.ts"];
+const scripts = ["static-checks.ts", "mock-host.test.ts", "mock-camera.test.ts", "mock-shapes.test.ts", "mock-keyframes.test.ts", "mock-design.test.ts", "aerender-discovery.test.ts", "preview-image.test.ts", "server.test.ts"];
 let failed = 0;
 for (const s of scripts) {
   console.log("\n=== " + s);

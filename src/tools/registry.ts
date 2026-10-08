@@ -127,7 +127,16 @@ function capSize(result: CallToolResult, hint?: string): CallToolResult {
   });
 }
 
+/** What batch needs to run a bridged tool itself: its strict schema and path arguments. */
+export interface BridgedSpec {
+  schema: z.ZodTypeAny;
+  paths: string[];
+}
+
 export class ToolRegistry {
+  /** Every bridged tool registered so far, for batch. */
+  readonly bridgedTools = new Map<string, BridgedSpec>();
+
   constructor(
     private readonly server: McpServer,
     readonly deps: ToolDeps,
@@ -149,6 +158,7 @@ export class ToolRegistry {
   bridged<S extends z.ZodRawShape>(name: string, description: string, shape: S, opts: BridgedOptions = {}): void {
     const paths = opts.paths ?? [];
     for (const k of paths) if (!(k in shape)) throw new Error(`bridged("${name}"): path argument "${k}" is not in the schema`);
+    this.bridgedTools.set(name, { schema: deepStrict(z.object(shape)), paths });
     this.tool(
       name,
       description,
@@ -163,12 +173,34 @@ export class ToolRegistry {
   }
 }
 
-type ListHandler = (request: unknown, extra: unknown) => Promise<{ tools: { inputSchema?: Record<string, unknown> }[] }>;
+type ListHandler = (request: unknown, extra: unknown) => Promise<{ tools: Record<string, unknown>[] }>;
+
+// Range and length bounds are still enforced by zod (its error says what is wrong); the model does not need them
+// up front on every request.
+const BOUNDS = new Set(["minimum", "maximum", "exclusiveMinimum", "exclusiveMaximum", "minItems", "maxItems"]);
+
+/** A copy of an input schema with local $refs inlined (a ref path is longer than what it points to) and bounds dropped. */
+export function slimSchema(root: Record<string, unknown>): Record<string, unknown> {
+  const at = (ref: string): unknown => ref.slice(2).split("/").reduce<unknown>((o, k) => (o as Record<string, unknown>)?.[k], root);
+  const walk = (v: unknown): unknown => {
+    if (Array.isArray(v)) return v.map(walk);
+    if (!v || typeof v !== "object") return v;
+    const o = v as Record<string, unknown>;
+    if (typeof o.$ref === "string" && o.$ref.startsWith("#/")) {
+      const { $ref, ...rest } = o;
+      return walk({ ...(at($ref as string) as object), ...rest });
+    }
+    const out: Record<string, unknown> = {};
+    for (const [k, x] of Object.entries(o)) if (k !== "$schema" && !BOUNDS.has(k)) out[k] = walk(x);
+    return out;
+  };
+  return walk(root) as Record<string, unknown>;
+}
 
 /**
- * Drop the "$schema" header the SDK puts on every tool's input schema (~60 characters per tool, on every request).
- * The SDK builds tools/list itself, so this wraps its handler; if the SDK's internals change, it does nothing
- * (test/static-checks.ts fails if the headers come back).
+ * Slim what tools/list sends, which the client passes to the model on every request: slimSchema on each input
+ * schema, and no "execution" block (task support, unused here). The SDK builds tools/list itself, so this wraps its
+ * handler; if the SDK's internals change, it does nothing (test/static-checks.ts fails if "$schema" comes back).
  */
 export function slimToolList(server: McpServer): void {
   const handlers = (server.server as unknown as { _requestHandlers?: Map<string, ListHandler> })._requestHandlers;
@@ -176,7 +208,10 @@ export function slimToolList(server: McpServer): void {
   if (!handlers || !original) return;
   handlers.set("tools/list", async (request, extra) => {
     const res = await original(request, extra);
-    for (const t of res.tools) if (t.inputSchema) delete t.inputSchema.$schema;
+    for (const t of res.tools) {
+      if (t.inputSchema) t.inputSchema = slimSchema(t.inputSchema as Record<string, unknown>);
+      delete t.execution;
+    }
     return res;
   });
 }
