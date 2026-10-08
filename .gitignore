@@ -38,4 +38,3 @@ build/
 *.aep
 *.aepx
 Adobe After Effects Auto-Save/
-!evals/fixtures/*.aep
