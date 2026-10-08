@@ -2,7 +2,7 @@
 
 All notable changes. Versions follow [semantic versioning](https://semver.org); each release is a git tag `vX.Y.Z`, which is what the update check looks for.
 
-## Unreleased
+## 2.4.0 — 2026-10-08
 
 ### Added
 - `find_fonts`: search installed fonts by family, style or PostScript name (After Effects 24.0+).
