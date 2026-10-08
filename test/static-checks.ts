@@ -9,6 +9,7 @@ import { fileURLToPath } from "node:url";
 import { spawn, execFileSync } from "node:child_process";
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 import { buildHost, emittedPath, HOST_OUT, HOST_SOURCES } from "../scripts/build-host.ts";
+import { Ajv2020 } from "ajv/dist/2020.js";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -91,6 +92,11 @@ const loose = tools.filter((t) => t.inputSchema.additionalProperties !== false).
 report(loose.length === 0, `every input schema rejects unknown keys${loose.length ? " (" + loose.join(", ") + ")" : ""}`);
 const listSize = JSON.stringify(tools).length;
 report(listSize <= TOOLS_LIST_BUDGET, `tools/list is ${listSize} chars, within the ${TOOLS_LIST_BUDGET} budget`);
+// Clients read the schemas as JSON Schema 2020-12 (there is no $schema header), and the Claude API refuses a tool
+// whose schema does not compile: it did for add_layer / set_layer / set_text in 2.1.0-2.4.0 (draft-07 tuple `items`).
+const ajv = new Ajv2020({ strict: true, strictTypes: false, allowUnionTypes: true });
+const invalid = tools.flatMap((t) => { try { ajv.compile(t.inputSchema); return []; } catch (e) { return [`${t.name}: ${(e as Error).message}`]; } });
+report(invalid.length === 0, `every input schema compiles as JSON Schema 2020-12 (strict)${invalid.length ? "\n      " + invalid.join("\n      ") : ""}`);
 const withDialect = tools.filter((t) => "$schema" in t.inputSchema).map((t) => t.name);
 report(withDialect.length === 0, `no input schema carries a $schema header${withDialect.length ? " (" + withDialect.join(", ") + ")" : ""}`);
 console.log("      tools: " + names.join(", "));

@@ -2,6 +2,11 @@
 
 All notable changes. Versions follow [semantic versioning](https://semver.org); each release is a git tag `vX.Y.Z`, which is what the update check looks for.
 
+## 2.4.1 — 2026-10-08
+
+### Fixed
+- **`add_layer`, `set_layer` and `set_text` were refused by the Claude API** (so Claude Code could not use them) since 2.1.0: their `box_size` / `solid_size` schemas used draft-07 tuple `items`, which is invalid under JSON Schema 2020-12 once the `$schema` header was dropped. Tuples are now advertised as a plain `items` schema, and the tests compile every tool schema as JSON Schema 2020-12.
+
 ## 2.4.0 — 2026-10-08
 
 ### Added
