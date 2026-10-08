@@ -154,14 +154,24 @@ C.copy_animation = function (a) {
   return { copied: out, keys_per_layer: src.numKeys, expression: src.expressionEnabled ? src.expression : null };
 };
 
+// One layer (layer_id) or many (layer_ids): every property is found and checked before any expression is set.
 C.set_expression = function (a) {
-  need(a, ["layer_id", "path"]);
-  var l = getLayer(a.layer_id), p = resolvePath(l, a.path), ex = a.expression || "", err;
-  if (!p.canSetExpression) fail("BAD_ARGS", "Property does not support expressions");
-  p.expression = ex;
-  if (!ex) return { valid: true, enabled: false };
-  err = p.expressionError;
-  return { valid: !err, error: err || null, enabled: p.expressionEnabled };
+  need(a, ["path"]);
+  var many = has(a, "layer_ids"), ids = many ? a.layer_ids : [a.layer_id], ex = a.expression || "", props = [], bad = [], i, p, err;
+  if (many === has(a, "layer_id")) fail("BAD_ARGS", "Pass layer_id or layer_ids (not both)");
+  if (!(ids instanceof Array) || ids.length === 0) fail("BAD_ARGS", "layer_ids must list at least one layer");
+  for (i = 0; i < ids.length; i++) {
+    p = resolvePath(getLayer(ids[i]), a.path);
+    if (!p.canSetExpression) fail("BAD_ARGS", "Property does not support expressions" + (many ? " (layer " + ids[i] + ")" : ""));
+    props.push(p);
+  }
+  for (i = 0; i < props.length; i++) {
+    props[i].expression = ex;
+    err = ex ? props[i].expressionError : "";
+    if (err) bad.push({ layer_id: ids[i], error: err });
+  }
+  if (!many) return ex ? { valid: !err, error: err || null, enabled: props[0].expressionEnabled } : { valid: true, enabled: false };
+  return bad.length ? { set: ids.length, valid: false, errors: bad } : { set: ids.length, valid: true };
 };
 
 // Returns the new property's path: indexed groups (e.g. text animators) are addressed by index, others by match name.

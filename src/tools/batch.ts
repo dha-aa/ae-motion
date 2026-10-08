@@ -35,15 +35,57 @@ export function resolveRefs(v: unknown, results: unknown[], step: number): unkno
   return v;
 }
 
+type Path = (string | number)[];
+
+/** Where "$N.path" strings sit in v, as key paths. */
+function refPaths(v: unknown, at: Path = [], out: Path[] = []): Path[] {
+  if (typeof v === "string" && REF.test(v)) out.push(at);
+  else if (Array.isArray(v)) v.forEach((x, i) => refPaths(x, [...at, i], out));
+  else if (v !== null && typeof v === "object") for (const [k, x] of Object.entries(v)) refPaths(x, [...at, k], out);
+  return out;
+}
+
+const startsWith = (p: Path, prefix: Path): boolean => prefix.length <= p.length && prefix.every((k, i) => p[i] === k);
+
+/**
+ * Check every step before any runs: tool known and allowed, references only to earlier steps, arguments valid. A
+ * reference's value is unknown until its step runs, so type errors at (or inside a union around) a reference are not
+ * counted; unknown keys, missing fields and every other value are.
+ */
+export function precheck(steps: { tool: string; args: Record<string, unknown> }[], tools: ToolRegistry["bridgedTools"]): { step: number; tool: string; message: string }[] {
+  const problems: { step: number; tool: string; message: string }[] = [];
+  steps.forEach(({ tool, args }, i) => {
+    const step = i + 1, spec = tools.get(tool), add = (message: string) => problems.push({ step, tool, message });
+    if (!spec) return add("unknown or unavailable tool (if its group is not loaded, call load_tools first)");
+    if (NOT_IN_BATCH.has(tool)) return add("not allowed in batch: call it directly");
+    const refs = refPaths(args);
+    for (const p of refs) {
+      const n = Number(REF.exec(String(p.reduce<unknown>((o, k) => (o as Record<string | number, unknown>)[k], args)))![1]);
+      if (n < 1 || n >= step) add(`${p.join(".")} refers to step ${n}, which has not run yet`);
+    }
+    const parsed = spec.schema.safeParse(args);
+    if (parsed.success) return;
+    for (const x of parsed.error.issues) {
+      if (refs.some((rp) => startsWith(x.path, rp) || (x.code === "invalid_union" && startsWith(rp, x.path)))) continue;
+      add(`${x.path.join(".") || "args"}: ${x.message}`);
+    }
+  });
+  return problems;
+}
+
 export function registerBatchTool(r: ToolRegistry): void {
   r.tool(
     "batch",
-    'Run up to 50 tool calls in order in one call (saves round trips: prefer it for multi-step builds). A string "$N.path" in args is replaced by that value from step N\'s result, e.g. "$1.id" or "$2.layers.0.id". Stops at the first error and returns the results so far. Each step is its own undo step. Not for preview_frame, render_*, run_jsx or open_project.',
+    'Run up to 50 tool calls in order in one call (saves round trips: prefer it for multi-step builds). A string "$N.path" in args is replaced by that value from step N\'s result, e.g. "$1.id" or "$2.layers.0.id". All steps are checked before any runs (a bad argument anywhere means nothing runs); a step that fails in After Effects stops the batch and returns the results so far. Each step is its own undo step. Not for preview_frame, render_*, run_jsx or open_project.',
     {
       steps: z.array(z.object({ tool: z.string(), args: z.record(z.unknown()).default({}) })).min(1).max(MAX_STEPS),
       results: z.enum(["all", "last", "none"]).default("all").describe("Which results to return (default all; none returns only the step count)"),
     },
     async (a) => {
+      const problems = precheck(a.steps, r.bridgedTools);
+      if (problems.length) {
+        return json({ error: { code: "BAD_ARGS", message: `${problems.length} problem(s) found; nothing ran`, hint: "Fix every listed step and send the batch again" }, steps: 0, problems }, true);
+      }
       const results: unknown[] = [];
       const out = (): unknown => (a.results === "all" ? results : a.results === "last" ? results.slice(-1) : undefined);
       for (let i = 0; i < a.steps.length; i++) {

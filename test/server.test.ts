@@ -253,7 +253,18 @@ const results: [name: string, pass: boolean][] = [];
 
   calls.length = 0;
   const [bad, badErr] = await body("batch", { steps: [{ tool: "set_layer", args: { layer_id: 1, label: 2 } }, { tool: "set_layer", args: { layer_id: 1, colour: 2 } }, { tool: "set_layer", args: { layer_id: 1 } }] });
-  results.push(["H: an invalid step stops the batch and reports how far it got", badErr && calls.length === 1 && bad.steps === 1 && /Step 2 \(set_layer\)/.test(bad.error?.message ?? "") && /colour/.test(bad.error?.message ?? "")]);
+  results.push(["H: an invalid step anywhere means nothing runs, and it is reported", badErr && calls.length === 0 && bad.steps === 0 && bad.problems?.length === 1 && bad.problems[0].step === 2 && /colour/.test(bad.problems[0].message)]);
+
+  calls.length = 0;
+  const [pre, preErr] = await body("batch", { steps: [
+    { tool: "add_layer", args: { comp_id: 1, kind: "null" } },
+    { tool: "set_layer", args: { layer_id: "$1.id", label: 3 } },
+    { tool: "add_shape", args: { layer_id: "$1.id", type: "rect" } },
+    { tool: "set_layer", args: { layer_id: "$9.id" } },
+    { tool: "camera_teleport", args: {} },
+  ] });
+  const msgs = (pre.problems ?? []).map((x: Json) => `${x.step}:${x.message}`).join(" | ");
+  results.push(["H: the pre-check lists every problem: unknown keys next to a reference, forward references, unknown tools", preErr && calls.length === 0 && pre.problems?.length === 4 && /3:args: Unrecognized key.*'type'/.test(msgs) && /3:shape: Required/.test(msgs) && /4:.*step 9/.test(msgs) && /5:unknown/.test(msgs) && !/^2:/.test(msgs)]);
 
   calls.length = 0;
   const [failed, failedErr] = await body("batch", { steps: [{ tool: "delete_layer", args: { layer_id: 13 } }, { tool: "set_layer", args: { layer_id: 1 } }] });

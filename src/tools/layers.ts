@@ -1,12 +1,12 @@
 /** Layer tools: add, edit, link, delete, duplicate, reorder, precompose. Host side: host/commands/layers.jsx. */
 import { z } from "zod";
 import type { ToolRegistry } from "./registry.js";
-import { Color, id, Label, LayerIds, LightType, ShapeLayerSpec, Size, V3 } from "./schemas.js";
+import { Anchor, Color, id, Label, LayerIds, LightType, ShapeLayerSpec, Size, TextStyleRef, V3 } from "./schemas.js";
 
 export function registerLayerTools(r: ToolRegistry): void {
   r.bridged(
     "add_layer",
-    "Add a layer. item_id: footage/precomp source. center: camera/light. position with 3 values turns 3D on. box_size: box text. shape: the first shape of a shape layer (as add_shape; more with add_shape).",
+    "Add a layer. item_id: footage/precomp source. center: camera/light. position with 3 values turns 3D on. box_size: box text; text_style styles it as set_text does. anchor moves the anchor onto the content (as set_anchor) before position is applied, so position places e.g. the text's center. shape: the first shape of a shape layer (as add_shape; more with add_shape).",
     {
       comp_id: id("Comp"),
       kind: z.enum(["solid", "text", "shape", "null", "adjustment", "footage", "precomp", "camera", "light"]),
@@ -15,7 +15,7 @@ export function registerLayerTools(r: ToolRegistry): void {
           name: z.string().optional(), color: Color.optional(), size: z.array(z.number()).length(2).optional(), duration: z.number().positive().optional(),
           text: z.string().optional(), item_id: z.number().int().optional(), center: z.array(z.number()).min(2).max(3).optional(), light_type: LightType.optional(),
           start: z.number().optional(), in: z.number().optional(), out: z.number().optional(), position: V3.optional(), three_d: z.boolean().optional(),
-          box_size: Size.optional(), shape: ShapeLayerSpec.optional(),
+          box_size: Size.optional(), text_style: TextStyleRef.optional(), anchor: Anchor.optional(), shape: ShapeLayerSpec.optional(),
         })
         .default({}),
     },

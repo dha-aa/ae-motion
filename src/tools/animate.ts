@@ -4,7 +4,7 @@
  */
 import { z } from "zod";
 import type { ToolRegistry } from "./registry.js";
-import { Color, Ease, id, LayerIds, PropPath, Size, Value, ValueOrShape } from "./schemas.js";
+import { Ease, id, LayerIds, PropPath, Size, TextStyleShape, Value, ValueOrShape } from "./schemas.js";
 
 export function registerAnimateTools(r: ToolRegistry): void {
   r.bridged(
@@ -61,8 +61,8 @@ export function registerAnimateTools(r: ToolRegistry): void {
 
   r.bridged(
     "set_expression",
-    "Set an expression on a property (empty string clears it). Returns whether After Effects accepted the syntax.",
-    { layer_id: id("Layer"), path: PropPath, expression: z.string() },
+    "Set an expression on a property (empty string clears it), on one layer or the same property of many (layer_ids: send a shared expression once). Returns whether After Effects accepted the syntax.",
+    { layer_id: id("Layer").optional(), layer_ids: LayerIds.optional(), path: PropPath, expression: z.string() },
     { idempotent: true },
   );
 
@@ -89,21 +89,19 @@ export function registerAnimateTools(r: ToolRegistry): void {
 
   r.bridged(
     "set_text",
-    "Set text and character/paragraph styling on a whole text layer; only the fields you pass change, and the result reads them back (skipped lists what After Effects refused). font is the PostScript name. leading turns auto leading off; stroke_color turns the stroke on; horizontal/vertical_scale in percent. box_size resizes box text (point text cannot become box text: use add_layer options.box_size). time sets a keyframe. Per-character styling: text animators (add_property).",
+    "Set text and character/paragraph styling on a whole text layer; only the fields you pass change, and the result reads them back (skipped lists what After Effects refused). font is the PostScript name (find_fonts lists them; an uninstalled font is refused). leading turns auto leading off; stroke_color turns the stroke on; horizontal/vertical_scale in percent. box_size resizes box text (point text cannot become box text: use add_layer options.box_size). time sets a keyframe. Per-character styling: text animators (add_property).",
     {
-      layer_id: id("Layer"), time: z.number().min(0).optional(), text: z.string().optional(), font: z.string().optional(),
-      size: z.number().positive().optional(), color: Color.optional(), tracking: z.number().optional(),
-      leading: z.number().positive().optional(), auto_leading: z.boolean().optional(), baseline_shift: z.number().optional(),
-      horizontal_scale: z.number().positive().optional(), vertical_scale: z.number().positive().optional(),
-      faux_bold: z.boolean().optional(), faux_italic: z.boolean().optional(), all_caps: z.boolean().optional(), small_caps: z.boolean().optional(),
-      superscript: z.boolean().optional(), subscript: z.boolean().optional(), ligatures: z.boolean().optional(), tsume: z.number().min(0).max(100).optional(),
-      stroke_color: Color.optional(), stroke_width: z.number().min(0).optional(), stroke: z.boolean().optional(), stroke_over_fill: z.boolean().optional(), fill: z.boolean().optional(),
-      justification: z.enum(["left", "center", "right", "justify", "justify_center", "justify_right", "justify_all"]).optional(),
-      first_line_indent: z.number().optional(), left_indent: z.number().optional(), right_indent: z.number().optional(),
-      space_before: z.number().optional(), space_after: z.number().optional(),
+      layer_id: id("Layer"), time: z.number().min(0).optional(), text: z.string().optional(), ...TextStyleShape,
       box_size: Size.optional(),
     },
     { idempotent: true },
+  );
+
+  r.bridged(
+    "find_fonts",
+    "Search the installed fonts by family, style or PostScript name (e.g. \"montserrat\", \"bold italic\"); returns PostScript names for set_text font. Needs After Effects 24.0+.",
+    { query: z.string().optional().describe("Words that must all match (default: list every font)"), limit: z.number().int().min(1).max(200).default(30) },
+    { readOnly: true, tooLargeHint: "Narrow the query or lower limit" },
   );
 
   r.bridged(

@@ -6,7 +6,9 @@ var QUALITY = { best: "BEST", draft: "DRAFT", wireframe: "WIREFRAME" };
 C.add_layer = function (a) {
   need(a, ["comp_id", "kind"]);
   var comp = getComp(a.comp_id), o = a.options || {}, kind = a.kind, dur = has(o, "duration") ? o.duration : comp.duration,
-    center = o.center || [comp.width / 2, comp.height / 2], l, item, col, size, lt;
+    center = o.center || [comp.width / 2, comp.height / 2], l, item, col, size, lt, styled = null, styleArgs, k, out;
+  if (o.text_style && kind !== "text") fail("BAD_ARGS", "text_style is for text layers");
+  if (o.text_style && o.text_style.font) checkFont(o.text_style.font); // before the layer exists
   if (kind === "shape" && o.shape && o.shape.type && " rect ellipse star polygon path ".indexOf(" " + o.shape.type + " ") === -1) fail("BAD_ARGS", "shape.type must be rect, ellipse, star, polygon or path");
   if (kind === "light" && o.light_type) {
     lt = LIGHTTYPES[o.light_type];
@@ -37,11 +39,20 @@ C.add_layer = function (a) {
   } else { fail("BAD_ARGS", "Unknown layer kind: " + kind); }
   if (o.name) l.name = o.name;
   if (has(o, "three_d")) l.threeDLayer = o.three_d;
+  // style, then anchor (it measures the styled content), then position (it places that anchor)
+  if (o.text_style) {
+    styleArgs = { layer_id: l.id };
+    for (k in o.text_style) { if (o.text_style.hasOwnProperty(k)) styleArgs[k] = o.text_style[k]; }
+    styled = C.set_text(styleArgs);
+  }
+  if (o.anchor) C.set_anchor({ layer_id: l.id, anchor: o.anchor, keep_position: false });
   if (has(o, "position")) setLayerPosition(l, o.position);
   if (has(o, "start")) l.startTime = o.start;
   if (has(o, "in")) setIn(l, o["in"]);
   if (has(o, "out")) l.outPoint = o.out;
-  return layerRef(l);
+  out = layerRef(l);
+  if (styled && styled.skipped) out.skipped = styled.skipped;
+  return out;
 };
 
 C.set_layer = function (a) {

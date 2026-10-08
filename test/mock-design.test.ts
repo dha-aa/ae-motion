@@ -18,6 +18,8 @@ const plain = (v) => JSON.parse(JSON.stringify(v));
 class Prop {
   constructor(v) { this._v = inner(v); this.keys = []; this.expression = ""; this.dimensionsSeparated = false; }
   get expressionEnabled() { return this.expression !== ""; }
+  get canSetExpression() { return true; }
+  get expressionError() { return /syntax error/.test(this.expression) ? "Error: bad syntax" : ""; }
   get value() { return this._v; }
   setValue(v) { this._v = v; }
   get numKeys() { return this.keys.length; }
@@ -32,7 +34,8 @@ class Prop {
 
 function makeWorld() {
   let nextId = 10;
-  const comp = { id: 1, width: 640, height: 360, frameDuration: 1 / 30, numLayers: 0, _layers: [], layer: (i) => comp._layers[i - 1], openInViewer() {} };
+  class CompItem {}
+  const comp = Object.assign(new CompItem(), { id: 1, width: 640, height: 360, duration: 10, frameDuration: 1 / 30, numLayers: 0, _layers: [], layer: (i) => comp._layers[i - 1], openInViewer() {} });
   class TextLayer {} class ShapeLayer {} class CameraLayer {} class LightLayer {} class SolidSource {} class Stub {}
   const layers = new Map();
   const make = (Kind, { name = "L", rect = [0, 0, 100, 50], pos = [0, 0], anchor = [0, 0], scale = [100, 100], rot = 0, solid = false } = {}) => {
@@ -51,8 +54,26 @@ function makeWorld() {
     layers.set(l.id, l);
     return l;
   };
-  const app = { project: { itemByID: () => null, layerByID: (id) => layers.get(id) || null }, beginUndoGroup() {}, endUndoGroup() {}, executeCommand() {}, findMenuCommandId: () => 0 };
-  const ctx = { app, TextLayer, ShapeLayer, CameraLayer, LightLayer, SolidSource, CompItem: Stub, FolderItem: Stub, FootageItem: Stub, PropertyValueType: {}, PropertyType: {} };
+  // Text layers whose glyph box grows with the font size (so anchor-after-style is observable), and an app.fonts
+  // with allFonts grouped by family, as After Effects 24+ has.
+  comp.layers = {
+    addText(text) {
+      const doc = { text, font: "ArialMT", fontSize: 50, applyFill: true };
+      const l = make(TextLayer, { name: text });
+      const docProp = { get value() { return doc; }, numKeys: 0, setValue(d) { Object.assign(doc, d); } };
+      const tgProp = l.property;
+      l.property = (n) => (n === "ADBE Text Properties" ? { property: () => docProp } : tgProp(n));
+      l.sourceRectAtTime = () => { const k = doc.fontSize / 50; return { left: 0, top: -40 * k, width: 200 * k, height: 50 * k }; };
+      l.doc = doc;
+      return l;
+    },
+  };
+  const font = (family, style, ps) => ({ familyName: family, styleName: style, postScriptName: ps });
+  const families = [[font("Arial", "Regular", "ArialMT"), font("Arial", "Bold", "Arial-BoldMT")], [font("Montserrat", "ExtraBold Italic", "Montserrat-ExtraBoldItalic"), font("Montserrat", "Light", "Montserrat-Light")]];
+  const fonts = { allFonts: families, getFontsByPostScriptName: (n) => families.flat().filter((f) => f.postScriptName === n) };
+  const app = { project: { itemByID: (id) => (id === 1 ? comp : null), layerByID: (id) => layers.get(id) || null }, fonts, beginUndoGroup() {}, endUndoGroup() {}, executeCommand() {}, findMenuCommandId: () => 0 };
+  const ParagraphJustification = { LEFT_JUSTIFY: 1, CENTER_JUSTIFY: 2, RIGHT_JUSTIFY: 3, FULL_JUSTIFY_LASTLINE_LEFT: 4, FULL_JUSTIFY_LASTLINE_CENTER: 5, FULL_JUSTIFY_LASTLINE_RIGHT: 6, FULL_JUSTIFY_LASTLINE_FULL: 7 };
+  const ctx = { app, ParagraphJustification, TextLayer, ShapeLayer, CameraLayer, LightLayer, SolidSource, CompItem, FolderItem: Stub, FootageItem: Stub, PropertyValueType: {}, PropertyType: {} };
   vm.createContext(ctx);
   const toInner = vm.runInContext("(function (v) { return Array.prototype.slice.call(v); })", ctx);
   inner = (v) => (Array.isArray(v) ? toInner(v) : v);
@@ -181,6 +202,45 @@ t("add_shape and add_layer reject bad stroke options before creating anything", 
   fails(w.call("add_shape", { layer_id: l.id, shape: { type: "rect", dashes: [4, 2] } }), "BAD_ARGS"); // dashes without a stroke
   fails(w.call("add_shape", { layer_id: l.id, shape: { type: "rect", stroke: [1, 1, 1], line_cap: "pointy" } }), "BAD_ARGS");
   assert.equal(added, 0);
+});
+
+t("add_layer text: text_style, then anchor on the styled content, then position", () => {
+  const w = makeWorld();
+  const r = ok(w.call("add_layer", { comp_id: 1, kind: "text", options: { text: "25 lakh", text_style: { size: 100, font: "Montserrat-ExtraBoldItalic" }, anchor: "center", position: [320, 180] } }));
+  const l = w.comp._layers.find((x) => x.id === r.id);
+  assert.equal(l.doc.fontSize, 100); assert.equal(l.doc.font, "Montserrat-ExtraBoldItalic");
+  const b = bounds(w, l);
+  near(b.center[0], 320, "styled text centered on position"); near(b.center[1], 180); near(b.width, 400, "anchor measured after the size change");
+  fails(w.call("add_layer", { comp_id: 1, kind: "null", options: { text_style: { size: 10 } } }), "BAD_ARGS");
+});
+
+t("find_fonts matches every word against family, style and PostScript name, with a limit", () => {
+  const w = makeWorld();
+  const r = ok(w.call("find_fonts", { query: "montserrat italic" }));
+  assert.deepEqual(r, { total: 1, fonts: [{ font: "Montserrat-ExtraBoldItalic", family: "Montserrat", style: "ExtraBold Italic" }] });
+  const all = ok(w.call("find_fonts", { limit: 3 }));
+  assert.equal(all.total, 4); assert.equal(all.fonts.length, 3);
+});
+
+t("set_text refuses a font that is not installed, before changing anything", () => {
+  const w = makeWorld();
+  const r = ok(w.call("add_layer", { comp_id: 1, kind: "text", options: { text: "x" } }));
+  const e = fails(w.call("set_text", { layer_id: r.id, font: "AvenirNext-HeavyItalic", size: 80 }), "NOT_FOUND");
+  assert.match(e.hint, /find_fonts/);
+  assert.equal(w.comp._layers.find((x) => x.id === r.id).doc.fontSize, 50, "size unchanged");
+});
+
+t("set_expression on many layers: checked first, set on all, errors reported per layer", () => {
+  const w = makeWorld();
+  const a = w.make(null), b = w.make(null);
+  const r = ok(w.call("set_expression", { layer_ids: [a.id, b.id], path: "position", expression: "wiggle(2, 10)" }));
+  assert.deepEqual(r, { set: 2, valid: true });
+  assert.equal(w.tp(b, "ADBE Position").expression, "wiggle(2, 10)");
+  const bad = ok(w.call("set_expression", { layer_ids: [a.id, b.id], path: "position", expression: "syntax error" }));
+  assert.equal(bad.valid, false); assert.equal(bad.errors.length, 2);
+  fails(w.call("set_expression", { layer_ids: [a.id, 999], path: "position", expression: "value" }), "NOT_FOUND");
+  assert.equal(w.tp(a, "ADBE Position").expression, "syntax error", "nothing set when a layer is missing");
+  fails(w.call("set_expression", { layer_id: a.id, layer_ids: [b.id], path: "position", expression: "value" }), "BAD_ARGS");
 });
 
 for (const [name, pass, msg] of results) console.log((pass ? "PASS" : "FAIL") + "  " + name + (pass ? "" : "\n      " + msg));

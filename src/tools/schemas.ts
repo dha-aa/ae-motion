@@ -64,3 +64,29 @@ export const ShapeLayerSpec = z.object({
   name: z.string().optional(), position: Pt.optional().describe("Offset of the shape inside the layer, [x,y]"),
   rotation: z.number().optional(), opacity: z.number().min(0).max(100).optional(),
 });
+
+/** Anchor positions on a layer's content (set_anchor, add_layer options.anchor). */
+export const Anchor = z.enum(["center", "top_left", "top", "top_right", "left", "right", "bottom_left", "bottom", "bottom_right"]);
+
+/** set_text's character and paragraph styling (everything but the layer, time, text and box size). */
+export const TextStyleShape = {
+  font: z.string().optional(), size: z.number().positive().optional(), color: Color.optional(), tracking: z.number().optional(),
+  leading: z.number().positive().optional(), auto_leading: z.boolean().optional(), baseline_shift: z.number().optional(),
+  horizontal_scale: z.number().positive().optional(), vertical_scale: z.number().positive().optional(),
+  faux_bold: z.boolean().optional(), faux_italic: z.boolean().optional(), all_caps: z.boolean().optional(), small_caps: z.boolean().optional(),
+  superscript: z.boolean().optional(), subscript: z.boolean().optional(), ligatures: z.boolean().optional(), tsume: z.number().min(0).max(100).optional(),
+  stroke_color: Color.optional(), stroke_width: z.number().min(0).optional(), stroke: z.boolean().optional(), stroke_over_fill: z.boolean().optional(), fill: z.boolean().optional(),
+  justification: z.enum(["left", "center", "right", "justify", "justify_center", "justify_right", "justify_all"]).optional(),
+  first_line_indent: z.number().optional(), left_indent: z.number().optional(), right_indent: z.number().optional(),
+  space_before: z.number().optional(), space_after: z.number().optional(),
+};
+// Advertised by reference to set_text (writing the fields out again would cost ~1,200 characters in add_layer) but
+// validated strictly against them, like ShapeRef.
+const TextStyleStrict = z.object(TextStyleShape).strict();
+export const TextStyleRef = z
+  .record(z.unknown())
+  .superRefine((v, ctx) => {
+    const r = TextStyleStrict.safeParse(v);
+    if (!r.success) for (const issue of r.error.issues) ctx.addIssue({ ...issue, message: `text_style: ${issue.message}` } as z.IssueData);
+  })
+  .describe("set_text's styling fields (font, size, color, justification, tracking and so on)");
