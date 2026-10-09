@@ -47,7 +47,7 @@ export function registerMotionTools(r: ToolRegistry): void {
     "Critique a comp's animation without rendering (cheap, no image): linear easing, holds over max_hold, layers moving in unison, entrances with no animation, moves cut off by out points, jumps, small text, share of moves on beat markers. Run before preview_frame.",
     {
       comp_id: id("Comp"), max_hold: z.number().positive().optional(), min_text: z.number().positive().optional(),
-      max: z.number().int().min(1).max(100).optional(),
+      max: z.number().int().min(1).max(100).optional(), all: z.boolean().optional().describe("List info notes too (default: counted in stats.info)"),
     },
     { readOnly: true },
   );

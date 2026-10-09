@@ -7,21 +7,17 @@
  */
 import { z } from "zod";
 
-export const id = (what: string) => z.number().int().describe(`${what} id`);
-export const Color = z.array(z.number().min(0).max(1)).min(3).max(4).describe("[r,g,b] floats 0-1");
-export const Pt = z.array(z.number()).length(2).describe("[x,y]");
+/** An id argument; its name (layer_id, comp_id ...) says what it is, so it carries no description. */
+export const id = (_what: string) => z.number().int();
+export const Color = z.array(z.number().min(0).max(1)).min(3).max(4); // [r,g,b] 0-1 (server instructions)
+export const Pt = z.array(z.number()).length(2); // [x,y]
 export const Size = z.tuple([z.number().positive(), z.number().positive()]);
 export const Time = z.number().min(0);
-export const V3 = z
-  .array(z.number())
-  .min(2)
-  .max(3)
-  .describe("[x,y] or [x,y,z] px");
+export const V3 = z.array(z.number()).min(2).max(3); // [x,y] or [x,y,z] px (server instructions)
 export const Rot3 = z.object({ x: z.number().optional(), y: z.number().optional(), z: z.number().optional() }).describe("Rotation in degrees per axis");
-export const LayerIds = z.array(z.number().int()).min(1).describe("Layer ids, all from the same comp");
-export const PropPath = z
-  .union([z.string(), z.array(z.union([z.string(), z.number()])).min(1)])
-  .describe("Property alias or match-name path (see list_properties)");
+export const LayerIds = z.array(z.number().int()).min(1).describe("Same comp");
+// an alias or a match-name path (server instructions; list_properties finds paths)
+export const PropPath = z.union([z.string(), z.array(z.union([z.string(), z.number()])).min(1)]);
 /** A mask or shape-layer path: rect / ellipse (position, size), polygon (points) or path (vertices + tangents). Same format get_keyframes returns. */
 export const ShapeSpec = z.object({
   type: z.enum(["rect", "ellipse", "polygon", "path"]),
@@ -33,7 +29,7 @@ export const ShapeSpec = z.object({
 });
 
 /** A property value: number, boolean, string or number array (positions, scale in percent, colors 0-1). */
-export const Value = z.union([z.number(), z.string(), z.boolean(), z.array(z.number())]).describe("number, boolean or number array");
+export const Value = z.union([z.number(), z.string(), z.boolean(), z.array(z.number())]);
 /** Value, or a shape spec for path properties; only the tools that can set paths take it (it is large). */
 // The shape spec is advertised by reference to add_mask (writing it out costs ~700 characters per use) but still
 // fully validated: the custom check runs ShapeSpec, strict, and reports its issues.

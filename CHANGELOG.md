@@ -2,6 +2,22 @@
 
 All notable changes. Versions follow [semantic versioning](https://semver.org); each release is a git tag `vX.Y.Z`, which is what the update check looks for.
 
+## 2.10.0 — 2026-10-09
+
+Fewer tokens per result and per request, measured on the 127-layer reel comp: `get_comp` 4,167 -> 2,591 tokens (38 % less), `list_properties` 4,444 -> 584 (87 %), `review_motion` 1,390 -> 252 (82 %), `get_keyframes` 429 -> 339 (22 %), `get_project` 877 -> 714 (19 %); tool definitions 72.0k -> 68.2k characters (about 1k tokens per request) while adding options.
+
+### Added
+- `get_comp` filters and paging for big comps: `name`, `kind`, `at` (layers visible at a time), `limit` / `offset` (`matched`, `next_offset`), and `kinds` (layer counts by kind).
+- `list_properties` `all` and `review_motion` `all` to get the full output back.
+
+### Changed
+- `get_comp` layer rows leave out the comp id, index and label, and `in` / `out` / `start` at their defaults (documented in the server instructions).
+- `list_properties` skips the marker, empty groups, unused layer styles, 3D-only options on 2D layers and hidden X/Y/Z position by default, and cuts very long expressions; only indexed groups' children carry `index`.
+- `get_keyframes` (and `edit_keyframes`' result) shows temporal ease only on bezier sides and as one `{speed, influence}` or `"easy"` when every dimension shares it: the form the keyframe tools take.
+- `review_motion` merges the same issue on several layers into one entry (`layer_ids`) and counts info notes in `stats.info`.
+- `get_project` leaves out the (zero) frame size of audio items.
+- Advertised schemas: nested `additionalProperties: false` and descriptions that only restate the key (`Layer id`) or the conventions in the server instructions are dropped (validation is unchanged); `set_3d` scale and orientation now say % and degrees (they said px). The panel's token meter counts only what the model sees of the definitions (name, description, schema).
+
 ## 2.9.0 — 2026-10-09
 
 ### Added

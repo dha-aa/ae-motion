@@ -12,10 +12,10 @@ export const RUN_JSX_RULE =
 export const SERVER_INSTRUCTIONS = [
   "Controls a live Adobe After Effects project. Start with get_project; check results with preview_frame (pass several times in one call: images are the most expensive results). The motion-guide prompt has the recommended build loop.",
   "Units: time in seconds, sizes and positions in pixels, colors [r,g,b] 0-1, scale in percent, angles in degrees. Coordinates: x right, y DOWN, z into the screen (a camera in front of the comp has negative z).",
-  "Ids: comps, layers and items are numeric ids from get_project / get_comp (project-wide, not layer indexes).",
+  "Ids: comps, layers and items are numeric ids from get_project / get_comp (project-wide, not layer indexes). Unknown argument keys are rejected.",
   'Properties: an alias (position, scale, rotation, opacity, anchor; x_position / y_position / z_position after set_layer separate_dimensions; volume = audio levels in dB, a number sets both channels) or a path of match names and 1-based indexes, e.g. ["ADBE Effect Parade", 1, "ADBE Gaussian Blur 2-0001"]; list_properties shows them.',
   "Batch: run several steps in one batch call (\"$1.id\" uses step 1's result) instead of one call per step.",
-  "Results are short: tools that change layers return {id, index, name} (+ timing or the fields you set); get_layer / get_comp / get_keyframes read the rest. Defaults are left out: a missing flag is false (locked, shy, solo, three_d, motion_blur, comp motion_blur / frame_blending), blend_mode NORMAL, stretch 100, enabled true, no parent; a comp has square pixels, work area = whole comp unless listed, and shutter settings appear only with motion blur on.",
+  "Results are short: tools that change layers return {id, index, name} (+ timing or the fields you set); get_layer / get_comp / get_keyframes read the rest. Defaults are left out: a missing flag is false (locked, shy, solo, three_d, motion_blur, comp motion_blur / frame_blending), blend_mode NORMAL, stretch 100, enabled true, no parent; a comp has square pixels, work area = whole comp unless listed, and shutter settings appear only with motion blur on. get_comp lists layers top first; a missing in is 0, out the comp's end, start equal to in (get_layer has the label and index).",
   RUN_JSX_RULE,
 ].join("\n");
 

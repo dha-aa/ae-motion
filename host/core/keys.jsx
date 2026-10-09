@@ -178,7 +178,12 @@ function nonZero(v) { var i; for (i = 0; i < v.length; i++) if (Math.abs(v[i]) >
 function keyInfo(p, i) {
   var k = { index: i, t: p.keyTime(i), v: keyVal(p, i), interp_in: interpName(p.keyInInterpolationType(i)), interp_out: interpName(p.keyOutInterpolationType(i)) }, sp = springAt(p, p.keyTime(i));
   if (sp) k.interp_out = sp;
-  try { k.ease_in = easeList(p.keyInTemporalEase(i)); k.ease_out = easeList(p.keyOutTemporalEase(i)); } catch (e1) {}
+  // temporal ease only matters on bezier sides; one {speed, influence} when every dimension shares it (the form
+  // set_keyframes / edit_keyframes take), "easy" for After Effects' Easy Ease
+  try {
+    if (k.interp_in === "bezier") k.ease_in = easeOut(p.keyInTemporalEase(i));
+    if (k.interp_out === "bezier") k.ease_out = easeOut(p.keyOutTemporalEase(i));
+  } catch (e1) {}
   // spatial settings only when they say something (zero tangents and false flags are the common case)
   if (p.isSpatial) {
     try { if (nonZero(p.keyInSpatialTangent(i)) || nonZero(p.keyOutSpatialTangent(i))) { k.spatial_in = copyArr(p.keyInSpatialTangent(i)); k.spatial_out = copyArr(p.keyOutSpatialTangent(i)); } } catch (e2) {}
@@ -202,6 +207,14 @@ function interpName(t) {
   if (t === KeyframeInterpolationType.LINEAR) return "linear";
   if (t === KeyframeInterpolationType.HOLD) return "hold";
   return "bezier";
+}
+
+function easeOut(arr) {
+  var l = easeList(arr), i, same = true;
+  for (i = 1; i < l.length; i++) if (l[i].speed !== l[0].speed || l[i].influence !== l[0].influence) same = false;
+  if (!same) return l;
+  if (Math.abs(l[0].speed) < 1e-6 && Math.abs(l[0].influence - 33.333333) < 0.01) return "easy";
+  return l[0];
 }
 
 function easeList(arr) { var o = [], i; for (i = 0; i < arr.length; i++) o.push({ speed: arr[i].speed, influence: arr[i].influence }); return o; }

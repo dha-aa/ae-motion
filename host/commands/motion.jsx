@@ -268,6 +268,32 @@ function motionSegments(g, out, live, l) {
   return out;
 }
 
+// Merge issues of one type (and property) across layers into one entry with layer_ids and times; info-level issues
+// become counts in stats.info unless all.
+function groupIssues(list, all, stats) {
+  var out = [], by = {}, i, x, k, g;
+  for (i = 0; i < list.length; i++) {
+    x = list[i];
+    if (x.severity === "info" && !all) { stats.info = stats.info || {}; stats.info[x.type] = (stats.info[x.type] || 0) + 1; continue; }
+    if (!has(x, "layer_id")) { out.push(x); continue; }
+    k = x.type + "|" + (x.property || "");
+    g = by[k];
+    if (!g) {
+      g = { type: x.type, severity: x.severity, msg: x.msg, layer_ids: [], t: [] };
+      if (x.property) g.property = x.property;
+      if (has(x, "size")) g.size = x.size;
+      by[k] = g; out.push(g);
+    }
+    g.layer_ids.push(x.layer_id); if (has(x, "t")) g.t.push(x.t);
+  }
+  for (i = 0; i < out.length; i++) {
+    g = out[i];
+    if (g.layer_ids && g.layer_ids.length === 1) { g.layer_id = g.layer_ids[0]; delete g.layer_ids; g.t = g.t[0]; }
+    else if (g.t && g.t.length) g.t = g.t[0]; // the first time; get the rest from the layers
+  }
+  return out;
+}
+
 C.review_motion = function (a) {
   need(a, ["comp_id"]);
   var c = getComp(a.comp_id), fd = c.frameDuration, maxHold = has(a, "max_hold") ? a.max_hold : 1, minText = has(a, "min_text") ? a.min_text : Math.round(c.height * 0.022),
@@ -335,8 +361,11 @@ C.review_motion = function (a) {
       if (near <= fd * 1.5) onBeat++;
     }
   }
+  // one entry per kind of problem: the same issue on several layers lists them together; info notes are only
+  // counted unless all is set
+  issues = groupIssues(issues, a.all === true, sc = {});
   issues.sort(function (x, y) { return (x.severity === y.severity ? 0 : (x.severity === "warn" ? -1 : 1)) || ((x.t || 0) - (y.t || 0)); });
-  sc = { layers: c.numLayers, moves: starts2.length, longest_hold: Math.round(hold * 1000) / 1000 };
+  sc.layers = c.numLayers; sc.moves = starts2.length; sc.longest_hold = Math.round(hold * 1000) / 1000;
   if (beats.length >= 4 && starts2.length) sc.on_beat = Math.round(onBeat / starts2.length * 100) / 100;
   if (issues.length > (a.max || 30)) { sc.more_issues = issues.length - (a.max || 30); issues = issues.slice(0, a.max || 30); }
   return { issues: issues, stats: sc };
