@@ -424,11 +424,20 @@ function mergeSpans(spans, gap) {
   return out;
 }
 
+// A layer's loudest volume setting in dB (its audio levels' keys, or its static level).
+function layerLevel(l) {
+  var lv = safe(function () { return l.property("ADBE Audio Group").property("ADBE Audio Levels"); }), mx = -1e9, i, v;
+  if (!lv) return 0;
+  if (!lv.numKeys) { v = lv.value; return typeof v === "number" ? v : Math.max(v[0], v[1]); }
+  for (i = 1; i <= lv.numKeys; i++) { v = lv.keyValue(i); mx = Math.max(mx, typeof v === "number" ? v : Math.max(v[0], v[1])); }
+  return mx;
+}
+
 C.duck_music = function (a) {
   need(a, ["music_layer_id"]);
   var music = getLayer(a.music_layer_id), c = music.containingComp, amount = has(a, "amount") ? a.amount : -10,
     att = has(a, "attack") ? a.attack : 0.15, rel = has(a, "release") ? a.release : 0.4, mode = a.mode || "auto",
-    triggers = [], spans = [], i, l, sp, j, mk = music.property("ADBE Marker"), lv, mv, removed = 0, ex;
+    minLevel = has(a, "min_level") ? a.min_level : -9, triggers = [], quiet = 0, spans = [], i, l, sp, j, mk = music.property("ADBE Marker"), lv, mv, removed = 0, ex, cover = 0, res;
   if (amount >= 0) fail("BAD_ARGS", "amount is the drop in dB and must be negative (e.g. -10)");
   if (mode !== "auto" && mode !== "span" && mode !== "loudness") fail("BAD_ARGS", "mode must be auto, span or loudness");
   if (!safe(function () { return music.hasAudio === true; })) fail("BAD_ARGS", "The music layer has no audio");
@@ -436,10 +445,13 @@ C.duck_music = function (a) {
   else {
     for (i = 1; i <= c.numLayers; i++) {
       l = c.layer(i);
-      if (l !== music && hasAudioOn(l) && l.name.indexOf(AUDIO_NULL_PREFIX) !== 0) triggers.push(l);
+      if (l === music || !hasAudioOn(l) || l.name.indexOf(AUDIO_NULL_PREFIX) === 0) continue;
+      // quiet effects sit under the music anyway: ducking for each of them only pumps the music
+      if (layerLevel(l) < minLevel) { quiet++; continue; }
+      triggers.push(l);
     }
   }
-  if (!triggers.length) fail("BAD_ARGS", "Nothing to duck under: no other audio layers", "Add voice-over or sound effects first, or pass under_layer_ids");
+  if (!triggers.length) fail("BAD_ARGS", "Nothing to duck under: no other audio layers" + (quiet ? " louder than " + minLevel + " dB (" + quiet + " quieter ones are ignored)" : ""), "Add voice-over or sound effects first, lower min_level, or pass under_layer_ids");
   for (i = 0; i < triggers.length; i++) {
     l = triggers[i];
     if (l.containingComp !== c) fail("BAD_ARGS", "under_layer_ids must be in the music's comp");
@@ -469,5 +481,11 @@ C.duck_music = function (a) {
     "value + [g, g];";
   lv = music.property("ADBE Audio Group").property("ADBE Audio Levels");
   lv.expression = ex;
-  return { music_layer: layerRef(music), ducks: spans.length, spans: spans.slice(0, 100), amount: amount, replaced: removed, valid: !lv.expressionError, error: lv.expressionError || undefined };
+  // how much of the music is ducked: past half, ducking is just a lower level that pumps
+  for (i = 0; i < spans.length; i++) cover += Math.min(spans[i][1], music.outPoint) - Math.max(spans[i][0], music.inPoint);
+  cover = Math.max(0, Math.min(1, cover / Math.max(c.frameDuration, music.outPoint - music.inPoint)));
+  res = { music_layer: layerRef(music), ducks: spans.length, spans: spans.slice(0, 100), coverage: Math.round(cover * 100) / 100, amount: amount, replaced: removed, valid: !lv.expressionError, error: lv.expressionError || undefined };
+  if (quiet) res.ignored_quiet = quiet;
+  if (cover > 0.5) res.note = "The ducks cover " + Math.round(cover * 100) + "% of the music: set its volume lower instead, or duck only under the hero sounds (under_layer_ids, or a higher min_level)";
+  return res;
 };

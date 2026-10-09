@@ -13,7 +13,7 @@ interface AlignArgs {
 }
 type AnchorName = "top_left" | "top" | "top_right" | "left" | "center" | "right" | "bottom_left" | "bottom" | "bottom_right";
 interface SetAnchorArgs { layer_id: number; anchor?: AnchorName; point?: [number, number]; keep_position?: boolean; time?: number }
-interface AddShapeArgs { layer_id: number; shape: { type?: string; [option: string]: unknown } }
+interface AddShapeArgs { layer_id: number; shape: { type?: string; [option: string]: unknown }; at?: string }
 interface TextToShapesArgs { layer_id: number }
 type StyleName = "drop_shadow" | "inner_shadow" | "outer_glow" | "inner_glow" | "bevel_emboss" | "satin" | "color_overlay" | "gradient_overlay" | "stroke";
 interface LayerStyleArgs { layer_id: number; style: StyleName; params?: { [name: string]: unknown }; enabled?: boolean }
@@ -132,15 +132,18 @@ C.set_anchor = function (a: SetAnchorArgs) {
   return { layer: layerRef(l), anchor: copyArr(an.value), position: copyArr(tp(l, "ADBE Position").value), bounds: compBounds(l, t) };
 };
 
-// Add a shape group (on top of the existing ones) to a shape layer.
+// Add a shape group to a shape layer: on top (group 1, earlier groups move down one) or at the bottom (at: "bottom",
+// earlier groups keep their indexes, which suits scripts that key groups by index as they add them).
 C.add_shape = function (a: AddShapeArgs) {
   need(a, ["layer_id", "shape"]);
-  const l = getLayer(a.layer_id), base: (string | number)[] = ["ADBE Root Vectors Group", 1, "ADBE Vectors Group"];
+  const l = getLayer(a.layer_id), at = a.at || "top";
+  if (at !== "top" && at !== "bottom") fail("BAD_ARGS", "at must be top or bottom");
   if (!(l instanceof ShapeLayer)) fail("BAD_ARGS", "Layer is not a shape layer", "Create one with add_layer kind shape");
-  const root = group(l, "ADBE Root Vectors Group"), g = addShapeContent(l, a.shape);
+  const root = group(l, "ADBE Root Vectors Group"), g = addShapeContent(l, a.shape), n = root.numProperties, gi = at === "top" ? 1 : n;
+  const base: (string | number)[] = ["ADBE Root Vectors Group", gi, "ADBE Vectors Group"];
   const res: { group_index: number; name: string; groups: number; path_group: (string | number)[]; path?: (string | number)[] } =
-    { group_index: 1, name: g.name, groups: root.numProperties, path_group: base };
-  g.moveTo(1); // moving invalidates g: read everything needed first
+    { group_index: gi, name: g.name, groups: n, path_group: base };
+  if (at === "top") g.moveTo(1); // moving invalidates g: read everything needed first
   if (a.shape.type === "path") res.path = base.concat([1, "ADBE Vector Shape"]);
   return res;
 };

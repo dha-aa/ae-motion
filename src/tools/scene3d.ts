@@ -45,11 +45,11 @@ export function registerScene3dTools(r: ToolRegistry): void {
 
   r.bridged(
     "camera_move",
-    "Animate a camera with editable keyframes, starting from its value at start; replaces keys inside the move's range. dolly: distance px toward the target (or factor of the current distance). truck/pedestal: px right/up, camera and target together. crane: px up, target stays. pan/tilt: degrees right/up (turns the target). roll: degrees. orbit: degrees right around the target (+ vertical_degrees up). zoom: to_zoom, factor, to_focal_length or to_fov. rack_focus: to_focus_distance or to_layer_id (turns depth of field on). path: waypoints with absolute times. Position/target moves need a two-node camera; a rigged camera has its controls keyed.",
+    "Animate a camera with editable keyframes, starting from its value at start. dolly: distance px toward the target (or factor of the current distance). truck/pedestal: px right/up, camera and target together. crane: px up, target stays. pan/tilt: degrees right/up (turns the target). roll: degrees. orbit: degrees right around the target (+ vertical_degrees up). zoom: to_zoom, factor, to_focal_length or to_fov. rack_focus: to_focus_distance or to_layer_id (turns depth of field on). path: waypoints with absolute times. combine: add the move to existing animation (dolly + truck at once) instead of replacing keys in its range. Position/target moves need a two-node camera; rigs get their controls keyed.",
     {
       layer_id: id("Camera layer"),
       type: z.enum(["dolly", "truck", "pedestal", "crane", "pan", "tilt", "roll", "orbit", "zoom", "rack_focus", "path"]),
-      start: Time.optional(), duration: z.number().positive().optional(), easing: z.enum(["linear", "ease_in", "ease_out", "ease_in_out"]).optional(),
+      start: Time.optional(), duration: z.number().positive().optional(), easing: z.enum(["linear", "ease_in", "ease_out", "ease_in_out"]).optional(), combine: z.boolean().optional(),
       distance: z.number().optional(), factor: z.number().positive().optional(), degrees: z.number().optional(), vertical_degrees: z.number().optional(),
       target: V3.optional(), step_degrees: z.number().min(1).max(45).optional().describe("Degrees between keyframes for orbit, pan and tilt (default 5)"),
       to_zoom: z.number().positive().optional(), to_focal_length: z.number().positive().optional(), to_fov: z.number().gt(0).lt(180).optional(),

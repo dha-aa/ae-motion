@@ -64,6 +64,45 @@ C.set_camera = function (a) {
 
 // Each move type builds "plans" (lists of {t, v}) for the properties it changes, then writes them with putKeys.
 // Rotational moves (pan, tilt, orbit) are sampled every step_degrees with the easing baked into the values.
+// Numbers or vectors, for combining moves on any camera property.
+function addAny(a, b) { var o = [], i; if (typeof a === "number") return a + b; for (i = 0; i < a.length; i++) o.push(a[i] + b[i]); return o; }
+function subAny(a, b) { var o = [], i; if (typeof a === "number") return a - b; for (i = 0; i < a.length; i++) o.push(a[i] - b[i]); return o; }
+
+// A move plan's value at t: its keys with the move's easing (sampled plans are already eased, so linear between).
+function planAt(plan, easing, sampled, t) {
+  var n = plan.length, i, u;
+  if (t <= plan[0].t) return plan[0].v;
+  if (t >= plan[n - 1].t) return plan[n - 1].v;
+  for (i = 0; i < n - 1 && plan[i + 1].t < t; i++) {}
+  u = (t - plan[i].t) / (plan[i + 1].t - plan[i].t);
+  if (!sampled) u = easeU(easing, u);
+  return addAny(plan[i].v, (typeof plan[i].v === "number") ? (plan[i + 1].v - plan[i].v) * u : vmul(subAny(plan[i + 1].v, plan[i].v), u));
+}
+
+// Layer a move over the property's existing animation instead of replacing it: inside the move every value gets
+// the move's offset (sampled so the easing survives), and keys after the move keep its final offset. So a dolly
+// and a truck over the same seconds add up.
+function combineKeys(p, plan, easing, sampled) {
+  var t0 = plan[0].t, t1 = plan[plan.length - 1].t, base = planAt(plan, easing, sampled, t0), dEnd = subAny(planAt(plan, easing, sampled, t1), base),
+    times = [], vals = [], after = [], i, j, t, lin = KeyframeInterpolationType.LINEAR, N = 12;
+  for (i = 0; i <= N; i++) times.push(t0 + (t1 - t0) * i / N);
+  for (i = 0; i < plan.length; i++) times.push(plan[i].t);
+  for (i = 1; i <= p.numKeys; i++) {
+    t = p.keyTime(i);
+    if (t > t0 + EPS && t < t1 - EPS) times.push(t);
+    else if (t >= t1 - EPS && t > t0 + EPS && Math.abs(t - t1) >= EPS) after.push({ t: t, v: p.keyValue(i) });
+  }
+  times.sort(function (x, y) { return x - y; });
+  for (i = 0, j = 0; i < times.length; i++) if (!j || times[i] - times[j - 1] > EPS) times[j++] = times[i];
+  times.length = j;
+  for (i = 0; i < times.length; i++) vals.push(addAny(p.valueAtTime(times[i], true), subAny(planAt(plan, easing, sampled, times[i]), base)));
+  clearKeysBetween(p, t0, t1);
+  for (i = 0; i < times.length; i++) p.setValueAtTime(times[i], vals[i]);
+  for (i = 0; i < times.length; i++) { j = p.nearestKeyIndex(times[i]); p.setInterpolationTypeAtKey(j, lin, lin); }
+  for (i = 0; i < after.length; i++) p.setValueAtTime(after[i].t, addAny(after[i].v, dEnd));
+  return times.length;
+}
+
 C.camera_move = function (a) {
   need(a, ["layer_id", "type"]);
   var l = camLayer(a.layer_id), comp = l.containingComp, type = a.type, easing = a.easing || "ease_in_out", t0 = has(a, "start") ? a.start : 0, dur = a.duration, t1,
@@ -155,11 +194,14 @@ C.camera_move = function (a) {
   }
   if (t1 > comp.duration + EPS) fail("BAD_ARGS", "The move ends at " + t1 + " s, after the comp does (" + comp.duration + " s)", "Shorten it or lengthen the comp with set_comp");
 
-  if (planPos) { res.keyframes.position = putKeys(keyTarget(l, "ADBE Position", "Position"), planPos, easing, posSampled); res.final_position = planPos[planPos.length - 1].v; }
-  if (planPoi) { res.keyframes.point_of_interest = putKeys(keyTarget(l, "ADBE Anchor Point", "Point of Interest"), planPoi, easing, poiSampled); res.final_point_of_interest = planPoi[planPoi.length - 1].v; }
-  if (planRoll) res.keyframes.roll = putKeys(tp(l, "ADBE Rotate Z"), planRoll, easing, false);
-  if (planZoom) { res.keyframes.zoom = putKeys(camOpt(l, "ADBE Camera Zoom"), planZoom, easing, false); res.final_zoom = planZoom[1].v; }
-  if (planFocus) { res.keyframes.focus_distance = putKeys(camOpt(l, "ADBE Camera Focus Distance"), planFocus, easing, false); res.final_focus_distance = planFocus[1].v; }
+  // combine layers the move over what is already animated; otherwise its keys replace the keys in its range
+  function put(p, plan, sampled) { return a.combine === true ? combineKeys(p, plan, easing, sampled) : putKeys(p, plan, easing, sampled); }
+  if (planPos) { p = keyTarget(l, "ADBE Position", "Position"); res.keyframes.position = put(p, planPos, posSampled); res.final_position = copyArr(p.valueAtTime(t1, true)); }
+  if (planPoi) { p = keyTarget(l, "ADBE Anchor Point", "Point of Interest"); res.keyframes.point_of_interest = put(p, planPoi, poiSampled); res.final_point_of_interest = copyArr(p.valueAtTime(t1, true)); }
+  if (planRoll) res.keyframes.roll = put(tp(l, "ADBE Rotate Z"), planRoll, false);
+  if (planZoom) { p = camOpt(l, "ADBE Camera Zoom"); res.keyframes.zoom = put(p, planZoom, false); res.final_zoom = p.valueAtTime(t1, true); }
+  if (planFocus) { p = camOpt(l, "ADBE Camera Focus Distance"); res.keyframes.focus_distance = put(p, planFocus, false); res.final_focus_distance = p.valueAtTime(t1, true); }
+  if (a.combine === true) res.combined = true;
   res.start = t0; res.end = t1;
   return res;
 };

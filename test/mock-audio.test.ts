@@ -344,6 +344,22 @@ t("duck_music: under a voice-over only where it is heard, under short effects fo
   fails(w2.call("duck_music", { music_layer_id: lone.id }), "BAD_ARGS");
 });
 
+t("duck_music ignores quiet effects (min_level) and warns when the ducks would cover most of the music", () => {
+  const w = makeWorld([]), music = w.audioLayer("music.wav");
+  music.inPoint = 0; music.outPoint = 8;
+  const loud = w.audioLayer("SFX: hit.wav"); loud.inPoint = 2; loud.outPoint = 2.4; loud.levels.setValue([-3, -3]);
+  const soft = w.audioLayer("SFX: tick.wav"); soft.inPoint = 5; soft.outPoint = 5.3; soft.levels.setValue([-15, -15]);
+  const r = ok(w.call("duck_music", { music_layer_id: music.id }));
+  assert.deepEqual(r.spans.map(([a, b]) => [+a.toFixed(3), +b.toFixed(3)]), [[2, 2.4]], "only the loud hit ducks the music");
+  assert.equal(r.ignored_quiet, 1); assert.ok(r.coverage < 0.1); assert.equal(r.note, undefined);
+  assert.equal(ok(w.call("duck_music", { music_layer_id: music.id, min_level: -20 })).spans.length, 2, "a lower min_level includes it");
+  // loud effects every half second: one long duck over most of the music, so say so
+  const w2 = makeWorld([]), m2 = w2.audioLayer("music.wav"); m2.inPoint = 0; m2.outPoint = 8;
+  for (let i = 0; i < 12; i++) { const x = w2.audioLayer("SFX: " + i + ".wav"); x.inPoint = 1 + i * 0.5; x.outPoint = 1.3 + i * 0.5; }
+  const r2 = ok(w2.call("duck_music", { music_layer_id: m2.id }));
+  assert.ok(r2.coverage > 0.5, String(r2.coverage)); assert.match(r2.note, /set its volume lower instead/);
+});
+
 for (const [name, pass, msg] of results) console.log((pass ? "PASS" : "FAIL") + "  " + name + (pass ? "" : "\n      " + msg));
 console.log(`\n${results.filter((r) => r[1]).length}/${results.length} passed`);
 process.exit(results.every((r) => r[1]) ? 0 : 1);
