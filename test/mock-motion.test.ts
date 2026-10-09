@@ -278,10 +278,12 @@ t("review_motion: flags linear keys, unison starts, holds, pop-ons and small tex
   for (const b of [0, 0.5, 1, 1.5]) w.comp.markerProperty.setValueAtTime(b, new w.MarkerValue("beat"));
   const r = ok(w.call("review_motion", { comp_id: 1 }));
   const types = (x) => r.issues.filter((i) => i.type === x);
-  assert.equal(types("linear").length, 3);
+  assert.equal(types("linear").length, 1, "one entry for the same problem on three layers"); assert.equal(types("linear")[0].layer_ids.length, 3);
   assert.equal(types("unison").length, 1); assert.equal(types("unison")[0].layer_ids.length, 3);
   assert.ok(types("hold").some((h) => Math.abs(h.t - 0.5) < 1e-6 && Math.abs(h.duration - 3.5) < 1e-6), JSON.stringify(types("hold")));
-  assert.equal(types("pops_on")[0].layer_id, late.id);
+  assert.equal(types("pops_on").length, 0, "info notes are counted, not listed"); assert.equal(r.stats.info.pops_on, 1);
+  const full = ok(w.call("review_motion", { comp_id: 1, all: true }));
+  assert.equal(full.issues.find((i) => i.type === "pops_on").layer_id, late.id);
   assert.equal(types("small_text")[0].layer_id, small.id);
   assert.equal(r.stats.on_beat, 1);
   assert.equal(r.issues[0].severity, "warn", "warnings first");

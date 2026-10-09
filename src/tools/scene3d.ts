@@ -79,7 +79,7 @@ export function registerScene3dTools(r: ToolRegistry): void {
     "set_3d",
     "Make a layer 3D and set its transform (scale in percent, rotation/orientation in degrees) and material; static, or keyframes when time is given. Any field turns 3D on unless three_d is false. Not for cameras/lights (set_camera, set_light).",
     {
-      layer_id: id("Layer"), three_d: z.boolean().optional(), position: V3.optional(), anchor: V3.optional(), scale: V3.optional(), orientation: V3.optional(),
+      layer_id: id("Layer"), three_d: z.boolean().optional(), position: V3.optional(), anchor: V3.optional(), scale: V3.optional().describe("%"), orientation: V3.optional().describe("degrees"),
       rotation: Rot3.optional(), material: Material.optional(), time: Time.optional(),
     },
     { idempotent: true },

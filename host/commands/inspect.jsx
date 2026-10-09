@@ -17,7 +17,25 @@ C.get_selection = function () {
   return { comp_id: ai.id, layers: out };
 };
 
-C.get_comp = function (a) { need(a, ["comp_id"]); return compInfo(getComp(a.comp_id), true); };
+// A comp and its layers (top of the stack first). On big comps, name / kind / at narrow the list and limit / offset
+// page it; kinds counts every layer by kind.
+C.get_comp = function (a) {
+  need(a, ["comp_id"]);
+  var c = getComp(a.comp_id), o = compInfo(c, false), q = a.name ? String(a.name).toLowerCase() : "", lim = a.limit || 150, off = a.offset || 0,
+    rows = [], kinds = {}, i, l, k, n = 0;
+  for (i = 1; i <= c.numLayers; i++) {
+    l = c.layer(i); k = layerKind(l); kinds[k] = (kinds[k] || 0) + 1;
+    if (q && l.name.toLowerCase().indexOf(q) === -1) continue;
+    if (a.kind && k !== a.kind) continue;
+    if (has(a, "at") && (a.at < l.inPoint - 1e-6 || a.at >= l.outPoint - 1e-6)) continue;
+    if (n++ < off || rows.length >= lim) continue;
+    rows.push(layerBrief(l, c));
+  }
+  o.layers = rows;
+  if (c.numLayers > 20) o.kinds = kinds;
+  if (n !== rows.length) { o.matched = n; if (off + rows.length < n) o.next_offset = off + rows.length; }
+  return o;
+};
 
 C.get_layer = function (a) {
   need(a, ["layer_id"]);
@@ -54,7 +72,8 @@ C.list_properties = function (a) {
   need(a, ["layer_id"]);
   var l = getLayer(a.layer_id), root = l, maxDepth = a.depth === undefined ? 3 : a.depth;
   if (a.group_path) root = resolvePath(l, a.group_path);
-  return { properties: walk(root, 1, maxDepth, a.time || 0) };
+  // a group_path straight into a skipped group (e.g. Material Options) lists it
+  return { properties: walk(root, 1, maxDepth, a.time || 0, a.all === true || (a.group_path && WALK_SKIP[root.matchName] === 1)) };
 };
 
 C.get_keyframes = function (a) {
