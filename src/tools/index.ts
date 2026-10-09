@@ -8,6 +8,7 @@
  *   src/tools/audio.ts     <-> host/commands/audio.jsx      (beats, audio_react, sound effects)
  *   src/tools/masks.ts     <-> host/commands/masks.jsx
  *   src/tools/animate.ts   <-> host/commands/animate.jsx, host/commands/text.jsx
+ *   src/tools/motion.ts    <-> host/commands/motion.jsx     (moves, springs, text reveals, transitions, review)
  *   src/tools/scene3d.ts   <-> host/commands/scene3d.jsx
  *   src/tools/design.ts    <-> host/commands/design.jsx    (layout, shapes, layer styles)
  *   src/tools/output.ts    <-> host/commands/output.jsx    (preview, render)
@@ -25,6 +26,7 @@ import { registerLayerTools } from "./layers.js";
 import { registerAudioTools } from "./audio.js";
 import { registerBatchTool } from "./batch.js";
 import { registerMetaTools } from "./meta.js";
+import { registerMotionTools } from "./motion.js";
 import { registerMaskTools } from "./masks.js";
 import { registerOutputTools } from "./output.js";
 import { registerProjectTools } from "./project.js";
@@ -35,7 +37,7 @@ import { registerTimelineTools } from "./timeline.js";
 
 const GROUPS: Record<Toolset, (r: ToolRegistry) => void> = {
   inspect: registerInspectTools, project: registerProjectTools, layers: registerLayerTools, timeline: registerTimelineTools,
-  masks: registerMaskTools, animate: registerAnimateTools, scene3d: registerScene3dTools, design: registerDesignTools,
+  masks: registerMaskTools, animate: registerAnimateTools, motion: registerMotionTools, scene3d: registerScene3dTools, design: registerDesignTools,
   output: registerOutputTools, audio: registerAudioTools, scripting: registerScriptingTools, meta: registerMetaTools,
 };
 
@@ -46,6 +48,7 @@ const GROUP_SUMMARY: Partial<Record<Toolset, string>> = {
   timeline: "split, shift, sequence, trim, insert/delete time, markers",
   masks: "masks, track mattes",
   animate: "properties, keyframes, expressions, effects, presets, text, stagger, shape modifiers",
+  motion: "animate (named moves with springs), text_reveal, transition, review_motion",
   scene3d: "3D layers, cameras, lights, camera moves/rigs/shake, 3D views",
   design: "align, anchors, add shapes, layer styles, text to shapes",
   output: "preview_frame, renders",

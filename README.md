@@ -131,7 +131,7 @@ If a call fails, the error includes a code and a hint. See [Troubleshooting](#tr
 
 ## What it can do
 
-73 tools in twelve groups. The full reference, with behavior notes, is in [docs/tools.md](docs/tools.md).
+77 tools in thirteen groups. The full reference, with behavior notes, is in [docs/tools.md](docs/tools.md).
 
 | Group | Tools |
 |---|---|
@@ -142,6 +142,7 @@ If a call fails, the error includes a code and a hint. See [Troubleshooting](#tr
 | Masks and mattes | `add_mask`, `set_track_matte` |
 | Design | `align_layers`, `set_anchor`, `add_shape`, `add_layer_style`, `text_to_shapes` |
 | Animate | `set_property`, `set_keyframes`, `edit_keyframes`, `copy_animation`, `set_expression`, `add_property`, `apply_effect`, `edit_effect`, `apply_preset`, `set_text`, `get_text`, `find_fonts`, `stagger`, `add_shape_modifier` |
+| Motion | `animate` (named moves with springs and bounces), `text_reveal`, `transition` (wipe, bars, iris), `review_motion` (a motion critic) |
 | 3D and camera | `get_camera`, `set_camera`, `camera_move`, `camera_shake`, `camera_rig`, `set_3d`, `set_light`, `set_3d_view` |
 | Preview and render | `preview_frame`, `render_start`, `render_status`, `render_cancel` |
 | Escape hatch | `run_jsx` (disabled unless `AE_MCP_ALLOW_JSX=1`) |
@@ -162,7 +163,7 @@ All settings are environment variables on the MCP server process. The one except
 |---|---|
 | `AE_MCP_ALLOWED_DIRS` | Folders (separated by the OS path delimiter, `:` or `;`) that tools may read from and write to. Default: your home folder. The temp folder is always allowed. |
 | `AE_MCP_ALLOW_JSX` | Set to `1` to enable `run_jsx`. |
-| `AE_MCP_TOOLSETS` | Load only some tool groups, to send the model fewer tool definitions (cheaper requests): a comma list of `project`, `layers`, `timeline`, `masks`, `animate`, `scene3d`, `design`, `output`, `audio`, `scripting`, or `core` (= project, layers, animate, output: about 7.5k tokens of definitions instead of 16k). `inspect`, `check_for_updates` and `batch` are always on, and `load_tools` adds the other groups during a session (the client is told to refresh its tool list; the new tools also run through `batch`). Default: all. |
+| `AE_MCP_TOOLSETS` | Load only some tool groups, to send the model fewer tool definitions (cheaper requests): a comma list of `project`, `layers`, `timeline`, `masks`, `animate`, `motion`, `scene3d`, `design`, `output`, `audio`, `scripting`, or `core` (= project, layers, animate, motion, output: about 7.5k tokens of definitions instead of 16k). `inspect`, `check_for_updates` and `batch` are always on, and `load_tools` adds the other groups during a session (the client is told to refresh its tool list; the new tools also run through `batch`). Default: all. |
 | `AE_AERENDER` | Full path to `aerender` if auto-detection fails. |
 | `AE_MCP_BRIDGE_FILE` | Override the bridge file (default `~/.ae-motion-mcp/bridge.json`). |
 | `AE_MCP_UPDATE_CHECK` | Set to `0` to turn off the daily check for new releases (see [Updates](#updates)). |

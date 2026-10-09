@@ -2,6 +2,16 @@
 
 All notable changes. Versions follow [semantic versioning](https://semver.org); each release is a git tag `vX.Y.Z`, which is what the update check looks for.
 
+## 2.8.0 — 2026-10-09
+
+### Added
+- A `motion` tool group (part of `core`) for finished-looking motion in one call each:
+  - `animate`: named entrance and exit moves (fade, pop, grow, slide, drop, spin) keyed from each layer's rest values, with snappy, smooth, spring, bounce or linear curves, stagger and order. Springs are closed-form step responses in an expression on linear keys, so they scrub and render identically and land exactly on the key.
+  - `text_reveal`: per-character, word or line reveals (rise, drop, fade, pop, blur, typewriter) through a text animator and an expression selector, in forward, reverse, center or random order, optionally masked so letters rise from behind a line.
+  - `transition`: wipe, staggered bars or iris shape transitions that cover the frame at the cut.
+  - `review_motion`: a motion critic that needs no render: linear keys, dead holds, unison starts, entrances with no animation, cut-off moves, jumps, small text and beat sync.
+- The `motion-guide` prompt has motion-craft rules (timing, overlap, beat pacing, what to avoid) and a review loop.
+
 ## 2.7.0 — 2026-10-09
 
 ### Added
