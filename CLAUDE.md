@@ -47,6 +47,7 @@ Tests, `scripts/` and the skill driver are TypeScript that Node (22.18+) runs di
 ## Versions and updates
 
 - One version in `package.json` and `panel/CSXS/manifest.xml` (two places); the build stamps it into host.jsx as `AEM.version`; `test/static-checks.ts` enforces all three. Releases are git tags `vX.Y.Z` plus a `CHANGELOG.md` entry (`docs/development.md` → Releasing).
+- `src/usage.ts`: the token meter. `ToolRegistry.tool` records every result (text ~3.6 chars/token, images w*h/750 from the PNG header), `slimToolList` records the tool-definition size; written to `usage/<pid>.json` next to the bridge file, read by the panel every 2 s (week-old files pruned). Estimates of what ae-motion sends, not the client's bill.
 - `src/update.ts`: daily background check of GitHub's tags API (`AE_MCP_UPDATE_CHECK=0` off, `AE_MCP_UPDATE_URL` override), cached in `update.json` next to the bridge file; `get_project` adds an `update` note, `check_for_updates` (server-only tool) asks directly, the panel reads the cache and shows an update line. Tests keep the check off by default (no real network).
 
 ## Rules

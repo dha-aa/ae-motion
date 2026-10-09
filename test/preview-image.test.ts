@@ -6,6 +6,7 @@ import { PNG } from "pngjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const { shrinkPng, contactSheet } = await import(pathToFileURL(path.join(ROOT, "dist", "render", "image.js")).href);
+const { imageTokens, textTokens, UsageMeter } = await import(pathToFileURL(path.join(ROOT, "dist", "usage.js")).href);
 const results: [name: string, pass: boolean, msg?: string][] = [];
 const errText = (e: unknown): string => (e instanceof Error ? e.message : String(e));
 const t = (name: string, fn: () => void): void => { try { fn(); results.push([name, true]); } catch (e) { results.push([name, false, errText(e)]); } };
@@ -23,6 +24,17 @@ t("a full HD frame shrinks to 768 px on its longest edge, keeping its aspect and
   const out = read(shrinkPng(png(1920, 1080, [200, 40, 10]), 768));
   assert.deepEqual([out.width, out.height], [768, 432]);
   assert.deepEqual(px(out, 100, 100), [200, 40, 10, 255]);
+});
+
+t("token meter: image tokens from the PNG size (w * h / 750), text at ~3.6 chars per token, tallies per tool", () => {
+  assert.equal(imageTokens(png(768, 432, [1, 2, 3]).toString("base64")), Math.ceil(768 * 432 / 750)); // ~443, the default preview
+  assert.equal(textTokens(360), 100);
+  const m = new UsageMeter(path.join(ROOT, "build", "usage-test"));
+  m.record("preview_frame", { content: [{ type: "text", text: "x".repeat(36) }, { type: "image", data: png(768, 432, [0, 0, 0]).toString("base64"), mimeType: "image/png" }] });
+  m.record("get_comp", { content: [{ type: "text", text: "y".repeat(72) }], isError: true });
+  const s = m.snapshot;
+  assert.deepEqual([s.calls, s.errors, s.result_text_tokens, s.image_tokens], [2, 1, 30, 443]);
+  assert.deepEqual(s.tools.preview_frame, { calls: 1, text: 10, image: 443 });
 });
 
 t("small images and non-PNG bytes are returned unchanged", () => {

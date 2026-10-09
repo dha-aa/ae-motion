@@ -170,6 +170,12 @@ const results: [name: string, pass: boolean][] = [];
   const r = await s.call("tools/call", { name: "preview_frame", arguments: { comp_id: 1, time: 0 } });
   const content = r.result?.content ?? [];
   results.push(["D: preview_frame waits for a PNG written after the command returns", r.result?.isError !== true && content.some((c) => c.type === "image")]);
+  // the token meter (src/usage.ts): this server's usage file next to the bridge file, for the panel
+  await s.call("tools/list", {});
+  await sleep(400);
+  const uf = path.join(DIR, "usage"), files = fs.existsSync(uf) ? fs.readdirSync(uf) : [];
+  const metered = files.map((f) => JSON.parse(fs.readFileSync(path.join(uf, f), "utf8"))).find((u) => u.tools?.preview_frame);
+  results.push(["D: the token meter writes usage/<pid>.json with the preview's image tokens and the tool definitions' size", !!metered && metered.image_tokens > 0 && metered.calls >= 1 && metered.definitions_tokens > 1000]);
   results.push(["D: ...without waiting much longer than needed", Date.now() - started < 5000]);
   s.p.stdin.end();
   await Promise.race([s.exited, sleep(3000)]);
