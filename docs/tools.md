@@ -54,8 +54,8 @@
 | | `add_layer_style` | Drop shadow, inner shadow, outer/inner glow, bevel and emboss, satin, color/gradient overlay or stroke, with parameters |
 | | `text_to_shapes` | Convert text to a shape layer of letter outlines |
 | Animate | `set_property` | Set a value, or a keyframe at `time` |
-| | `set_keyframes` | Replace all keyframes on a property, with interpolation and easing; also path keyframes (mask and shape morphs) |
-| | `edit_keyframes` | Edit single keys: add or update (value, easing, curved motion-path tangents, auto-bezier, roving), move, delete |
+| | `set_keyframes` | Replace all keyframes on a property, with interpolation and easing; also path keyframes (mask and shape morphs). `interp: "spring"` or `"bounce"` on a key makes the segment to the next key a spring, on any property (effects, masks, cameras): the keys stay linear and one `// ae-motion spring` expression shapes the sprung segments, landing exactly on the next key |
+| | `edit_keyframes` | Edit single keys: add or update (value, easing, `spring` / `bounce`, curved motion-path tangents, auto-bezier, roving), move, delete. A sprung key keeps its spring when moved; another interp or deleting it removes the spring (and the expression with the last one). `get_keyframes` reports sprung keys as `interp_out: "spring"` / `"bounce"` |
 | | `copy_animation` | Copy a property's animation, with every key setting and any expression, to other layers, with offset and stagger |
 | | `set_expression` | Set or clear an expression and report syntax errors. `layer_ids` sets the same expression on that property of many layers in one call (every layer is checked first; errors are listed per layer) |
 | | `add_property` | Add a text animator, its properties and range selector (layer styles cannot be created by scripts) |

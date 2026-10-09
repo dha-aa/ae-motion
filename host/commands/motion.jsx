@@ -5,43 +5,9 @@
 // key interval), so they scrub, render and preview the same everywhere. Line 1 marks them: // ae-motion spring,
 // // ae-motion reveal.
 
-var SPRING_TAG = "// ae-motion spring";
 var REVEAL_TAG = "// ae-motion reveal";
-// Step responses: x(u) = 1 - e^(-a u) cos(b u), normalised so x(1) = 1. spring overshoots about 13 % once and
-// settles; bounce folds the cosine (|.|) so the value hits the target and bounces back off it, like a dropped object
-// (b = 4.5 pi puts cos(b) = 0 at the end, so it lands exactly and never passes the target).
-var SPRINGS = { spring: [6, 9.42, 0], bounce: [5, 14.137, 1] };
 var MOVES = { fade: 1, pop: 1, grow: 1, slide: 1, drop: 1, spin: 1 };
 var MOVE_STYLES = { snappy: 1, smooth: 1, spring: 1, bounce: 1, linear: 1 };
-
-// The expression a spring property carries; S lists the springy segments as [start time, a, b, fold].
-function springExpr(S) {
-  return SPRING_TAG + "\nvar S=" + JSON.stringify(S) + ";\n" +
-    "var n=0,y=value;\n" +
-    "if(numKeys>1){n=nearestKey(time).index;if(key(n).time>time)n--;}\n" +
-    "if(n>=1&&n<numKeys){var t0=key(n).time,t1=key(n+1).time,j,m=-1;\n" +
-    "for(j=0;j<S.length;j++)if(Math.abs(S[j][0]-t0)<0.001)m=j;\n" +
-    "if(m>=0){var a=S[m][1],b=S[m][2],u=(time-t0)/(t1-t0),e=Math.exp(-a*u)*Math.cos(b*u),E=Math.exp(-a)*Math.cos(b);\n" +
-    "if(S[m][3]){e=Math.abs(e);E=Math.abs(E);}\n" +
-    "y=add(key(n).value,mul(sub(key(n+1).value,key(n).value),(1-e)/(1-E)));}}\ny";
-}
-
-// The spring segments already on p (from its expression), or null if p has some other expression.
-function springList(p) {
-  var m;
-  if (!p.expressionEnabled || !p.expression) return [];
-  if (p.expression.indexOf(SPRING_TAG) !== 0) return null;
-  m = /var S=(\[.*\]);/.exec(p.expression);
-  return m ? JSON.parse(m[1]) : [];
-}
-
-function addSpring(p, t0, kind) {
-  var S = springList(p) || [], out = [], i, sp = SPRINGS[kind];
-  for (i = 0; i < S.length; i++) if (Math.abs(S[i][0] - t0) >= 0.001) out.push(S[i]);
-  out.push([Math.round(t0 * 1e6) / 1e6, sp[0], sp[1], sp[2]]);
-  out.sort(function (x, y) { return x[0] - y[0]; });
-  p.expression = springExpr(out);
-}
 
 // One side of a key: "linear", or bezier with speed 0 and the given influence.
 function keySide(p, idx, side, influence) {
