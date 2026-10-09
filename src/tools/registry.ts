@@ -133,9 +133,23 @@ export interface BridgedSpec {
   paths: string[];
 }
 
+/** The part of the SDK's per-request context tools use: the client's progress token and a way to notify it. */
+export interface ToolExtra {
+  _meta?: { progressToken?: string | number };
+  sendNotification?: (n: { method: "notifications/progress"; params: { progressToken: string | number; progress: number; total?: number; message?: string } }) => Promise<void>;
+}
+
+/** What batch needs to run a server-side tool (get_project, render_status ...): its strict schema and handler. */
+export interface ServerSpec {
+  schema: z.ZodTypeAny;
+  run: (args: Record<string, unknown>) => Promise<CallToolResult>;
+}
+
 export class ToolRegistry {
   /** Every bridged tool registered so far, for batch. */
   readonly bridgedTools = new Map<string, BridgedSpec>();
+  /** Every tool implemented in the server (not bridged), for batch. */
+  readonly serverTools = new Map<string, ServerSpec>();
   /** Every tool registered so far, in order (load_tools reports what it added). */
   readonly names: string[] = [];
 
@@ -144,16 +158,17 @@ export class ToolRegistry {
     readonly deps: ToolDeps,
   ) {}
 
-  tool<S extends z.ZodRawShape>(name: string, description: string, shape: S, run: (args: Args<S>) => Promise<CallToolResult>, opts: ToolOptions = {}): void {
-    const handler = async (args: Args<S>): Promise<CallToolResult> => {
+  tool<S extends z.ZodRawShape>(name: string, description: string, shape: S, run: (args: Args<S>, extra?: ToolExtra) => Promise<CallToolResult>, opts: ToolOptions = {}): void {
+    const handler = async (args: Args<S>, extra?: ToolExtra): Promise<CallToolResult> => {
       try {
-        return capSize(await run(args), opts.tooLargeHint);
+        return capSize(await run(args, extra), opts.tooLargeHint);
       } catch (e) {
         return errorResult(toErrorBody(e));
       }
     };
     this.names.push(name);
     const config = { title: opts.title ?? titleFromName(name), description, inputSchema: deepStrict(z.object(shape)), annotations: annotationsFor(opts) };
+    if (!this.bridgedTools.has(name)) this.serverTools.set(name, { schema: config.inputSchema, run: run as ServerSpec["run"] });
     // The SDK's generic callback type does not line up with zod's inferred output type; the shape is the same.
     this.server.registerTool(name, config as any, handler as any);
   }
