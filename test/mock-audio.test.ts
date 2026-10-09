@@ -88,8 +88,8 @@ function makeWorld(amplitude, { menu = true } = {}) {
   // a sound layer from a footage item: in/out follow startTime, like After Effects
   const soundLayer = (item) => {
     const l = add(Object.assign(new AVLayer(), { name: item.name, hasAudio: true, hasVideo: false, audioEnabled: true }));
-    let out = null;
-    Object.defineProperty(l, "inPoint", { get: () => l.startTime });
+    let out = null, inp = null;
+    Object.defineProperty(l, "inPoint", { get: () => (inp === null ? l.startTime : Math.max(inp, l.startTime)), set: (v) => (inp = v) });
     Object.defineProperty(l, "outPoint", { get: () => (out === null ? l.startTime + item.duration : out), set: (v) => (out = v) });
     return l;
   };
@@ -101,7 +101,7 @@ function makeWorld(amplitude, { menu = true } = {}) {
     project: {
       itemByID: (id) => (id === 1 ? comp : null), layerByID: (id) => layers.get(id) || null,
       get numItems() { return items.length; }, item: (i) => items[i - 1],
-      importFile(io) { log.imports++; const it = Object.assign(new FootageItem(), { name: io.file.fsName.split("/").pop(), file: io.file, hasAudio: true, duration: 1, remove() {} }); items.push(it); return it; },
+      importFile(io) { log.imports++; const it = Object.assign(new FootageItem(), { name: io.file.fsName.split("/").pop(), file: io.file, hasAudio: true, duration: /long/.test(io.file.fsName) ? 4 : 1, remove() {} }); items.push(it); return it; },
     },
     beginUndoGroup() {}, endUndoGroup() {},
     findMenuCommandId: (n) => (menu && n === "Convert Audio to Keyframes" ? 5015 : 0),
@@ -248,6 +248,39 @@ t("find_sound_cues: whoosh at a move's fastest frame, impact on an abrupt landin
   assert.equal(ok(w.call("find_sound_cues", { comp_id: 1, max: 2 })).count, 2);
 });
 
+t("find_sound_cues as a sound designer: simultaneous moments merge, entrances at a cut are one hit, a budget keeps the heroes spaced out", () => {
+  const w = makeWorld([]);
+  // four pieces of debris fly out together: one whoosh, not four
+  const debris = [1, 2, 3, 4].map((i) => { const d = w.plain("Debris " + i); d.tg["ADBE Position"].keys = [{ t: 1, v: [640, 600, 0] }, { t: 1.6, v: [640 + i * 150, 100, 0] }]; return d; });
+  // a card cut at 3 s: the old card ends, three new layers appear on the same frame
+  const old = w.plain("Old card"); old.outPoint = 3;
+  ["Card", "Word", "Icon"].forEach((n) => w.plain(n, undefined, { inPoint: 3 }));
+  // a ball lands hard at 2 s (the hero)
+  const ball = w.plain("Ball"); ball.tg["ADBE Position"].keys = [{ t: 1.7, v: [640, 0, 0] }, { t: 2, v: [640, 650, 0] }];
+  ball.tg["ADBE Position"].valueAtTime = function (t) { const [a, b] = this.keys; const u = Math.max(0, Math.min(1, (t - a.t) / (b.t - a.t))); return [640, 650 * u * u, 0]; };
+  // many small pops close together
+  for (let i = 0; i < 6; i++) { const p = w.plain("Dot " + i, undefined, { inPoint: 4 + i * 0.05 }); p.tg["ADBE Scale"].keys = [{ t: 4 + i * 0.05, v: [0, 0, 100] }, { t: 4.2 + i * 0.05, v: [100, 100, 100] }]; }
+  const r = ok(w.call("find_sound_cues", { comp_id: 1 }));
+  const whoosh = r.cues.filter((c) => c.sound === "whoosh" && c.t < 1.7);
+  assert.equal(whoosh.length, 1, JSON.stringify(r.cues)); assert.equal(plainArr(whoosh[0].layer_ids).length, 4, "the merged cue lists every layer");
+  const cut = r.cues.find((c) => Math.abs(c.t - 3) < 1e-6);
+  assert.equal(cut.event, "cut"); assert.equal(cut.sound, "hit"); assert.equal(plainArr(cut.layer_ids).length, 3);
+  const land = r.cues.find((c) => c.event === "land");
+  assert.equal(land.tier, "hero"); assert.ok(r.cues.every((c) => c.priority <= land.priority), "the landing ranks first");
+  // the six pops are 50 ms apart: spaced to the normal gap (0.25 s) only two survive
+  const pops = r.cues.filter((c) => c.t >= 3.9 && c.t <= 4.6);
+  assert.ok(pops.length <= 2, JSON.stringify(pops));
+  const ts = r.cues.map((c) => c.t); for (let i = 1; i < ts.length; i++) assert.ok(ts[i] - ts[i - 1] >= 0.25 - 1e-6, "spaced: " + ts);
+  // sparse keeps fewer; dense more; max caps; skipped reports the rest
+  const sparse = ok(w.call("find_sound_cues", { comp_id: 1, density: "sparse" })), dense = ok(w.call("find_sound_cues", { comp_id: 1, density: "dense" }));
+  assert.ok(sparse.count <= r.count && r.count <= dense.count, `${sparse.count} <= ${r.count} <= ${dense.count}`);
+  const st = sparse.cues.map((c) => c.t); for (let i = 1; i < st.length; i++) assert.ok(st[i] - st[i - 1] >= 0.45 - 1e-6, "sparse spacing: " + st);
+  assert.equal(ok(w.call("find_sound_cues", { comp_id: 1, max: 1 })).cues[0].event, "land", "max 1 keeps the hero");
+  assert.ok(sparse.cues.some((c) => c.event === "land"), "sparse still keeps the hero");
+  assert.ok(sparse.skipped > 0);
+  fails(w.call("find_sound_cues", { comp_id: 1, density: "loud" }), "BAD_ARGS");
+});
+
 t("add_sfx: the sound's loudest frame lands on time; fades, volume, one import per file, peak measured once", () => {
   // a whoosh file: loudest 0.4 s in
   const whoosh = Array.from({ length: 30 }, (_, k) => 30 * Math.exp(-(((k - 12) / 4) ** 2)));
@@ -266,6 +299,16 @@ t("add_sfx: the sound's loudest frame lands on time; fades, volume, one import p
   assert.deepEqual(plainArr(w.comp._layers.find((l) => l.id === r2.layer.id).levels.value), [-12, -12]);
   fails(w.call("add_sfx", { comp_id: 1, path: "/sfx/missing.wav", time: 1 }), "NOT_FOUND");
   fails(w.call("add_sfx", { comp_id: 1, path: "/sfx/whoosh.wav", time: 1, fade_in: 0.8, fade_out: 0.8 }), "BAD_ARGS");
+});
+
+t("add_sfx lead_in and max_duration keep the hit: a long build-up is cut before the peak, the end is trimmed from the peak", () => {
+  // a 4 s cinematic impact whose loudest frame is 2.2 s in (a long build first)
+  const w = makeWorld(Array.from({ length: 120 }, (_, k) => (Math.abs(k / FPS - 2.2) < 0.02 ? 30 : k / FPS < 2.2 ? 4 : 6 * Math.exp(-(k / FPS - 2.2)))));
+  const r = ok(w.call("add_sfx", { comp_id: 1, path: "/sfx/impact-long.wav", time: 2.5, lead_in: 0.1, max_duration: 0.4 }));
+  near(r.peak_offset, 2.2, "peak measured", 1 / FPS); near(r.hit, 2.5, "hit");
+  near(r.in, 2.4, "only 0.1 s before the hit plays", 1 / FPS + 1e-6);
+  near(r.out, 2.9, "the end is counted from the hit, so the hit is kept", 1 / FPS + 1e-6);
+  assert.ok(r.in < r.hit && r.hit < r.out);
 });
 
 t("volume alias: a number sets both channels, in set_property and set_keyframes", () => {

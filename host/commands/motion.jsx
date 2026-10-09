@@ -122,8 +122,8 @@ var REVEAL_CURVES = {
 var REVEAL_ORDERS = { forward: 0, reverse: 1, center: 2, random: 3 };
 
 // The Amount expression of a reveal's expression selector: 100 = the animator's off state, 0 = at rest.
-function revealExpr(t0, d, st, out, ord, curve) {
-  return REVEAL_TAG + "\nvar t0=" + t0 + ",d=" + d + ",st=" + st + ",o=" + ord + ";\n" +
+function revealExpr(t0, d, st, out, ord, curve, k) {
+  return REVEAL_TAG + "\nvar t0=" + t0 + ",d=" + d + ",st=" + st + ",o=" + ord + ",k=" + k + ";\n" +
     "var i=textIndex-1,n=textTotal;\n" +
     "if(o==1)i=n-1-i;else if(o==2)i=Math.abs(i-(n-1)/2);else if(o==3){var r=Math.sin((i+1)*12.9898)*43758.5453;i=Math.floor((r-Math.floor(r))*n);}\n" +
     "var u=d>0?Math.min(Math.max((time-t0-i*st)/d,0),1):(time>=t0+i*st?1:0);\n" +
@@ -164,7 +164,7 @@ C.text_reveal = function (a) {
   sel = an.property("ADBE Text Selectors").addProperty("ADBE Text Expressible Selector");
   safe(function () { sel.property("ADBE Text Range Type2").setValue(REVEAL_BASED[by]); });
   amount = sel.property("ADBE Text Expressible Amount");
-  amount.expression = revealExpr(Math.round(t0 * 1e4) / 1e4, d, st, phase === "out", REVEAL_ORDERS[a.order || "forward"], curve);
+  amount.expression = revealExpr(Math.round(t0 * 1e4) / 1e4, d, st, phase === "out", REVEAL_ORDERS[a.order || "forward"], curve, n);
   if (amount.expressionError) fail("AE_ERROR", "After Effects rejected the reveal expression: " + amount.expressionError);
   end = t0 + d + Math.max(0, n - 1) * st;
   // a mask along the text's baseline (rise) or cap line (drop) so letters slide out from behind a line
@@ -233,12 +233,13 @@ var REVIEW_SKIP = { "ADBE Marker": 1, "ADBE Audio Group": 1 };
 // expressions that keep moving all the time (springs only reshape their keys; reveals are timed: revealSpan)
 var REVIEW_LIVE = /wiggle|loopOut|loopIn|time\s*\*|ae-motion (rig|shake)/;
 
-// The time a text_reveal expression moves over: [t0, t0 + d + (units - 1) * st], with the text's length as units.
+// The time a text_reveal expression moves over: [t0, t0 + d + (units - 1) * st].
 function revealSpan(p, l) {
-  var m = /var t0=([\d.]+),d=([\d.]+),st=([\d.]+)/.exec(p.expression), n;
+  var m = /var t0=([\d.]+),d=([\d.]+),st=([\d.]+)(?:,o=\d+)?(?:,k=(\d+))?/.exec(p.expression), n;
   if (!m) return null;
-  n = safe(function () { return l.property("ADBE Text Properties").property("ADBE Text Document").value.text.length; }) || 1;
-  return [parseFloat(m[1]), parseFloat(m[1]) + parseFloat(m[2]) + (n - 1) * parseFloat(m[3])];
+  // k: the unit count text_reveal wrote; older reveals fall back to the text's length (an upper bound)
+  n = m[4] ? parseInt(m[4], 10) : (safe(function () { return l.property("ADBE Text Properties").property("ADBE Text Document").value.text.length; }) || 1);
+  return [parseFloat(m[1]), parseFloat(m[1]) + parseFloat(m[2]) + Math.max(0, n - 1) * parseFloat(m[3])];
 }
 
 // Motion segments of a layer: every pair of neighbouring keys whose values differ, on any property.
