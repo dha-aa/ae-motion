@@ -2,6 +2,16 @@
 
 All notable changes. Versions follow [semantic versioning](https://semver.org); each release is a git tag `vX.Y.Z`, which is what the update check looks for.
 
+## 2.8.1 — 2026-10-09
+
+### Fixed
+- `batch` failed on input shapes models often send: `steps` or `args` as a JSON string, `name` / `arguments` / `params` instead of `tool` / `args`, and client-prefixed tool names (`mcp__ae-motion__add_layer`). These are now accepted.
+- `batch` turned results over the size limit into an error after every step had already run (inviting a re-run that duplicated layers); they are now shortened to ids and names.
+- Server-side tools (`get_project`, `render_start`, `render_status`, `check_for_updates`) can be batch steps; `preview_frame` is refused up front instead of failing.
+
+### Added
+- `batch` sends a progress notification after each step when the client passes a progress token, so long batches need not time out.
+
 ## 2.8.0 — 2026-10-09
 
 ### Added

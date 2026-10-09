@@ -284,6 +284,31 @@ const results: [name: string, pass: boolean][] = [];
   const [last] = await body("batch", { steps: [{ tool: "add_layer", args: { comp_id: 1, kind: "null" } }, { tool: "set_layer", args: { layer_id: "$1.id" } }], results: "none" });
   results.push(["H: results none returns only the step count", JSON.stringify(last) === '{"steps":2}']);
 
+  // the shapes models send by mistake: steps / args as JSON strings, name / arguments, client-prefixed names
+  calls.length = 0;
+  const [loose, looseErr] = await body("batch", { steps: JSON.stringify([
+    { name: "mcp__ae-motion__add_layer", arguments: JSON.stringify({ comp_id: 1, kind: "null" }) },
+    { tool: "set_layer", params: { layer_id: "$1.id", label: 2 } },
+  ]) });
+  results.push(["H: batch accepts JSON-string steps/args, name/arguments/params and prefixed tool names", !looseErr && loose.steps === 2 && calls.join(",") === "add_layer,set_layer" && received.set_layer?.layer_id === 42]);
+
+  // server-side tools run as steps too (get_project adds no host command of its own beyond the bridge call)
+  calls.length = 0;
+  const [srv, srvErr] = await body("batch", { steps: [{ tool: "get_project", args: {} }, { tool: "add_layer", args: { comp_id: 1, kind: "null" } }] });
+  const [, prevErr] = await body("batch", { steps: [{ tool: "preview_frame", args: { comp_id: 1, time: 0 } }] });
+  results.push(["H: server tools such as get_project run in a batch; preview_frame is refused", !srvErr && srv.steps === 2 && calls.join(",") === "get_project,add_layer" && prevErr && calls.length === 2]);
+
+  // results over the size limit are shortened, not turned into an error: every step already ran
+  calls.length = 0;
+  const big = await callTool("batch", { steps: [{ tool: "add_layer", args: { comp_id: 1, kind: "null" } }, { tool: "list_properties", args: { layer_id: 1 } }] });
+  const bigBody = JSON.parse(textOf(big));
+  results.push(["H: an over-limit batch result is shortened to ids and names, not an error", big.result?.isError !== true && bigBody.steps === 2 && bigBody.results?.[0]?.id === 42 && /shortened/.test(bigBody.note) && textOf(big).length < 25000]);
+
+  // progress after each step when the client asks for it
+  const before = s.notifications.length;
+  await s.call("tools/call", { name: "batch", arguments: { steps: [{ tool: "add_layer", args: { comp_id: 1, kind: "null" } }, { tool: "set_layer", args: { layer_id: "$1.id" } }] }, _meta: { progressToken: "p1" } });
+  results.push(["H: batch sends a progress notification per step when given a progress token", s.notifications.slice(before).filter((m) => m === "notifications/progress").length === 2]);
+
   s.p.stdin.end();
   await Promise.race([s.exited, sleep(3000)]);
   s.p.kill();
