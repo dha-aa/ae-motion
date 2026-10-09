@@ -174,6 +174,25 @@ t("dolly moves along the view axis by distance or factor, keeping the target fix
   fails(w2.call("camera_move", { layer_id: cam2.id, type: "dolly", duration: 1 }), "BAD_ARGS");
 });
 
+t("combine layers a move over existing animation: dolly + truck over the same seconds add up, later keys keep the offset", () => {
+  const w = makeWorld(); const c = w.comp(); const cam = w.camera(c);
+  ok(w.call("camera_move", { layer_id: cam.id, type: "dolly", distance: 400, start: 0, duration: 2, easing: "linear" }));
+  ok(w.call("camera_move", { layer_id: cam.id, type: "pedestal", distance: 50, start: 2, duration: 1, easing: "linear" })); // a later key to carry
+  const r = w.call("camera_move", { layer_id: cam.id, type: "truck", distance: 300, start: 0, duration: 2, easing: "linear", combine: true }); ok(r);
+  assert.equal(r.result.combined, true);
+  const at = (t) => w.pos(cam).valueAtTime(t, true);
+  nearV(at(0), [0, 0, -1000], "start unchanged");
+  nearV(at(1), [150, 0, -800], "halfway: half the dolly and half the truck");
+  nearV(at(2), [300, 0, -600], "end: both");
+  nearV(at(3), [300, -50, -600], "the later pedestal key keeps the truck offset");
+  nearV(r.result.final_position, [300, 0, -600]);
+  // without combine the truck replaces the dolly inside its range (the old behaviour)
+  const w2 = makeWorld(); const c2 = w2.comp(); const cam2 = w2.camera(c2);
+  ok(w2.call("camera_move", { layer_id: cam2.id, type: "dolly", distance: 400, start: 0, duration: 2, easing: "linear" }));
+  ok(w2.call("camera_move", { layer_id: cam2.id, type: "truck", distance: 300, start: 0, duration: 2, easing: "linear" }));
+  nearV(w2.pos(cam2).valueAtTime(2, true), [300, 0, -1000], "replaced");
+});
+
 t("easing: ease_in_out eases both ends, ease_in only the start, ease_out only the end", () => {
   for (const [easing, firstEased, lastEased] of [["ease_in_out", true, true], ["ease_in", true, false], ["ease_out", false, true]]) {
     const w = makeWorld(); const c = w.comp(); const cam = w.camera(c);

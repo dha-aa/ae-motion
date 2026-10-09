@@ -32,8 +32,8 @@ export function registerDesignTools(r: ToolRegistry): void {
 
   r.bridged(
     "add_shape",
-    "Add a shape group on top of an existing shape layer's shapes, with fill and/or stroke. position is the offset inside the layer. Returns the group's path (and a path shape's property, to animate with set_keyframes). Gradients cannot be set by script.",
-    { layer_id: id("Shape layer"), shape: ShapeLayerSpec },
+    "Add a shape group to a shape layer, with fill and/or stroke. at top (default): above the others as group 1, earlier groups move down one; at bottom: below them, indexes kept. position is the offset inside the layer. Returns group_index and its path (plus a path shape's property for set_keyframes). Gradients cannot be set by script.",
+    { layer_id: id("Shape layer"), shape: ShapeLayerSpec, at: z.enum(["top", "bottom"]).optional() },
     { destructive: false },
   );
 

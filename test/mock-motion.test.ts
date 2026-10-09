@@ -78,9 +78,11 @@ const INDEXED = new Set(["ADBE Text Animators", "ADBE Text Selectors", "ADBE Mas
 class Group {
   constructor(matchName) { this.matchName = matchName; this.name = matchName; this.children = []; this.propertyType = INDEXED.has(matchName) ? PT.INDEXED_GROUP : PT.NAMED_GROUP; }
   get numProperties() { return this.children.length; }
-  make(m) { const c = GROUPS.has(m) ? new Group(m) : new Prop(m); this.children.push(c); c.propertyIndex = this.children.length; return c; }
+  make(m) { const c = GROUPS.has(m) ? new Group(m) : new Prop(m); this.children.push(c); c.propertyIndex = this.children.length; const parent = this; c.moveTo = (i) => parent.moveChild(c, i); return c; }
   property(k) { if (typeof k === "number") return this.children[k - 1]; return this.children.find((c) => c.matchName === k) || this.make(k); }
   addProperty(m) { return this.make(m); }
+  /** Like After Effects: move a child to a 1-based index (the others shift). */
+  moveChild(c, i) { this.children.splice(this.children.indexOf(c), 1); this.children.splice(i - 1, 0, c); this.children.forEach((x, k) => (x.propertyIndex = k + 1)); }
   canAddProperty() { return true; }
 }
 
@@ -329,6 +331,18 @@ t("a text_reveal is one sound cue for the whole reveal (not one per letter), and
   assert.equal(rev.length, 1, JSON.stringify(r.cues)); near(rev[0].duration, 0.7, "4 words: 0.4 + 3 * 0.1"); assert.equal(rev[0].sound, "swoosh");
   l.outPoint = 1.75; // the reveal (ends 1.7) fits: no cut_off
   assert.ok(!ok(w.call("review_motion", { comp_id: 1 })).issues.some((i) => i.type === "cut_off"));
+});
+
+t("add_shape at top (default) becomes group 1 and shifts the others; at bottom keeps their indexes", () => {
+  const w = makeWorld(), l = w.comp.layers.addShape();
+  const root = l.property("ADBE Root Vectors Group");
+  const r1 = ok(w.call("add_shape", { layer_id: l.id, shape: { type: "rect", size: [10, 10], fill: [1, 0, 0], name: "First" } }));
+  const r2 = ok(w.call("add_shape", { layer_id: l.id, shape: { type: "rect", size: [10, 10], fill: [0, 1, 0], name: "Second" } }));
+  assert.equal(r2.group_index, 1); assert.equal(root.property(1).name, "Second"); assert.equal(root.property(2).name, "First", "the earlier group moved down");
+  const r3 = ok(w.call("add_shape", { layer_id: l.id, shape: { type: "rect", size: [10, 10], fill: [0, 0, 1], name: "Third" }, at: "bottom" }));
+  assert.equal(r3.group_index, 3); assert.equal(root.property(3).name, "Third"); assert.equal(root.property(1).name, "Second", "indexes kept");
+  assert.deepEqual(plain(r3.path_group), ["ADBE Root Vectors Group", 3, "ADBE Vectors Group"]);
+  fails(w.call("add_shape", { layer_id: l.id, shape: { type: "rect" }, at: "middle" }), "BAD_ARGS");
 });
 
 for (const [name, pass, msg] of results) console.log((pass ? "PASS" : "FAIL") + "  " + name + (pass ? "" : "\n      " + msg));

@@ -2,6 +2,13 @@
 
 All notable changes. Versions follow [semantic versioning](https://semver.org); each release is a git tag `vX.Y.Z`, which is what the update check looks for.
 
+## 2.8.3 — 2026-10-09
+
+### Added
+- `camera_move` `combine: true` layers a move over the camera's existing animation instead of replacing the keys in its range, so a dolly and a truck (or a pan during an orbit) over the same seconds add up; keys after the move keep its final offset.
+- `add_shape` `at: "bottom"` adds the group below the others and keeps every existing group's index (the default `top` makes it group 1 and moves the others down one, which the description now says).
+- `duck_music` `min_level` (default -9 dB): quieter effects no longer trigger ducks. The result reports `coverage` (share of the music ducked), `ignored_quiet`, and a `note` when ducks would cover more than half the music (a lower music level is the better fix then).
+
 ## 2.8.2 — 2026-10-09
 
 ### Changed
