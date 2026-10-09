@@ -21,7 +21,8 @@ C.set_keyframes = function (a) {
   var l = getLayer(a.layer_id), p = resolvePath(l, a.path), keys = [], i, k, idx;
   if (!p.canVaryOverTime) fail("BAD_ARGS", "Property is not keyframable");
   if (!(a.keys instanceof Array) || !a.keys.length) fail("BAD_ARGS", "keys must be a non-empty array");
-  if (p.expressionEnabled) fail("BAD_ARGS", "Property has an active expression", "Clear it with set_expression and an empty expression");
+  if (springList(p) === null) fail("BAD_ARGS", "Property has an active expression", "Clear it with set_expression and an empty expression");
+  if (p.expressionEnabled) p.expression = ""; // a spring expression is rebuilt from the new keys
   for (i = 0; i < a.keys.length; i++) {
     k = a.keys[i];
     if (typeof k.t !== "number" || !has(k, "v")) fail("BAD_ARGS", "Each key needs numeric t and a v");
@@ -101,16 +102,19 @@ C.edit_keyframes = function (a) {
       if (!idx) fail("NOT_FOUND", "Edit " + i + ": no key at t " + e.t, "Use get_keyframes for key times");
       if (!has(e, "to") || e.to < 0) fail("BAD_ARGS", "Edit " + i + ": move needs to (a time of 0 or more)");
       if (findKey(p, { t: e.to }, tol) && findKey(p, { t: e.to }, tol) !== idx) fail("EXISTS", "Edit " + i + ": there is already a key at " + e.to, "Delete it first");
-      k = snapKey(p, idx);
+      k = snapKey(p, idx); k.spring = springAt(p, k.t);
+      if (k.spring) removeSpring(p, k.t);
       p.removeKey(idx);
       p.setValueAtTime(e.to, k.v);
       idx = p.nearestKeyIndex(e.to);
       restoreKey(p, idx, k);
       restoreRoving(p, idx, k);
+      if (k.spring) addSpring(p, e.to, k.spring);
       done.push({ edit: i, action: "move", index: idx, t: p.keyTime(idx) });
     } else if (e.action === "delete") {
       if (!idx) fail("NOT_FOUND", "Edit " + i + ": no key at t " + e.t, "Use get_keyframes for key times");
       done.push({ edit: i, action: "delete", t: p.keyTime(idx) });
+      removeSpring(p, p.keyTime(idx));
       p.removeKey(idx);
     } else {
       fail("BAD_ARGS", "Edit " + i + ": action must be set, move or delete");

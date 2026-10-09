@@ -6,6 +6,9 @@ import { z } from "zod";
 import type { ToolRegistry } from "./registry.js";
 import { Ease, id, LayerIds, PropPath, Size, TextStyleShape, Value, ValueOrShape } from "./schemas.js";
 
+// spring / bounce: the segment to the next key is a spring (an expression on linear keys)
+const Interp = z.enum(["linear", "bezier", "hold", "spring", "bounce"]);
+
 export function registerAnimateTools(r: ToolRegistry): void {
   r.bridged(
     "set_property",
@@ -16,10 +19,10 @@ export function registerAnimateTools(r: ToolRegistry): void {
 
   r.bridged(
     "set_keyframes",
-    "Replace all keys on a property. Path properties (ADBE Mask Shape, ADBE Vector Shape) take a shape spec as v; keep the vertex count the same across keys for clean morphs. Fails if an expression is active.",
+    "Replace all keys on a property. Path properties (ADBE Mask Shape, ADBE Vector Shape) take a shape spec as v; keep the vertex count the same across keys for clean morphs. interp spring/bounce springs the segment to the next key (works on any property). Fails if another expression is active.",
     {
       layer_id: id("Layer"), path: PropPath,
-      keys: z.array(z.object({ t: z.number().min(0), v: ValueOrShape, interp: z.enum(["linear", "bezier", "hold"]).optional(), ease_in: Ease.optional(), ease_out: Ease.optional() })).min(1),
+      keys: z.array(z.object({ t: z.number().min(0), v: ValueOrShape, interp: Interp.optional(), ease_in: Ease.optional(), ease_out: Ease.optional() })).min(1),
     },
     { idempotent: true },
   );
@@ -34,7 +37,7 @@ export function registerAnimateTools(r: ToolRegistry): void {
         t: z.number().min(0).optional().describe("Key time in seconds (set creates a key here if none exists)"),
         index: z.number().int().min(1).optional().describe("1-based key index from get_keyframes (instead of t)"),
         to: z.number().min(0).optional().describe("move: new time in seconds"),
-        v: ValueOrShape.optional(), interp: z.enum(["linear", "bezier", "hold"]).optional(), ease_in: Ease.optional(), ease_out: Ease.optional(),
+        v: ValueOrShape.optional(), interp: Interp.optional(), ease_in: Ease.optional(), ease_out: Ease.optional(),
         spatial_in: z.array(z.number()).min(2).max(3).optional().describe("Incoming motion-path tangent [x,y(,z)], relative to the key (turns auto_bezier off)"),
         spatial_out: z.array(z.number()).min(2).max(3).optional().describe("Outgoing motion-path tangent [x,y(,z)], relative to the key"),
         auto_bezier: z.boolean().optional(), continuous: z.boolean().optional(),

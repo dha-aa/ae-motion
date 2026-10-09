@@ -19,6 +19,61 @@ function coerce(prop, v) {
   return v;
 }
 
+// ---------- springs ----------
+// A spring (or bounce) segment runs from a key to the next one as a closed-form step response, in one expression
+// per property marked // ae-motion spring; its S list names the sprung segments by their first key's time. Values
+// are pure functions of time, the keys stay linear, and other segments keep their own easing.
+
+var SPRING_TAG = "// ae-motion spring";
+// Step responses: x(u) = 1 - e^(-a u) cos(b u), normalised so x(1) = 1. spring overshoots about 13 % once and
+// settles; bounce folds the cosine (|.|) so the value hits the target and bounces back off it, like a dropped object
+// (b = 4.5 pi puts cos(b) = 0 at the end, so it lands exactly and never passes the target).
+var SPRINGS = { spring: [6, 9.42, 0], bounce: [5, 14.137, 1] };
+
+// The expression a spring property carries; S lists the springy segments as [start time, a, b, fold].
+function springExpr(S) {
+  return SPRING_TAG + "\nvar S=" + JSON.stringify(S) + ";\n" +
+    "var n=0,y=value;\n" +
+    "if(numKeys>1){n=nearestKey(time).index;if(key(n).time>time)n--;}\n" +
+    "if(n>=1&&n<numKeys){var t0=key(n).time,t1=key(n+1).time,j,m=-1;\n" +
+    "for(j=0;j<S.length;j++)if(Math.abs(S[j][0]-t0)<0.001)m=j;\n" +
+    "if(m>=0){var a=S[m][1],b=S[m][2],u=(time-t0)/(t1-t0),e=Math.exp(-a*u)*Math.cos(b*u),E=Math.exp(-a)*Math.cos(b);\n" +
+    "if(S[m][3]){e=Math.abs(e);E=Math.abs(E);}\n" +
+    "y=add(key(n).value,mul(sub(key(n+1).value,key(n).value),(1-e)/(1-E)));}}\ny";
+}
+
+// The spring segments already on p (from its expression), or null if p has some other expression.
+function springList(p) {
+  var m;
+  if (!p.expressionEnabled || !p.expression) return [];
+  if (p.expression.indexOf(SPRING_TAG) !== 0) return null;
+  m = /var S=(\[.*\]);/.exec(p.expression);
+  return m ? JSON.parse(m[1]) : [];
+}
+
+function addSpring(p, t0, kind) {
+  var S = springList(p) || [], out = [], i, sp = SPRINGS[kind];
+  for (i = 0; i < S.length; i++) if (Math.abs(S[i][0] - t0) >= 0.001) out.push(S[i]);
+  out.push([Math.round(t0 * 1e6) / 1e6, sp[0], sp[1], sp[2]]);
+  out.sort(function (x, y) { return x[0] - y[0]; });
+  p.expression = springExpr(out);
+}
+
+// Stop the segment starting at t0 from springing (the expression goes when no segment is left).
+function removeSpring(p, t0) {
+  var S = springList(p), out = [], i;
+  if (!S || !S.length) return;
+  for (i = 0; i < S.length; i++) if (Math.abs(S[i][0] - t0) >= 0.001) out.push(S[i]);
+  p.expression = out.length ? springExpr(out) : "";
+}
+
+// "spring" / "bounce" if the segment starting at t0 springs, else "".
+function springAt(p, t0) {
+  var S = springList(p), i;
+  for (i = 0; S && i < S.length; i++) if (Math.abs(S[i][0] - t0) < 0.001) return S[i][3] ? "bounce" : "spring";
+  return "";
+}
+
 // "easy" (After Effects' Easy Ease) or {speed, influence}.
 function mkEase(spec) {
   if (spec === "easy") return new KeyframeEase(0, 33.333333);
@@ -30,6 +85,14 @@ function mkEase(spec) {
 // Apply a key spec's interp / ease_in / ease_out to the key at idx. Easing implies bezier.
 function applyKeyMeta(prop, idx, k) {
   var interp = k.interp, typ, dims, inE, outE, e, d;
+  if (SPRINGS[interp]) {
+    if (springList(prop) === null) fail("BAD_ARGS", "interp " + interp + " needs the property's expression slot, which holds another expression", "Clear it with set_expression and an empty expression");
+    prop.setInterpolationTypeAtKey(idx, KeyframeInterpolationType.LINEAR, KeyframeInterpolationType.LINEAR);
+    if (idx < prop.numKeys) prop.setInterpolationTypeAtKey(idx + 1, prop.keyInInterpolationType(idx + 1) === KeyframeInterpolationType.HOLD ? KeyframeInterpolationType.HOLD : KeyframeInterpolationType.LINEAR, prop.keyOutInterpolationType(idx + 1));
+    addSpring(prop, prop.keyTime(idx), interp);
+    return;
+  }
+  if (interp && springAt(prop, prop.keyTime(idx))) removeSpring(prop, prop.keyTime(idx));
   if ((k.ease_in || k.ease_out) && !interp) interp = "bezier";
   if (interp) {
     typ = interp === "linear" ? KeyframeInterpolationType.LINEAR : (interp === "hold" ? KeyframeInterpolationType.HOLD : KeyframeInterpolationType.BEZIER);
@@ -43,6 +106,8 @@ function applyKeyMeta(prop, idx, k) {
     if (k.ease_out) { e = mkEase(k.ease_out); outE = []; for (d = 0; d < dims; d++) outE.push(e); }
     prop.setTemporalEaseAtKey(idx, inE, outE);
   }
+  // the end of a sprung segment stays linear coming in (the spring shapes that side)
+  if ((interp || k.ease_in || k.ease_out) && idx > 1 && springAt(prop, prop.keyTime(idx - 1))) prop.setInterpolationTypeAtKey(idx, KeyframeInterpolationType.LINEAR, prop.keyOutInterpolationType(idx));
 }
 
 
@@ -111,7 +176,8 @@ function nonZero(v) { var i; for (i = 0; i < v.length; i++) if (Math.abs(v[i]) >
 // A key as JSON for get_keyframes / edit_keyframes (the same field names edit_keyframes accepts). Spatial fields that
 // are zero or false are left out.
 function keyInfo(p, i) {
-  var k = { index: i, t: p.keyTime(i), v: keyVal(p, i), interp_in: interpName(p.keyInInterpolationType(i)), interp_out: interpName(p.keyOutInterpolationType(i)) };
+  var k = { index: i, t: p.keyTime(i), v: keyVal(p, i), interp_in: interpName(p.keyInInterpolationType(i)), interp_out: interpName(p.keyOutInterpolationType(i)) }, sp = springAt(p, p.keyTime(i));
+  if (sp) k.interp_out = sp;
   try { k.ease_in = easeList(p.keyInTemporalEase(i)); k.ease_out = easeList(p.keyOutTemporalEase(i)); } catch (e1) {}
   // spatial settings only when they say something (zero tangents and false flags are the common case)
   if (p.isSpatial) {

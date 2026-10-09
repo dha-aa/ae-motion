@@ -290,6 +290,37 @@ t("review_motion: flags linear keys, unison starts, holds, pop-ons and small tex
   assert.equal(r2.issues.filter((i) => i.type === "linear" || i.type === "unison").length, 0, JSON.stringify(r2.issues));
 });
 
+t("set_keyframes / edit_keyframes interp spring: any property springs; moves, deletes and re-interps keep the expression in step", () => {
+  const w = makeWorld(), a = w.solid("Any"), op = P(a, "ADBE Rotate Z");
+  ok(w.call("set_keyframes", { layer_id: a.id, path: "rotation", keys: [{ t: 0, v: 0, interp: "spring" }, { t: 1, v: 90, ease_out: "easy" }, { t: 2, v: 0, interp: "bounce" }, { t: 3, v: 45 }] }));
+  assert.ok(op.expression.startsWith("// ae-motion spring"));
+  assert.equal((op.expression.match(/var S=(\[.*\]);/) || [])[1], "[[0,6,9.42,0],[2,5,14.137,1]]");
+  let peak = 0;
+  for (let x = 0; x <= 1; x += 1 / FPS) peak = Math.max(peak, op.valueAtTime(x));
+  assert.ok(peak > 95, "spring overshoots 90: " + peak);
+  near(op.valueAtTime(1), 90, "lands on the key", 1e-9);
+  assert.equal(op.keys[0].oi, LIN); assert.equal(op.keys[1].ii, LIN, "the sprung segment's keys are linear");
+  const keys = ok(w.call("get_keyframes", { layer_id: a.id, path: "rotation" })).keys;
+  assert.deepEqual(keys.map((k) => k.interp_out), ["spring", "bezier", "bounce", "linear"]);
+  // move the bounce key: its spring moves with it
+  ok(w.call("edit_keyframes", { layer_id: a.id, path: "rotation", edits: [{ action: "move", t: 2, to: 2.5 }] }));
+  assert.equal((op.expression.match(/var S=(\[.*\]);/) || [])[1], "[[0,6,9.42,0],[2.5,5,14.137,1]]");
+  // a plain interp on the first key stops its spring; deleting the last sprung key drops the expression
+  ok(w.call("edit_keyframes", { layer_id: a.id, path: "rotation", edits: [{ action: "set", t: 0, interp: "bezier" }] }));
+  assert.equal((op.expression.match(/var S=(\[.*\]);/) || [])[1], "[[2.5,5,14.137,1]]");
+  ok(w.call("edit_keyframes", { layer_id: a.id, path: "rotation", edits: [{ action: "delete", t: 2.5 }] }));
+  assert.equal(op.expression, "");
+  // set_keyframes replaces a spring expression with the new keys' springs (none here)
+  ok(w.call("edit_keyframes", { layer_id: a.id, path: "rotation", edits: [{ action: "set", t: 1, interp: "spring" }] }));
+  ok(w.call("set_keyframes", { layer_id: a.id, path: "rotation", keys: [{ t: 0, v: 0 }, { t: 1, v: 10 }] }));
+  assert.equal(op.expression, "");
+  // another expression is never overwritten
+  op.expression = "wiggle(1, 5)";
+  fails(w.call("edit_keyframes", { layer_id: a.id, path: "rotation", edits: [{ action: "set", t: 0, interp: "spring" }] }), "BAD_ARGS");
+  fails(w.call("set_keyframes", { layer_id: a.id, path: "rotation", keys: [{ t: 0, v: 0, interp: "spring" }, { t: 1, v: 1 }] }), "BAD_ARGS");
+  assert.equal(op.expression, "wiggle(1, 5)");
+});
+
 for (const [name, pass, msg] of results) console.log((pass ? "PASS" : "FAIL") + "  " + name + (pass ? "" : "\n      " + msg));
 console.log(`\n${results.filter((r) => r[1]).length}/${results.length} passed`);
 process.exit(results.every((r) => r[1]) ? 0 : 1);
