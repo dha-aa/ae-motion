@@ -2,6 +2,18 @@
 
 All notable changes. Versions follow [semantic versioning](https://semver.org); each release is a git tag `vX.Y.Z`, which is what the update check looks for.
 
+## 2.8.2 — 2026-10-09
+
+### Changed
+- `find_sound_cues` picks cues the way a sound designer would: what happens on one frame is one cue (`layer_ids` lists the layers; entrances on a cut become one `hit`), cues are ranked (`priority`, `tier` hero / major / minor; landings always rank first) and only the most important are kept, spaced out, by `density` (sparse / normal / dense) or `max` and `min_gap`; `skipped` says how many were left out. A `text_reveal` is one cue for the whole reveal instead of nothing (or one per letter).
+
+### Added
+- `add_sfx` `lead_in`: keep only that much of a sound before its hit (cuts a cinematic impact's long build-up, with a short fade). It returns `hit`.
+
+### Fixed
+- `add_sfx` `max_duration` trimmed from the file's first frame, so with peak alignment it could cut the sound off before its hit (the hit never played). It now counts from the hit (from the first frame with `align: "start"`).
+- `review_motion` reported a word or line `text_reveal` as cut off by the layer's out point: it estimated the reveal's length from the letter count. Reveals now record their unit count.
+
 ## 2.8.1 — 2026-10-09
 
 ### Fixed

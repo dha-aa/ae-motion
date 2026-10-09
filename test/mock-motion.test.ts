@@ -321,6 +321,16 @@ t("set_keyframes / edit_keyframes interp spring: any property springs; moves, de
   assert.equal(op.expression, "wiggle(1, 5)");
 });
 
+t("a text_reveal is one sound cue for the whole reveal (not one per letter), and review_motion knows when it ends", () => {
+  const w = makeWorld(), l = w.text("Words", "one two three four");
+  ok(w.call("text_reveal", { layer_id: l.id, style: "rise", by: "words", time: 1, duration: 0.4, stagger: 0.1 }));
+  const r = ok(w.call("find_sound_cues", { comp_id: 1 }));
+  const rev = r.cues.filter((c) => c.event === "reveal");
+  assert.equal(rev.length, 1, JSON.stringify(r.cues)); near(rev[0].duration, 0.7, "4 words: 0.4 + 3 * 0.1"); assert.equal(rev[0].sound, "swoosh");
+  l.outPoint = 1.75; // the reveal (ends 1.7) fits: no cut_off
+  assert.ok(!ok(w.call("review_motion", { comp_id: 1 })).issues.some((i) => i.type === "cut_off"));
+});
+
 for (const [name, pass, msg] of results) console.log((pass ? "PASS" : "FAIL") + "  " + name + (pass ? "" : "\n      " + msg));
 console.log(`\n${results.filter((r) => r[1]).length}/${results.length} passed`);
 process.exit(results.every((r) => r[1]) ? 0 : 1);

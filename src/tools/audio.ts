@@ -30,17 +30,20 @@ export function registerAudioTools(r: ToolRegistry): void {
 
   r.bridged(
     "find_sound_cues",
-    "List the moments in a comp's animation that want a sound effect, from its keyframes: fast moves and spins (whoosh, at peak speed), abrupt landings (impact), scale pops (pop), type-ons (typing) and draw-ons (swipe, with duration), entrances (pop). Each cue's t is when the sound should hit: pass it to add_sfx.",
-    { comp_id: id("Comp"), layer_ids: LayerIds.optional(), start: Time.optional(), end: Time.optional(), max: z.number().int().min(1).max(200).optional() },
+    "Pick where a comp wants sound effects, as a sound designer would: landings (impact), cuts (hit), big moves and spins (whoosh at peak speed), pops, reveals, type-ons and draw-ons. What happens on one frame is one cue (layer_ids lists the layers). Cues are ranked (priority, tier hero|major|minor) and only the most important are kept, spaced out: density sparse|normal|dense (about 1 / 1.6 / 3.5 per second) or max, min_gap. Sound the heroes; few sounds read better than many. Pass each t to add_sfx.",
+    {
+      comp_id: id("Comp"), layer_ids: LayerIds.optional(), start: Time.optional(), end: Time.optional(), max: z.number().int().min(1).max(200).optional(),
+      density: z.enum(["sparse", "normal", "dense"]).optional(), min_gap: z.number().min(0).optional(),
+    },
     { readOnly: true, tooLargeHint: "Narrow start/end or layer_ids, or lower max" },
   );
 
   r.bridged(
     "add_sfx",
-    "Place a sound file so it hits at time: align peak (default) lines up the sound's loudest moment (a whoosh's middle, a pop's attack), start its first frame. volume in dB (default -6), fade_in/fade_out seconds, max_duration trims. Repeated files are imported once.",
+    "Place a sound file so it hits at time: align peak (default) lines up the sound's loudest moment (a whoosh's middle, a pop's attack), start its first frame. volume in dB (default -6), fade_in/fade_out seconds. lead_in keeps only that much of the sound before the hit (cuts a long build-up); max_duration trims the end (from the hit with peak, from the start with start). Repeated files are imported once.",
     {
       comp_id: id("Comp"), path: z.string(), time: Time, align: z.enum(["peak", "start"]).optional(), volume: z.number().max(24).optional(),
-      fade_in: z.number().min(0).optional(), fade_out: z.number().min(0).optional(), max_duration: z.number().positive().optional(), name: z.string().optional(),
+      fade_in: z.number().min(0).optional(), fade_out: z.number().min(0).optional(), max_duration: z.number().positive().optional(), lead_in: z.number().min(0).optional(), name: z.string().optional(),
     },
     { paths: ["path"], destructive: false },
   );
