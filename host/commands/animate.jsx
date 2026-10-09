@@ -18,25 +18,38 @@ C.set_property = function (a) {
 
 C.set_keyframes = function (a) {
   need(a, ["layer_id", "path", "keys"]);
-  var l = getLayer(a.layer_id), p = resolvePath(l, a.path), keys = [], i, k, idx;
+  var l = getLayer(a.layer_id), p = resolvePath(l, a.path), keys = [], i, j, k, idx, merge = a.merge === true, replaced = 0,
+    tol = l.containingComp.frameDuration / 2, res;
   if (!p.canVaryOverTime) fail("BAD_ARGS", "Property is not keyframable");
   if (!(a.keys instanceof Array) || !a.keys.length) fail("BAD_ARGS", "keys must be a non-empty array");
   if (springList(p) === null) fail("BAD_ARGS", "Property has an active expression", "Clear it with set_expression and an empty expression");
-  if (p.expressionEnabled) p.expression = ""; // a spring expression is rebuilt from the new keys
+  if (p.expressionEnabled && !merge) p.expression = ""; // a spring expression is rebuilt from the new keys
   for (i = 0; i < a.keys.length; i++) {
     k = a.keys[i];
     if (typeof k.t !== "number" || !has(k, "v")) fail("BAD_ARGS", "Each key needs numeric t and a v");
     keys.push({ t: k.t, v: coerce(p, k.v) });
   }
-  if (p.matchName === "ADBE Time Remapping") {
+  if (merge) {
+    // keys at other times stay (with their springs); a key within half a frame of a new one is replaced
+    for (i = 0; i < keys.length; i++) {
+      for (j = p.numKeys; j >= 1; j--) { if (Math.abs(p.keyTime(j) - keys[i].t) <= tol) { p.removeKey(j); replaced++; } }
+      removeSpring(p, keys[i].t);
+      p.setValueAtTime(keys[i].t, keys[i].v);
+    }
+  } else if (p.matchName === "ADBE Time Remapping") {
+    replaced = p.numKeys;
     replaceKeys(p, keys, 0); // adds the new keys before removing old ones: removing every key switches time remapping off
   } else {
     // remove first, so no old key's interpolation or ease survives on a key at the same time
+    replaced = p.numKeys;
     for (i = p.numKeys; i >= 1; i--) p.removeKey(i);
     for (i = 0; i < keys.length; i++) p.setValueAtTime(keys[i].t, keys[i].v);
   }
   for (i = 0; i < a.keys.length; i++) { idx = p.nearestKeyIndex(a.keys[i].t); applyKeyMeta(p, idx, a.keys[i]); }
-  return { num_keys: p.numKeys }; // the keys are what was passed; get_keyframes reads them back
+  res = { num_keys: p.numKeys }; // the keys are what was passed; get_keyframes reads them back
+  // say when earlier keys went: replacing a property's whole animation by accident is easy to miss
+  if (replaced) res.replaced = replaced;
+  return res;
 };
 
 // Find the key an edit addresses: by 1-based index, or by time (the key within half a frame of t).

@@ -31,6 +31,8 @@ class Prop {
   }
   keyTime(i) { return this.keys[i - 1].t; }
   keyValue(i) { return this.keys[i - 1].v; }
+  setValueAtKey(i, v) { this.keys[i - 1].v = v; }
+  get dimensionsSeparated() { return false; }
   removeKey(i) { this.keys.splice(i - 1, 1); }
   nearestKeyIndex(t) { let best = 1, bd = Infinity; this.keys.forEach((k, i) => { const d = Math.abs(k.t - t); if (d < bd) { bd = d; best = i + 1; } }); return best; }
   valueAtTime(t) {
@@ -47,6 +49,10 @@ class Prop {
     return this._v;
   }
   setInterpolationTypeAtKey(i, a, b) { this.keys[i - 1].interp = [a, b]; }
+  // new spatial keys are auto-bezier in After Effects (the path curves between them)
+  setSpatialAutoBezierAtKey(i, b) { this.keys[i - 1].auto = b; }
+  setSpatialContinuousAtKey(i, b) { this.keys[i - 1].cont = b; }
+  setSpatialTangentsAtKey(i, a, b) { this.keys[i - 1].tan = [a, b]; }
   keyInInterpolationType(i) { return this.keys[i - 1].interp[0]; }
   keyOutInterpolationType(i) { return this.keys[i - 1].interp[1]; }
   setTemporalEaseAtKey(i, ine, oute) { this.keys[i - 1].ease = { in: ine, out: oute }; }
@@ -276,6 +282,10 @@ t("path keys waypoints at absolute times and validates them", () => {
   assert.deepEqual(w.pos(cam).keys.map((k) => k.t), [1, 3, 5]); assert.deepEqual(w.poi(cam).keys.map((k) => k.t), [1, 5]); assert.equal(r.result.start, 1); assert.equal(r.result.end, 5);
   fails(w.call("camera_move", { layer_id: cam.id, type: "path", waypoints: [{ t: 2, position: [0, 0, 0] }, { t: 1, position: [1, 1, 1] }] }), "BAD_ARGS");
   fails(w.call("camera_move", { layer_id: cam.id, type: "path", waypoints: [{ t: 1 }, { t: 2 }] }), "BAD_ARGS");
+  assert.ok(w.pos(cam).keys.every((k) => k.tan === undefined), "smooth (default) leaves After Effects' curved path");
+  ok(w.call("camera_move", { layer_id: cam.id, type: "path", waypoints: wp, spatial: "linear" }));
+  for (const p of [w.pos(cam), w.poi(cam)]) assert.ok(p.keys.every((k) => k.auto === false && k.cont === false && JSON.stringify(k.tan) === "[[0,0,0],[0,0,0]]"), "linear: straight between the waypoints");
+  fails(w.call("camera_move", { layer_id: cam.id, type: "path", waypoints: wp, spatial: "curvy" }), "BAD_ARGS");
 });
 
 t("a move replaces keys inside its range and keeps the others", () => {
@@ -381,6 +391,17 @@ t("set_3d turns 3D on, sets the transform and material, and rejects cameras and 
   fails(w.call("set_3d", { layer_id: s.id, material: { casts_shadows: "sometimes" } }), "BAD_ARGS");
   ok(w.call("set_3d", { layer_id: s.id, three_d: false })); assert.equal(s.threeDLayer, false);
   fails(w.call("set_3d", { layer_id: w.camera(c).id, position: [0, 0, 0] }), "BAD_ARGS"); fails(w.call("set_3d", { layer_id: w.light(c).id, position: [0, 0, 0] }), "BAD_ARGS");
+});
+
+t("set_3d z sets only the depth: x/y stay, and a moving layer keeps every key (each gets the new z)", () => {
+  const w = makeWorld(); const c = w.comp(); const still = w.solid(c, "Still"); const moving = w.solid(c, "Moving");
+  w.pos(still).setValue([300, 200, 0]);
+  ok(w.call("set_3d", { layer_id: still.id, z: 900 })); assert.equal(still.threeDLayer, true); nearV(w.pos(still).value, [300, 200, 900]);
+  w.pos(moving).setValueAtTime(1, [0, 0, 0]); w.pos(moving).setValueAtTime(2, [500, 100, 0]); w.pos(moving).keys[1].interp = ["hold", "hold"];
+  ok(w.call("set_3d", { layer_id: moving.id, z: -250 }));
+  assert.equal(JSON.stringify(w.pos(moving).keys.map((k) => k.v)), "[[0,0,-250],[500,100,-250]]");
+  assert.equal(JSON.stringify(w.pos(moving).keys[1].interp), '["hold","hold"]', "key settings kept");
+  fails(w.call("set_3d", { layer_id: still.id, z: 1, position: [0, 0, 0] }), "BAD_ARGS");
 });
 
 t("set_light edits a light, maps falloff, and checks spot-only fields", () => {

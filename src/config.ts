@@ -81,6 +81,6 @@ export const TIMEOUTS = {
   command: 30_000,
   /** preview_frame: rendering one heavy frame can take a while. */
   preview: 60_000,
-  /** How long preview_frame waits for After Effects to finish writing the PNG. */
-  previewFile: 10_000,
+  /** How long preview_frame waits for After Effects to finish writing the PNG (heavy 3D frames with depth of field and motion blur took over 10 s). */
+  previewFile: 45_000,
 } as const;

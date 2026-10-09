@@ -40,7 +40,8 @@ function makeWorld({ startShiftsInOut = true, inKeepsDuration = true } = {}) {
     get numLayers() { return this._layers.length; }
     layer(i) { return this._layers[i - 1]; }
     get workAreaStart() { return this._wa[0]; }
-    set workAreaStart(v) { if (v + this._wa[1] > this.duration + 1e-9) throw new Error("work area too long"); this._wa[0] = v; }
+    // as After Effects 26.3: a new start keeps the end where it is; a start past the end moves the end instead
+    set workAreaStart(v) { const [s, d] = this._wa, e = s + d; if (v < e - 1e-9) this._wa = [v, e - v]; else this._wa = [s, v + d - s]; }
     get workAreaDuration() { return this._wa[1]; }
     set workAreaDuration(v) { if (this._wa[0] + v > this.duration + 1e-9) throw new Error("work area too long"); this._wa[1] = v; }
     addLayer(name, i, o) { const l = new Layer(this, name, i, o); this._layers.push(l); return l; }
@@ -79,6 +80,7 @@ function makeWorld({ startShiftsInOut = true, inKeepsDuration = true } = {}) {
     },
     beginUndoGroup() {}, endUndoGroup() {},
     opened: [], open(f) { this.opened.push(f.path); return {}; },
+    newProjects: 0, newProject() { this.newProjects++; return {}; },
   };
   class MarkerValue { constructor(c) { this.comment = c; this.duration = 0; this.chapter = ""; this.url = ""; this.label = 0; } }
   const ctx = { app, CompItem, FolderItem, FootageItem, TextLayer: Stub, ShapeLayer: Stub, CameraLayer: Stub, LightLayer: Stub, SolidSource: Stub, MarkerValue, console,
@@ -366,6 +368,11 @@ t("open_project protects unsaved work and closes without a save dialog when disc
   ok(w.call("open_project", { path: "/x/scene.aep", discard_unsaved: true }));
   assert.equal(w.app.project.closed, 1, "closed with DO_NOT_SAVE_CHANGES first");
   assert.deepEqual(w.app.opened, ["/x/scene.aep"]);
+  // new: true starts an empty project, with the same protection for unsaved work
+  fails(w.call("open_project", {}), "BAD_ARGS"); fails(w.call("open_project", { new: true, path: "/x/scene.aep" }), "BAD_ARGS");
+  w.app.project.dirty = true;
+  fails(w.call("open_project", { new: true }), "BAD_ARGS"); assert.equal(w.app.newProjects, 0);
+  ok(w.call("open_project", { new: true, discard_unsaved: true })); assert.equal(w.app.newProjects, 1);
 });
 
 for (const [name, pass, msg] of results) console.log((pass ? "PASS" : "FAIL") + "  " + name + (pass ? "" : "\n      " + msg));

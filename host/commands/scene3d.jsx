@@ -103,6 +103,18 @@ function combineKeys(p, plan, easing, sampled) {
   return times.length;
 }
 
+// Straight lines between the keys in t0..t1 of a spatial property: After Effects gives new spatial keys auto-bezier
+// tangents, so a path through waypoints curves and overshoots between them (the framing drifts off what was asked).
+function straightPath(p, t0, t1) {
+  var i, z = [0, 0, 0];
+  for (i = 1; i <= p.numKeys; i++) {
+    if (p.keyTime(i) < t0 - EPS || p.keyTime(i) > t1 + EPS) continue;
+    p.setSpatialAutoBezierAtKey(i, false);
+    p.setSpatialContinuousAtKey(i, false);
+    p.setSpatialTangentsAtKey(i, z, z);
+  }
+}
+
 C.camera_move = function (a) {
   need(a, ["layer_id", "type"]);
   var l = camLayer(a.layer_id), comp = l.containingComp, type = a.type, easing = a.easing || "ease_in_out", t0 = has(a, "start") ? a.start : 0, dur = a.duration, t1,
@@ -196,8 +208,9 @@ C.camera_move = function (a) {
 
   // combine layers the move over what is already animated; otherwise its keys replace the keys in its range
   function put(p, plan, sampled) { return a.combine === true ? combineKeys(p, plan, easing, sampled) : putKeys(p, plan, easing, sampled); }
-  if (planPos) { p = keyTarget(l, "ADBE Position", "Position"); res.keyframes.position = put(p, planPos, posSampled); res.final_position = copyArr(p.valueAtTime(t1, true)); }
-  if (planPoi) { p = keyTarget(l, "ADBE Anchor Point", "Point of Interest"); res.keyframes.point_of_interest = put(p, planPoi, poiSampled); res.final_point_of_interest = copyArr(p.valueAtTime(t1, true)); }
+  if (has(a, "spatial") && a.spatial !== "linear" && a.spatial !== "smooth") fail("BAD_ARGS", "spatial must be linear or smooth");
+  if (planPos) { p = keyTarget(l, "ADBE Position", "Position"); res.keyframes.position = put(p, planPos, posSampled); if (a.spatial === "linear") straightPath(p, t0, t1); res.final_position = copyArr(p.valueAtTime(t1, true)); }
+  if (planPoi) { p = keyTarget(l, "ADBE Anchor Point", "Point of Interest"); res.keyframes.point_of_interest = put(p, planPoi, poiSampled); if (a.spatial === "linear") straightPath(p, t0, t1); res.final_point_of_interest = copyArr(p.valueAtTime(t1, true)); }
   if (planRoll) res.keyframes.roll = put(tp(l, "ADBE Rotate Z"), planRoll, false);
   if (planZoom) { p = camOpt(l, "ADBE Camera Zoom"); res.keyframes.zoom = put(p, planZoom, false); res.final_zoom = p.valueAtTime(t1, true); }
   if (planFocus) { p = camOpt(l, "ADBE Camera Focus Distance"); res.keyframes.focus_distance = put(p, planFocus, false); res.final_focus_distance = p.valueAtTime(t1, true); }
@@ -283,14 +296,29 @@ C.camera_rig = function (a) {
   fail("BAD_ARGS", "action must be create or remove");
 };
 
+// Put a 3D layer at depth z and keep its x/y: every position key gets the new z (its other settings stay), so a
+// layer that already moves keeps moving. Works with position separated into x/y/z too.
+function setDepth(l, z) {
+  var P = tp(l, "ADBE Position"), Z, i, v;
+  if (P.dimensionsSeparated) {
+    Z = tp(l, "ADBE Position_2");
+    if (Z.numKeys) { for (i = 1; i <= Z.numKeys; i++) Z.setValueAtKey(i, z); } else Z.setValue(z);
+    return;
+  }
+  if (P.numKeys) { for (i = 1; i <= P.numKeys; i++) { v = P.keyValue(i); P.setValueAtKey(i, [v[0], v[1], z]); } }
+  else { v = P.value; P.setValue([v[0], v[1], z]); }
+}
+
 C.set_3d = function (a) {
   need(a, ["layer_id"]);
   var l = getLayer(a.layer_id), t = has(a, "time") ? a.time : null, m = a.material, grp, k, any;
   if (l instanceof CameraLayer) fail("BAD_ARGS", "Use set_camera for camera layers");
   if (l instanceof LightLayer) fail("BAD_ARGS", "Use set_light for light layers");
-  any = has(a, "position") || has(a, "anchor") || has(a, "scale") || has(a, "orientation") || has(a, "rotation") || !!m;
+  any = has(a, "position") || has(a, "z") || has(a, "anchor") || has(a, "scale") || has(a, "orientation") || has(a, "rotation") || !!m;
+  if (has(a, "position") && has(a, "z")) fail("BAD_ARGS", "Pass position or z, not both");
   if (has(a, "three_d")) l.threeDLayer = a.three_d;
   else if (any && !l.threeDLayer) l.threeDLayer = true;
+  if (has(a, "z")) setDepth(l, a.z);
   applyXform(l, a, t);
   if (m) {
     grp = l.property("ADBE Material Options Group");

@@ -45,11 +45,12 @@ export function registerScene3dTools(r: ToolRegistry): void {
 
   r.bridged(
     "camera_move",
-    "Animate a camera with editable keyframes, starting from its value at start. dolly: distance px toward the target (or factor of the current distance). truck/pedestal: px right/up, camera and target together. crane: px up, target stays. pan/tilt: degrees right/up (turns the target). roll: degrees. orbit: degrees right around the target (+ vertical_degrees up). zoom: to_zoom, factor, to_focal_length or to_fov. rack_focus: to_focus_distance or to_layer_id (turns depth of field on). path: waypoints with absolute times. combine: add the move to existing animation (dolly + truck at once) instead of replacing keys in its range. Position/target moves need a two-node camera; rigs get their controls keyed.",
+    "Animate a camera with editable keys from its value at start. dolly: distance px toward the target (or factor). truck/pedestal: px right/up, with the target. crane: px up, target stays. pan/tilt: degrees right/up. roll: degrees. orbit: degrees around the target (+ vertical_degrees). zoom: to_zoom, factor, to_focal_length or to_fov. rack_focus: to_focus_distance or to_layer_id (turns depth of field on). path: waypoints at absolute times. combine: add to existing animation instead of replacing keys in range. Position/target moves need a two-node camera; rigs get their controls keyed.",
     {
       layer_id: id("Camera layer"),
       type: z.enum(["dolly", "truck", "pedestal", "crane", "pan", "tilt", "roll", "orbit", "zoom", "rack_focus", "path"]),
       start: Time.optional(), duration: z.number().positive().optional(), easing: z.enum(["linear", "ease_in", "ease_out", "ease_in_out"]).optional(), combine: z.boolean().optional(),
+      spatial: z.enum(["smooth", "linear"]).optional().describe("Path between keys: smooth (default, can overshoot) or linear"),
       distance: z.number().optional(), factor: z.number().positive().optional(), degrees: z.number().optional(), vertical_degrees: z.number().optional(),
       target: V3.optional(), step_degrees: z.number().min(1).max(45).optional().describe("Degrees between keyframes for orbit, pan and tilt (default 5)"),
       to_zoom: z.number().positive().optional(), to_focal_length: z.number().positive().optional(), to_fov: z.number().gt(0).lt(180).optional(),
@@ -79,7 +80,7 @@ export function registerScene3dTools(r: ToolRegistry): void {
     "set_3d",
     "Make a layer 3D and set its transform (scale in percent, rotation/orientation in degrees) and material; static, or keyframes when time is given. Any field turns 3D on unless three_d is false. Not for cameras/lights (set_camera, set_light).",
     {
-      layer_id: id("Layer"), three_d: z.boolean().optional(), position: V3.optional(), anchor: V3.optional(), scale: V3.optional().describe("%"), orientation: V3.optional().describe("degrees"),
+      layer_id: id("Layer"), three_d: z.boolean().optional(), position: V3.optional(), z: z.number().optional().describe("Depth only (keeps x/y and keys)"), anchor: V3.optional(), scale: V3.optional().describe("%"), orientation: V3.optional().describe("degrees"),
       rotation: Rot3.optional(), material: Material.optional(), time: Time.optional(),
     },
     { idempotent: true },

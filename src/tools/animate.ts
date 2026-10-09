@@ -19,10 +19,11 @@ export function registerAnimateTools(r: ToolRegistry): void {
 
   r.bridged(
     "set_keyframes",
-    "Replace all keys on a property. Path properties (ADBE Mask Shape, ADBE Vector Shape) take a shape spec as v; keep the vertex count the same across keys for clean morphs. interp spring/bounce springs the segment to the next key (works on any property). Fails if another expression is active.",
+    "Replace all keys on a property (merge: keep keys at other times; replaced: old keys removed). Path properties (ADBE Mask Shape, ADBE Vector Shape) take a shape spec as v; keep the vertex count the same across keys for clean morphs. interp spring/bounce springs the segment to the next key (works on any property). Fails if another expression is active.",
     {
       layer_id: id("Layer"), path: PropPath,
       keys: z.array(z.object({ t: z.number().min(0), v: ValueOrShape, interp: Interp.optional(), ease_in: Ease.optional(), ease_out: Ease.optional() })).min(1),
+      merge: z.boolean().optional(),
     },
     { idempotent: true },
   );
@@ -92,7 +93,7 @@ export function registerAnimateTools(r: ToolRegistry): void {
 
   r.bridged(
     "set_text",
-    "Set text and character/paragraph styling on a whole text layer; only the fields you pass change, and the result reads them back (skipped lists what After Effects refused). font is the PostScript name (find_fonts lists them; an uninstalled font is refused). leading turns auto leading off; stroke_color turns the stroke on; horizontal/vertical_scale in percent. box_size resizes box text (point text cannot become box text: use add_layer options.box_size). time sets a keyframe. Per-character styling: text animators (add_property).",
+    "Set text and styling on a whole text layer; only the fields you pass change, read back in the result (skipped: what After Effects refused). font: PostScript name (find_fonts). leading turns auto leading off; stroke_color turns the stroke on; horizontal/vertical_scale in percent. box_size resizes box text (point text cannot become box text: add_layer options.box_size). time sets a keyframe. Per-character styling: text animators (add_property).",
     {
       layer_id: id("Layer"), time: z.number().min(0).optional(), text: z.string().optional(), ...TextStyleShape,
       box_size: Size.optional(),

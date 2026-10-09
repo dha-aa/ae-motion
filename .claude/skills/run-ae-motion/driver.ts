@@ -9,6 +9,8 @@
 //   call <tool> [json]         call one tool; prints the JSON result; images -> $SHOTS/<tool>-<ts>.png
 //   script <file|->            run many calls in ONE server session; each line: {"tool": "...", "args": {...}}
 //                              "$N.path.to.field" strings in args are replaced with values from result N (0-based)
+//   script <file> --from N     resume at step N (0-based) after a failure, with the results of steps before N from
+//                              <file>.results.json (written by every script run); fix the failed line first
 //   bridge <cmd> [json]        send a host command straight to the panel, bypassing the MCP server
 //                              (also reaches non-tool commands: get_selection, prepare_render)
 //   reload-host                re-evaluate panel/host/host.jsx inside AE (after `npm run build:host`),
@@ -132,8 +134,9 @@ async function callTool(srv: Server, tool: string, args: Json = {}): Promise<{ i
   return { isError: !!r.isError, value };
 }
 
-// "$2.layers.0.id" -> results[2].layers[0].id
+// "$2.layers.0.id" -> results[2].layers[0].id; "$$99" -> the literal "$99" (as in batch)
 function substitute(v: unknown, results: unknown[]): unknown {
+  if (typeof v === "string" && v.startsWith("$$")) return v.slice(1);
   if (typeof v === "string" && /^\$\d+(\.|$)/.test(v)) {
     const [n, ...keys] = v.slice(1).split(".");
     return keys.reduce<any>((o, k) => (o == null ? o : o[k]), results[+n]);
@@ -145,19 +148,27 @@ function substitute(v: unknown, results: unknown[]): unknown {
 
 type Step = { tool: string; args?: Json; allowError?: boolean };
 
-async function runScript(lines: Step[]): Promise<number> {
+async function runScript(lines: Step[], stateFile: string | null, from = 0): Promise<number> {
+  let results: unknown[] = [];
+  if (from > 0) {
+    if (!stateFile || !fs.existsSync(stateFile)) return die(`--from needs the results of an earlier run (${stateFile ?? "a script file"})`);
+    results = (JSON.parse(fs.readFileSync(stateFile, "utf8")) as unknown[]).slice(0, from);
+    if (results.length < from) die(`The earlier run only has results for steps 0-${results.length - 1}; resume from ${results.length} at most`);
+  }
   const srv = startServer();
   await srv.ready;
-  const results: unknown[] = [];
   let failed = false;
-  for (const [i, step] of lines.entries()) {
+  for (let i = from; i < lines.length; i++) {
+    const step = lines[i];
     const args = substitute(step.args || {}, results) as Json;
     const { isError, value } = await callTool(srv, step.tool, args);
-    results.push(value);
+    results[i] = value;
     console.log(`--- [${i}] ${step.tool} ${isError ? "ERROR" : "ok"}`);
     print(value);
-    if (isError && !step.allowError) { failed = true; break; }
+    if (isError && !step.allowError) { failed = true; console.log(`(fix line ${i} and resume with: script <file> --from ${i})`); break; }
   }
+  // the results so far, so a failed run can be resumed where it stopped
+  if (stateFile) fs.writeFileSync(stateFile, JSON.stringify(results.slice(0, failed ? results.length - 1 : results.length)));
   srv.close();
   return failed ? 1 : 0;
 }
@@ -205,9 +216,12 @@ switch (cmd) {
     break;
   }
   case "script": {
-    const src = rest[0] === "-" || !rest[0] ? fs.readFileSync(0, "utf8") : fs.readFileSync(rest[0], "utf8");
+    const file = rest[0] === "-" || !rest[0] ? null : rest[0];
+    const src = file ? fs.readFileSync(file, "utf8") : fs.readFileSync(0, "utf8");
     const lines = src.split("\n").map((l) => l.trim()).filter((l) => l && !l.startsWith("#")).map((l) => parseJson(l, "script line"));
-    code = await runScript(lines);
+    const fi = rest.indexOf("--from"), from = fi >= 0 ? parseInt(rest[fi + 1], 10) : 0;
+    if (fi >= 0 && !(from >= 0)) die("usage: script <file> --from <step, 0-based>");
+    code = await runScript(lines, file ? file + ".results.json" : null, from);
     break;
   }
   case "bridge": {
@@ -248,7 +262,7 @@ switch (cmd) {
       { tool: "preview_frame", args: { comp_id: "$1.id", time: 0.75 } },
       { tool: "delete_item", args: { item_id: "$1.id", force: true } },
     ];
-    code = await runScript(steps);
+    code = await runScript(steps, null);
     break;
   }
   default:
