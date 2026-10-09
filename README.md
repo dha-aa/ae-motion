@@ -4,7 +4,15 @@ An [MCP](https://modelcontextprotocol.io) server that lets Claude (or any MCP cl
 
 Ask for "a 5 second lower third with an eased slide-in", and the model creates the comp, adds layers, sets keyframes, checks a preview frame and kicks off a render, all in the project you have open.
 
-https://github.com/user-attachments/assets/8d46df59-cd4c-42e1-ab7e-8ba83552bb27
+https://github.com/user-attachments/assets/4734d955-5c97-4644-a387-f05d4dc0e2f6
+
+
+
+https://github.com/user-attachments/assets/c05af0f1-3f7e-4a31-84ef-cbc0fb87006d
+
+**Full Video:** [Watch here](https://youtu.be/XZhw3wOFpBU?si=aVW5Yp-KPTFF2jAl)
+
+
 
 
 ```
