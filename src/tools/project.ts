@@ -17,8 +17,8 @@ export function registerProjectTools(r: ToolRegistry): void {
 
   r.bridged(
     "open_project",
-    "Open an After Effects project (.aep or .aepx, inside the allowed folders), replacing the open one. If the open project has unsaved changes it refuses, unless discard_unsaved is true (those changes are then lost; use save_project first to keep them). Returns the new project like get_project. Cannot be undone.",
-    { path: z.string(), discard_unsaved: z.boolean().optional() },
+    "Open an After Effects project (.aep or .aepx, inside the allowed folders), or new: true for an empty one, replacing the open one. If the open project has unsaved changes it refuses, unless discard_unsaved is true (those changes are then lost; use save_project first to keep them). Returns the new project like get_project. Cannot be undone.",
+    { path: z.string().optional(), new: z.boolean().optional(), discard_unsaved: z.boolean().optional() },
     { paths: ["path"] },
   );
 

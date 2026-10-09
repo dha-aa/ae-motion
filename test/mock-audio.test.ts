@@ -64,9 +64,12 @@ function makeWorld(amplitude, { menu = true } = {}) {
   const layers = new Map(), log = { menuRuns: 0, audibleDuringRun: null, workAreaDuringRun: null, imports: 0, sourcesRemoved: 0 };
   const items = [];
   const comp = Object.assign(new CompItem(), {
-    id: 1, name: "Main", width: 1280, height: 720, duration: 10, frameRate: FPS, frameDuration: 1 / FPS, workAreaStart: 2, workAreaDuration: 5,
+    id: 1, name: "Main", width: 1280, height: 720, duration: 10, frameRate: FPS, frameDuration: 1 / FPS, _wa: [2, 5],
     numLayers: 0, _layers: [], markerProperty: new Prop(null), layer: (i) => comp._layers[i - 1], openInViewer() {},
   });
+  // the work area as After Effects 26.3 sets it: a new start keeps the end; a start past the end moves the end instead
+  Object.defineProperty(comp, "workAreaStart", { get: () => comp._wa[0], set: (v) => { const [s, d] = comp._wa, e = s + d; comp._wa = v < e - 1e-9 ? [v, e - v] : [s, v + d - s]; } });
+  Object.defineProperty(comp, "workAreaDuration", { get: () => comp._wa[1], set: (v) => { comp._wa = [comp._wa[0], Math.min(v, comp.duration - comp._wa[0])]; } });
   const add = (l, top = false) => {
     Object.assign(l, { id: nextId++, containingComp: comp, selected: false, enabled: true, parent: null, startTime: 0, label: 0, locked: false });
     const tg = { "ADBE Scale": new Prop([100, 100, 100]), "ADBE Opacity": new Prop(100), "ADBE Position": new Prop([640, 360, 0]), "ADBE Rotate Z": new Prop(0) };
@@ -342,6 +345,18 @@ t("duck_music: under a voice-over only where it is heard, under short effects fo
   fails(w.call("duck_music", { music_layer_id: music.id, amount: 6 }), "BAD_ARGS");
   const w2 = makeWorld([]), lone = w2.audioLayer("music.wav");
   fails(w2.call("duck_music", { music_layer_id: lone.id }), "BAD_ARGS");
+});
+
+t("duck_music analyses a voice-over that starts after the old work area ends (the work area really moves to it)", () => {
+  // the work area starts at 0-1 s; the voice-over talks 7-9 s. A work area set start-first from a 1-frame area
+  // stayed at 0 in After Effects 26.3, so the analysis heard silence and nothing was ducked.
+  const vo = Array.from({ length: 300 }, (_, k) => (k >= 210 && k < 270 ? 20 + (k % 3) : 0.2));
+  const w = makeWorld((name) => (name === "late voice.wav" ? vo : [])), music = w.audioLayer("music.wav"), voice = w.audioLayer("late voice.wav");
+  w.comp._wa = [0, 1]; music.inPoint = 0; music.outPoint = 10; voice.inPoint = 6.5; voice.outPoint = 9.5;
+  const r = ok(w.call("duck_music", { music_layer_id: music.id, under_layer_ids: [voice.id], mode: "loudness" }));
+  assert.deepEqual(w.log.workAreaDuringRun.map((x) => +x.toFixed(6)), [6.5, 3], "analysed over the voice-over");
+  assert.deepEqual(r.spans.map(([a, b]) => [+a.toFixed(3), +b.toFixed(3)]), [[7, 9]]);
+  assert.deepEqual([w.comp.workAreaStart, w.comp.workAreaDuration], [0, 1], "work area restored");
 });
 
 t("duck_music ignores quiet effects (min_level) and warns when the ducks would cover most of the music", () => {

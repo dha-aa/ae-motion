@@ -78,14 +78,17 @@ export function registerOutputTools(r: ToolRegistry): void {
 
   r.tool(
     "render_start",
-    "Save the project and start a background aerender job. Returns a job_id; poll render_status. om_template / rs_template are After Effects output-module / render-settings template names. The project must have been saved once. After Effects picks the file extension from the output module, so the file can differ from output_path; render_status reports the file actually written.",
-    { comp_id: id("Comp"), output_path: z.string(), om_template: z.string().optional(), rs_template: z.string().optional(), overwrite: z.boolean().optional() },
+    "Save the project (saved once before) and start a background aerender job; poll render_status with the job_id. om_template / rs_template: output-module / render-settings template names (the output module picks the file extension). software: Mercury Software Only (fixes GPU failures). With ffmpeg the result is checked (black/frozen/silent spans, loudness; verify false skips); deliver: H.264 MP4 at loudness (-14 LUFS); audio_only: the mix.",
+    {
+      comp_id: id("Comp"), output_path: z.string(), om_template: z.string().optional(), rs_template: z.string().optional(), overwrite: z.boolean().optional(), software: z.boolean().optional(),
+      verify: z.boolean().optional(), deliver: z.boolean().optional(), loudness: z.number().min(-40).max(-5).optional(), audio_only: z.boolean().optional(),
+    },
     async (a) => json(await renders.start(a)),
   );
 
   r.tool(
     "render_status",
-    "Get state (running|done|failed|canceled), percent, a log tail and the file actually written (its extension can differ from the requested output_path) for a render job.",
+    "Get state (running|done|failed|canceled), percent, frames, eta_s, poll_after_s (wait that long), phase, check (issues in the file), errors + hint, log tail, file written.",
     { job_id: z.string() },
     async (a) => json(renders.status(a.job_id)),
     { readOnly: true },

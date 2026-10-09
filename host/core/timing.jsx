@@ -16,6 +16,20 @@ function setIn(l, t) {
   if (Math.abs(l.outPoint - o) > 1e-6) l.outPoint = o;
 }
 
+// Set a comp's work area. Setting workAreaStart keeps the end where it is (in After Effects 26.3; a start past the
+// end moves the end instead and leaves the start), so open it to the whole comp first, then set start and duration,
+// and check: a work area set wrong silently analyses the wrong audio (Convert Audio to Keyframes).
+function setWorkArea(c, s, d) {
+  var fd = c.frameDuration;
+  c.workAreaStart = 0;
+  c.workAreaDuration = c.duration;
+  c.workAreaStart = s;
+  c.workAreaDuration = d;
+  if (Math.abs(c.workAreaStart - s) > fd / 2 || Math.abs(c.workAreaDuration - d) > fd / 2) {
+    fail("AE_ERROR", "Could not set the work area to " + s + " s + " + d + " s (got " + c.workAreaStart + " s + " + c.workAreaDuration + " s)", "Check that it fits inside the comp");
+  }
+}
+
 // Split l at t: l keeps the first part and the returned duplicate (above it) holds the second.
 function splitAt(l, t) {
   var d = l.duplicate();

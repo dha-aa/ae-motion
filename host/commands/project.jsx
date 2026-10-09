@@ -4,13 +4,18 @@
 // Open a project file. Refuses to throw away unsaved changes unless discard_unsaved is true; then the current project
 // is closed without saving first, so After Effects never shows a "save changes?" dialog (which would block the bridge).
 C.open_project = function (a) {
-  need(a, ["path"]);
-  var f = new File(a.path), p = app.project;
-  if (!/\.(aep|aepx)$/i.test(a.path)) fail("BAD_ARGS", "Project path must end in .aep or .aepx");
-  if (!f.exists) fail("NOT_FOUND", "Project file not found: " + a.path);
+  var f, p = app.project, fresh = a["new"] === true;
+  if (fresh === has(a, "path")) fail("BAD_ARGS", "Pass path to open a project, or new: true for an empty one");
+  if (!fresh) {
+    f = new File(a.path);
+    if (!/\.(aep|aepx)$/i.test(a.path)) fail("BAD_ARGS", "Project path must end in .aep or .aepx");
+    if (!f.exists) fail("NOT_FOUND", "Project file not found: " + a.path);
+  }
   if (p && p.dirty && a.discard_unsaved !== true) fail("BAD_ARGS", "The open project has unsaved changes", "Save them with save_project first, or pass discard_unsaved: true to throw them away");
+  // closing first keeps After Effects from asking about unsaved changes in a dialog
   if (p && p.dirty) p.close(CloseOptions.DO_NOT_SAVE_CHANGES);
-  if (!app.open(f)) fail("AE_ERROR", "After Effects could not open " + a.path);
+  if (fresh) { if (!app.newProject()) fail("AE_ERROR", "After Effects did not create a new project"); }
+  else if (!app.open(f)) fail("AE_ERROR", "After Effects could not open " + a.path);
   return C.get_project();
 };
 
@@ -57,8 +62,7 @@ C.set_comp = function (a) {
     ws = has(wa, "start") ? wa.start : c.workAreaStart;
     wd = has(wa, "duration") ? wa.duration : c.workAreaDuration;
     if (ws < 0 || wd <= 0 || ws + wd > c.duration + EPS) fail("BAD_ARGS", "work_area must fit inside the comp (0 to " + c.duration + " s)");
-    // the work area must fit the comp after each assignment, so the safe order depends on the old values
-    try { c.workAreaStart = ws; c.workAreaDuration = wd; } catch (e1) { c.workAreaDuration = wd; c.workAreaStart = ws; }
+    setWorkArea(c, ws, wd);
   }
   return compInfo(c, false);
 };

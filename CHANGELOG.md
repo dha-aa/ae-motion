@@ -2,6 +2,30 @@
 
 All notable changes. Versions follow [semantic versioning](https://semver.org); each release is a git tag `vX.Y.Z`, which is what the update check looks for.
 
+## 2.11.0 — 2026-10-10
+
+Everything that got in the way while making a 60 s documentary film with ae-motion: the tools now check their own
+output (renders, mixes, what the camera sees), and the jobs that needed raw scripts have options.
+
+### Fixed
+- `preview_frame` rendered at the comp's lowered viewer resolution on heavy comps (text looked broken) and gave up after 10 s on heavy 3D frames: it now renders full resolution (the setting is restored) and waits up to 45 s.
+- `duck_music` (loudness and auto modes), `beat_markers`, `audio_react`, `find_sound_cues` and `add_sfx` peak alignment analysed the wrong part of the comp for audio that starts after the current work area ends: the work area was shrunk to one frame and then moved, and After Effects 26.3 moves the end, not the start, so the analysis heard silence (a narrated film got no ducks under its later voice-over). The work area is now opened to the whole comp, then set and checked; `set_comp work_area` uses the same helper.
+- `render_status` reported a render as `done` when aerender exited 0 after running out of GPU memory, which leaves every later frame black and drops the audio. Error lines are now collected (`errors`, with a `hint`), and a GPU failure fails the job.
+
+### Added
+- Render checks (with ffmpeg): every finished render is checked for black, frozen and silent stretches and its loudness (with a per-second timeline), reported by `render_status` as `check` with plain-words issues; `verify: false` skips it. This catches a GPU failure's black frames and dropped audio as soon as the render ends.
+- `render_start deliver: true`: a ProRes master encoded into a ready-to-post H.264 MP4 at `loudness` (default -14 LUFS, -1 dBTP), and `audio_only: true`: the mix alone in seconds, to check it before rendering the picture.
+- `review_motion` scene checks: layers hidden behind an opaque one (by camera depth in 3D), off screen, and text partly covered (a letterbox bar); computed read-only from the transforms and the camera.
+- `set_keyframes merge: true` keeps keys at other times; both modes report `replaced`.
+- `camera_move spatial: "linear"`: straight motion paths between waypoints (no auto-bezier overshoot).
+- `set_3d z`: depth only, keeping x/y and every position key.
+- `open_project new: true`, and `set_layer sampling: "bicubic"` for sharp scaled images.
+- `add_layer` `fit_to`: a rect that keeps fitting a text layer's bounds plus padding (highlights, pills, buttons).
+- `batch` resume: a failed batch returns `batch_id`; resend the fixed steps with `resume: {batch_id, from}`. The skill driver's scripts save their results and resume with `--from N`.
+- `render_status` says how long a render still needs: `frames_done` / `total_frames`, `elapsed_s`, `seconds_per_frame` (over the recent frames, so a heavy scene updates it), `eta_s` and `finishes_at`, and `poll_after_s` (a quarter of the time left, 5-60 s) so a client neither polls every second nor waits blind; `phase: "starting"` until aerender has loaded the project. Frames are counted, so a partial render's percent is right too.
+- `render_start software: true` renders with Mercury Software Only (set in the project before aerender starts; `false` goes back to the GPU).
+- `batch`: `"$$"` is a literal dollar, so text that starts with `$` and a number (a price, `"$$99"`) no longer reads as a reference to a step; the reference error says how to escape it. The skill driver's scripts take the same escape.
+
 ## 2.10.0 — 2026-10-09
 
 Fewer tokens per result and per request, measured on the 127-layer reel comp: `get_comp` 4,167 -> 2,591 tokens (38 % less), `list_properties` 4,444 -> 584 (87 %), `review_motion` 1,390 -> 252 (82 %), `get_keyframes` 429 -> 339 (22 %), `get_project` 877 -> 714 (19 %); tool definitions 72.0k -> 68.2k characters (about 1k tokens per request) while adding options.

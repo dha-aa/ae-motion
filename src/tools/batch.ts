@@ -4,13 +4,14 @@
  * through the same validation, path sandbox and host command (or server handler, for get_project, render_status
  * and the like) as calling the tool directly; a string "$N.path" (N = 1-based step, path = dot-separated keys and
  * array indexes) is replaced by that value from step N's result first, so a step can use an id an earlier step
- * created.
+ * created. "$$" escapes a literal dollar ("$$99" is the text "$99"), so prices and the like can be passed.
  *
  * Models do not always send the shape the schema asks for, so the steps are normalised first: JSON strings for
  * steps or args, name / arguments / params for tool / args, and client-prefixed tool names (mcp__ae-motion__x).
  * A result too big to return is shortened instead of turned into an error, because by then every step has run in
  * After Effects and an error would invite the model to run it all again.
  */
+import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { CHARACTER_LIMIT } from "../config.js";
@@ -25,6 +26,16 @@ const REF = /^\$(\d+)((?:\.[\w-]+)*)$/;
 const NOT_IN_BATCH = new Set(["open_project", "preview_frame", "run_jsx", "batch", "load_tools"]);
 
 type Step = { tool: string; args: Record<string, unknown> };
+
+// The results of recent batches by batch_id, so a batch that stopped at step N can resume there (resume: {batch_id,
+// from: N}) with the ids its earlier steps made, instead of running everything again or rewiring the references.
+const RUNS_KEPT = 10;
+const runs = new Map<string, unknown[]>();
+function remember(id: string, results: unknown[]): void {
+  runs.delete(id);
+  runs.set(id, results.slice());
+  while (runs.size > RUNS_KEPT) runs.delete(runs.keys().next().value as string);
+}
 
 const parseMaybe = (v: unknown): unknown => {
   if (typeof v !== "string") return v;
@@ -48,13 +59,16 @@ export function normalizeSteps(v: unknown): unknown {
   });
 }
 
-/** Replace "$N.path" strings anywhere in v with values from earlier results. */
+const LITERAL = 'For text that starts with "$" and a number (a price), write "$$" ("$$99")';
+
+/** Replace "$N.path" strings anywhere in v with values from earlier results; "$$..." becomes the literal "$...". */
 export function resolveRefs(v: unknown, results: unknown[], step: number): unknown {
   if (typeof v === "string") {
+    if (v.startsWith("$$")) return v.slice(1);
     const m = REF.exec(v);
     if (!m) return v;
     const n = Number(m[1]);
-    if (n < 1 || n >= step) throw new AeToolError("BAD_ARGS", `Step ${step}: "${v}" refers to step ${n}, which has not run yet`, "Refer only to earlier steps ($1 is the first)");
+    if (n < 1 || n >= step) throw new AeToolError("BAD_ARGS", `Step ${step}: "${v}" refers to step ${n}, which has not run yet`, `Refer only to earlier steps ($1 is the first). ${LITERAL}`);
     let cur: unknown = results[n - 1];
     for (const k of m[2].split(".").slice(1)) {
       cur = cur !== null && typeof cur === "object" ? (cur as Record<string, unknown>)[k] : undefined;
@@ -98,7 +112,7 @@ export function precheck(steps: Step[], r: Pick<ToolRegistry, "bridgedTools" | "
     const refs = refPaths(args);
     for (const p of refs) {
       const n = Number(REF.exec(String(p.reduce<unknown>((o, k) => (o as Record<string | number, unknown>)[k], args)))![1]);
-      if (n < 1 || n >= step) add(`${p.join(".")} refers to step ${n}, which has not run yet${n === 0 ? " (steps count from $1)" : ""}`);
+      if (n < 1 || n >= step) add(`${p.join(".")} refers to step ${n}, which has not run yet${n === 0 ? " (steps count from $1)" : ""}. ${LITERAL}`);
     }
     const parsed = schema.safeParse(args);
     if (parsed.success) return;
@@ -143,18 +157,28 @@ function unwrap(res: CallToolResult): { ok: true; result: unknown } | { ok: fals
 export function registerBatchTool(r: ToolRegistry): void {
   r.tool(
     "batch",
-    'Run up to 50 tool calls in order in one call (saves round trips: prefer it for multi-step builds). A string "$N.path" in args is replaced by that value from step N\'s result (steps count from 1), e.g. "$1.id" or "$2.layers.0.id". All steps are checked before any runs (a bad argument anywhere means nothing runs); a step that fails in After Effects stops the batch and returns the results so far. Each step is its own undo step. Any tool except preview_frame, run_jsx and open_project.',
+    'Run up to 50 tool calls in order in one call (prefer it for multi-step builds). "$N.path" in args is that value from step N\'s result (from 1), e.g. "$1.id", "$2.layers.0.id"; "$$" is a literal $ ("$$99"). All steps are checked before any runs; a step that fails in After Effects stops the batch with the results so far and a batch_id for resume. Each step is its own undo step. Not preview_frame, run_jsx or open_project.',
     {
       steps: z.preprocess(normalizeSteps, z.array(z.object({ tool: z.string(), args: z.record(z.unknown()).default({}) })).min(1).max(MAX_STEPS)),
       results: z.enum(["all", "last", "none"]).default("all").describe("Which results to return (default all; none returns only the step count)"),
+      resume: z.object({ batch_id: z.string(), from: z.number().int().min(2) }).optional().describe("After a failure: the same steps, fixed, run from step `from` with the earlier results"),
     },
     async (a, extra?: ToolExtra) => {
       const steps = a.steps as Step[];
-      const problems = precheck(steps, r);
+      let results: unknown[] = [], first = 1;
+      const batchId = a.resume?.batch_id ?? randomUUID().slice(0, 8);
+      if (a.resume) {
+        const prior = runs.get(a.resume.batch_id);
+        if (!prior) return json({ error: { code: "NOT_FOUND", message: `Unknown batch_id ${a.resume.batch_id}`, hint: `Only the last ${RUNS_KEPT} batches are kept, and not across server restarts: run the batch again` } }, true);
+        if (prior.length < a.resume.from - 1) return json({ error: { code: "BAD_ARGS", message: `Batch ${batchId} has results for steps 1-${prior.length} only`, hint: `Resume from step ${prior.length + 1} at most` } }, true);
+        if (a.resume.from > steps.length) return json({ error: { code: "BAD_ARGS", message: `from ${a.resume.from} is past the last step (${steps.length})`, hint: "Send the same steps again (fixed), not only the rest" } }, true);
+        results = prior.slice(0, a.resume.from - 1);
+        first = a.resume.from;
+      }
+      const problems = precheck(steps, r).filter((x) => x.step >= first);
       if (problems.length) {
         return json({ error: { code: "BAD_ARGS", message: `${problems.length} problem(s) found; nothing ran`, hint: "Fix every listed step and send the batch again" }, steps: 0, problems }, true);
       }
-      const results: unknown[] = [];
       const out = (): unknown => (a.results === "all" ? results : a.results === "last" ? results.slice(-1) : undefined);
       // progress after each step: clients that honour it keep a long batch from timing out
       const token = extra?._meta?.progressToken;
@@ -162,12 +186,15 @@ export function registerBatchTool(r: ToolRegistry): void {
         if (token === undefined || !extra?.sendNotification) return;
         try { await extra.sendNotification({ method: "notifications/progress", params: { progressToken: token, progress: done, total: steps.length, message: tool } }); } catch { /* best effort */ }
       };
-      for (let i = 0; i < steps.length; i++) {
+      for (let i = first - 1; i < steps.length; i++) {
         const step = i + 1, { tool, args } = steps[i];
         const bridged = r.bridgedTools.get(tool), server = r.serverTools.get(tool);
-        // the error, plus how far the batch got (earlier steps are not undone)
-        const fail = (code: ErrorCode, message: string, hint: string): CallToolResult =>
-          reply({ error: { code, message: `Step ${step} (${tool}): ${message}`, hint }, steps: i, ...(i && a.results !== "none" ? { results: out() } : {}) }, true);
+        // the error, how far the batch got (earlier steps are not undone), and how to resume after fixing this step
+        const fail = (code: ErrorCode, message: string, hint: string): CallToolResult => {
+          remember(batchId, results);
+          return reply({ error: { code, message: `Step ${step} (${tool}): ${message}`, hint: `${hint}. Then send the steps again with resume: {batch_id: "${batchId}", from: ${step}}` },
+            steps: i, batch_id: batchId, ...(i && a.results !== "none" ? { results: out() } : {}) }, true);
+        };
         let resolved: unknown;
         try {
           resolved = resolveRefs(args, results, step);
@@ -194,6 +221,7 @@ export function registerBatchTool(r: ToolRegistry): void {
         results.push(res.result);
         await progress(step, tool);
       }
+      remember(batchId, results);
       return reply(a.results === "none" ? { steps: results.length } : { steps: results.length, results: out() });
     },
     { tooLargeHint: 'Pass results: "last" or "none", or split the batch' },

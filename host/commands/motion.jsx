@@ -276,12 +276,13 @@ function groupIssues(list, all, stats) {
     x = list[i];
     if (x.severity === "info" && !all) { stats.info = stats.info || {}; stats.info[x.type] = (stats.info[x.type] || 0) + 1; continue; }
     if (!has(x, "layer_id")) { out.push(x); continue; }
-    k = x.type + "|" + (x.property || "");
+    k = x.type + "|" + (x.property || "") + "|" + (x.by || "");
     g = by[k];
     if (!g) {
       g = { type: x.type, severity: x.severity, msg: x.msg, layer_ids: [], t: [] };
       if (x.property) g.property = x.property;
       if (has(x, "size")) g.size = x.size;
+      if (x.by) g.by = x.by;
       by[k] = g; out.push(g);
     }
     g.layer_ids.push(x.layer_id); if (has(x, "t")) g.t.push(x.t);
@@ -292,6 +293,144 @@ function groupIssues(list, all, stats) {
     else if (g.t && g.t.length) g.t = g.t[0]; // the first time; get the rest from the layers
   }
   return out;
+}
+
+// ---- scene checks: what the camera actually sees (review_motion) ----
+// Read-only maths, nothing added to the project: each layer's content box is carried through its transform chain
+// (2D matrices, or 4x4 for 3D) and, for 3D, projected through the active camera (or After Effects' default camera).
+
+// 4x4 matrices as 16 numbers, row-major; points are columns [x, y, z, 1].
+function m4mul(a, b) {
+  var o = [], i, j, k, s;
+  for (i = 0; i < 4; i++) for (j = 0; j < 4; j++) { s = 0; for (k = 0; k < 4; k++) s += a[i * 4 + k] * b[k * 4 + j]; o.push(s); }
+  return o;
+}
+function m4pt(m, v) { return [m[0] * v[0] + m[1] * v[1] + m[2] * v[2] + m[3], m[4] * v[0] + m[5] * v[1] + m[6] * v[2] + m[7], m[8] * v[0] + m[9] * v[1] + m[10] * v[2] + m[11]]; }
+function m4t(x, y, z) { return [1, 0, 0, x, 0, 1, 0, y, 0, 0, 1, z, 0, 0, 0, 1]; }
+function m4s(x, y, z) { return [x, 0, 0, 0, 0, y, 0, 0, 0, 0, z, 0, 0, 0, 0, 1]; }
+function m4rx(d) { var c = Math.cos(rad(d)), s = Math.sin(rad(d)); return [1, 0, 0, 0, 0, c, -s, 0, 0, s, c, 0, 0, 0, 0, 1]; }
+function m4ry(d) { var c = Math.cos(rad(d)), s = Math.sin(rad(d)); return [c, 0, s, 0, 0, 1, 0, 0, -s, 0, c, 0, 0, 0, 0, 1]; }
+function m4rz(d) { var c = Math.cos(rad(d)), s = Math.sin(rad(d)); return [c, -s, 0, 0, s, c, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]; }
+
+// A transform value at t after expressions; position is read per axis when its dimensions are separated.
+function xval(l, match, t) {
+  var P = tp(l, match);
+  if (match === "ADBE Position" && P.dimensionsSeparated) return [tp(l, "ADBE Position_0").valueAtTime(t, false), tp(l, "ADBE Position_1").valueAtTime(t, false), l.threeDLayer ? tp(l, "ADBE Position_2").valueAtTime(t, false) : 0];
+  return v3(copyArr(P.valueAtTime(t, false)));
+}
+
+// Layer space -> world (comp) space at t: position * orientation * rotation x/y/z * scale * -anchor, through parents.
+function worldMatrix(l, t) {
+  var m = null, q, p, an, sc, o, r;
+  for (q = l; q; q = q.parent) {
+    p = xval(q, "ADBE Position", t); an = xval(q, "ADBE Anchor Point", t); sc = v3(copyArr(tp(q, "ADBE Scale").valueAtTime(t, false)));
+    if (!q.threeDLayer) { p[2] = 0; an[2] = 0; sc[2] = 100; }
+    r = m4t(p[0], p[1], p[2]);
+    if (q.threeDLayer) {
+      o = tp(q, "ADBE Orientation").valueAtTime(t, false);
+      r = m4mul(r, m4mul(m4rx(o[0]), m4mul(m4ry(o[1]), m4rz(o[2]))));
+      r = m4mul(r, m4mul(m4rx(tp(q, "ADBE Rotate X").valueAtTime(t, false)), m4ry(tp(q, "ADBE Rotate Y").valueAtTime(t, false))));
+    }
+    r = m4mul(r, m4mul(m4rz(tp(q, "ADBE Rotate Z").valueAtTime(t, false)), m4mul(m4s(sc[0] / 100, sc[1] / 100, sc[2] / 100), m4t(-an[0], -an[1], -an[2]))));
+    m = m ? m4mul(r, m) : r;
+  }
+  return m;
+}
+
+// The camera that sees the comp at t: its position, forward / right / down axes and zoom (After Effects' default
+// camera when there is none). One-node cameras look along their orientation.
+function viewAt(c, t) {
+  var cam = null, i, l, P, f, m, z;
+  for (i = 1; i <= c.numLayers; i++) { l = c.layer(i); if (l instanceof CameraLayer && l.enabled && l.inPoint <= t && l.outPoint > t) { cam = l; break; } }
+  if (!cam) { z = c.width * 50 / 36; return { P: [c.width / 2, c.height / 2, -z], f: [0, 0, 1], r: [1, 0, 0], d: [0, 1, 0], zoom: z }; }
+  P = v3(copyArr(tp(cam, "ADBE Position").valueAtTime(t, false)));
+  if (cam.autoOrient === AutoOrientType.CAMERA_OR_POINT_OF_INTEREST) f = vnorm(vsub(v3(copyArr(tp(cam, "ADBE Anchor Point").valueAtTime(t, false))), P));
+  else { m = worldMatrix(cam, t); f = vnorm(vsub(m4pt(m, [0, 0, 1]), m4pt(m, [0, 0, 0]))); }
+  var r = rightOf(f);
+  return { P: P, f: f, r: r, d: [f[1] * r[2] - f[2] * r[1], f[2] * r[0] - f[0] * r[2], f[0] * r[1] - f[1] * r[0]], zoom: camOpt(cam, "ADBE Camera Zoom").valueAtTime(t, false) };
+}
+
+// A layer's box on screen at t, and its depth along the camera's view (0 for 2D layers, which are not seen through it).
+function screenBox(l, c, v, t) {
+  var r = l.sourceRectAtTime(t, false), xs = [r.left, r.left + r.width], ys = [r.top, r.top + r.height], m = worldMatrix(l, t), three = false, q, i, j, w, d, k, x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9, ctr;
+  for (q = l; q; q = q.parent) if (q.threeDLayer) three = true;
+  for (i = 0; i < 2; i++) for (j = 0; j < 2; j++) {
+    w = m4pt(m, [xs[i], ys[j], 0]);
+    if (three) {
+      d = vsub(w, v.P); k = vdot(d, v.f);
+      if (k < 1) return null; // behind the camera
+      w = [c.width / 2 + v.zoom * vdot(d, v.r) / k, c.height / 2 + v.zoom * vdot(d, v.d) / k];
+    }
+    x0 = Math.min(x0, w[0]); y0 = Math.min(y0, w[1]); x1 = Math.max(x1, w[0]); y1 = Math.max(y1, w[1]);
+  }
+  ctr = m4pt(m, [r.left + r.width / 2, r.top + r.height / 2, 0]);
+  return { x0: x0, y0: y0, x1: x1, y1: y1, three: three, z: three ? vdot(vsub(ctr, v.P), v.f) : 0 };
+}
+
+function sceneLayer(l, kind) {
+  if (!l.enabled || kind === "camera" || kind === "light" || kind === "null" || kind === "adjustment") return false;
+  if (safe(function () { return l.guideLayer; }) || safe(function () { return l.hasAudio && !l.hasVideo; })) return false;
+  return typeof l.sourceRectAtTime === "function";
+}
+
+// Solid colour that hides what is behind it: a solid, or a shape layer with a full-strength fill; normal blending,
+// full opacity, no matte.
+function opaqueAt(l, kind, t) {
+  if (kind !== "solid" && kind !== "shape") return false;
+  if (l.blendingMode !== BlendingMode.NORMAL || safe(function () { return l.isTrackMatte || l.trackMatteType !== TrackMatteType.NO_TRACK_MATTE; })) return false;
+  if (safe(function () { return tp(l, "ADBE Opacity").valueAtTime(t, false); }) < 99.5) return false;
+  if (kind === "shape") return safe(function () { return shapeHasFill(l.property("ADBE Root Vectors Group")); }) === true;
+  return true;
+}
+
+function shapeHasFill(g) {
+  var i, p;
+  for (i = 1; i <= g.numProperties; i++) {
+    p = g.property(i);
+    if (p.matchName === "ADBE Vector Graphic - Fill" && p.enabled && p.property("ADBE Vector Fill Opacity").value >= 99.5) return true;
+    if (p.matchName === "ADBE Vector Group" && p.enabled && shapeHasFill(p.property("ADBE Vectors Group"))) return true;
+  }
+  return false;
+}
+
+function sceneChecks(c, issue) {
+  var ls = [], views = {}, boxes = {}, i, j, l, kind, t, L, O, X, front, tt;
+  if (c.numLayers > 400) return;
+  function boxOf(x, at) {
+    var k = x.l.id + "@" + at;
+    if (!has(boxes, k)) boxes[k] = safe(function () { return screenBox(x.l, c, views[at] || (views[at] = viewAt(c, at)), at); }) || null;
+    return boxes[k];
+  }
+  for (i = 1; i <= c.numLayers; i++) {
+    l = c.layer(i); kind = layerKind(l);
+    if (sceneLayer(l, kind)) ls.push({ l: l, kind: kind, t: Math.round(Math.max(0, Math.min(c.duration - c.frameDuration, (l.inPoint + l.outPoint) / 2)) / c.frameDuration) * c.frameDuration });
+  }
+  for (i = 0; i < ls.length; i++) {
+    L = ls[i]; t = L.t; tt = Math.round(t * 1000) / 1000;
+    if (safe(function () { return tp(L.l, "ADBE Opacity").valueAtTime(t, false); }) < 1) continue;
+    O = boxOf(L, t);
+    if (!O) continue;
+    if (O.x1 < 0 || O.x0 > c.width || O.y1 < 0 || O.y0 > c.height) {
+      issue({ type: "off_screen", severity: "warn", layer_id: L.l.id, layer: L.l.name, t: tt, msg: "Entirely outside the frame (as the camera sees it)" });
+      continue;
+    }
+    for (j = 0; j < ls.length; j++) {
+      if (j === i || ls[j].l.inPoint > t || ls[j].l.outPoint <= t || !opaqueAt(ls[j].l, ls[j].kind, t)) continue;
+      X = boxOf(ls[j], t);
+      if (!X) continue;
+      // in front: closer to the camera when both are 3D, otherwise higher in the layer stack
+      front = X.three && O.three ? X.z < O.z - 1 : ls[j].l.index < L.l.index;
+      if (!front) continue;
+      if (X.x0 <= O.x0 + 1 && X.y0 <= O.y0 + 1 && X.x1 >= O.x1 - 1 && X.y1 >= O.y1 - 1) {
+        issue({ type: "hidden", severity: "warn", layer_id: L.l.id, layer: L.l.name, t: tt, by: ls[j].l.name, msg: "Hidden behind " + ls[j].l.name + (X.three && O.three ? " (it is closer to the camera)" : "") });
+        break;
+      }
+      if (L.kind === "text" && X.x0 < O.x1 && X.x1 > O.x0 && X.y0 < O.y1 && X.y1 > O.y0) {
+        issue({ type: "covered", severity: "warn", layer_id: L.l.id, layer: L.l.name, t: tt, by: ls[j].l.name, msg: "Text partly covered by " + ls[j].l.name });
+        break;
+      }
+    }
+  }
 }
 
 C.review_motion = function (a) {
@@ -361,6 +500,7 @@ C.review_motion = function (a) {
       if (near <= fd * 1.5) onBeat++;
     }
   }
+  if (a.scene !== false) sceneChecks(c, issue);
   // one entry per kind of problem: the same issue on several layers lists them together; info notes are only
   // counted unless all is set
   issues = groupIssues(issues, a.all === true, sc = {});

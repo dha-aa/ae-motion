@@ -104,7 +104,10 @@ function makeWorld() {
     tg.property("ADBE Scale").setValue([100, 100, 100]);
     tg.property("ADBE Rotate Z").setValue(0);
     tg.property("ADBE Opacity").setValue(100);
-    Object.assign(l, { id: nextId++, containingComp: comp, enabled: true, locked: false, parent: null, startTime: 0, label: 0, inPoint: 0, outPoint: comp.duration, hasAudio: false, hasVideo: true });
+    for (const m of ["ADBE Rotate X", "ADBE Rotate Y"]) tg.property(m).setValue(0);
+    tg.property("ADBE Orientation").setValue([0, 0, 0]);
+    Object.assign(l, { id: nextId++, containingComp: comp, enabled: true, locked: false, parent: null, startTime: 0, label: 0, inPoint: 0, outPoint: comp.duration, hasAudio: false, hasVideo: true,
+      threeDLayer: false, blendingMode: 5212, trackMatteType: 5012, isTrackMatte: false });
     l.root = root; l.tg = tg;
     l.property = (k) => root.property(k);
     Object.defineProperty(l, "numProperties", { get: () => root.numProperties });
@@ -123,6 +126,7 @@ function makeWorld() {
   comp.layers = { addShape: () => add(Object.assign(new ShapeLayer(), { name: "Shape Layer" }), true) };
   const app = { project: { itemByID: (id) => (id === 1 ? comp : null), layerByID: (id) => layers.get(id) || null }, beginUndoGroup() {}, endUndoGroup() {} };
   const ctx = { app, MarkerValue, CompItem, AVLayer, TextLayer, ShapeLayer, CameraLayer, LightLayer, FolderItem: Stub, FootageItem: Stub, SolidSource: Stub, Shape, KeyframeEase,
+    BlendingMode: { NORMAL: 5212, ADD: 5220 }, TrackMatteType: { NO_TRACK_MATTE: 5012 }, AutoOrientType: { CAMERA_OR_POINT_OF_INTEREST: 4214 },
     KeyframeInterpolationType: { LINEAR: LIN, BEZIER: BEZ, HOLD }, PropertyType: PT,
     PropertyValueType: { OneD: 1, TwoD: 2, ThreeD: 3, COLOR: 4, TwoD_SPATIAL: 5, ThreeD_SPATIAL: 6, SHAPE: 7, TEXT_DOCUMENT: 8, NO_VALUE: 9, MARKER: 10, CUSTOM_VALUE: 11 } };
   vm.createContext(ctx);
@@ -292,6 +296,39 @@ t("review_motion: flags linear keys, unison starts, holds, pop-ons and small tex
   ok(w.call("animate", { layer_ids: ls.map((l) => l.id), move: "pop", time: 0, stagger: 0.05 }));
   const r2 = ok(w.call("review_motion", { comp_id: 1, max_hold: 10 }));
   assert.equal(r2.issues.filter((i) => i.type === "linear" || i.type === "unison").length, 0, JSON.stringify(r2.issues));
+});
+
+t("review_motion scene checks: a layer hidden behind a closer opaque one, off screen, text under a letterbox bar", () => {
+  const w = makeWorld();
+  const rect = (l, r) => { l.sourceRectAtTime = () => r; return l; };
+  const at = (l, p, three = false) => { l.threeDLayer = three; P(l, "ADBE Position").setValue(p); return l; };
+  // stacking from the top: the letterbox bar (2D), a caption over it, off-screen text, the 3D paper, 3D texts
+  const bar = rect(w.solid("Letterbox"), { left: 0, top: 0, width: 1920, height: 140 }); at(bar, [0, 940, 0]);
+  const low = at(w.text("Caption", "low caption"), [960, 980, 0]); // 920-1000: half under the bar (940-1080)
+  const off = at(w.text("Off", "off screen"), [5000, 540, 0]);
+  const paper = rect(w.solid("Paper"), { left: -1500, top: -900, width: 3000, height: 1800 }); at(paper, [960, 540, 0], true);
+  const behind = at(w.text("Behind", "behind the paper"), [960, 540, 600], true);
+  const front = at(w.text("Front", "in front"), [960, 400, -200], true);
+  const r = ok(w.call("review_motion", { comp_id: 1, all: true }));
+  const of = (type) => r.issues.filter((i) => i.type === type).flatMap((i) => i.layer_ids || [i.layer_id]);
+  assert.deepEqual(of("hidden"), [behind.id], JSON.stringify(r.issues));
+  assert.equal(r.issues.find((i) => i.type === "hidden").by, "Paper", "says what hides it");
+  assert.deepEqual(of("off_screen"), [off.id]);
+  assert.deepEqual(of("covered"), [low.id]);
+  assert.ok(![...of("hidden"), ...of("covered"), ...of("off_screen")].includes(front.id), "the text in front of the paper is fine");
+  assert.equal(ok(w.call("review_motion", { comp_id: 1, all: true, scene: false })).issues.filter((i) => ["hidden", "covered", "off_screen"].includes(i.type)).length, 0, "scene: false skips them");
+});
+
+t("set_keyframes merge keeps keys at other times (and their springs); both modes say how many old keys they replaced", () => {
+  const w = makeWorld(), a = w.solid("Merge"), rot = P(a, "ADBE Rotate Z");
+  let r = ok(w.call("set_keyframes", { layer_id: a.id, path: "rotation", keys: [{ t: 0, v: 0, interp: "spring" }, { t: 1, v: 90 }, { t: 2, v: 0 }] }));
+  assert.equal(r.replaced, undefined, "nothing to replace the first time");
+  r = ok(w.call("set_keyframes", { layer_id: a.id, path: "rotation", merge: true, keys: [{ t: 2, v: 45 }, { t: 3, v: 10 }] }));
+  assert.equal(r.replaced, 1); assert.equal(r.num_keys, 4);
+  assert.deepEqual(rot.keys.map((k) => [k.t, k.v]), [[0, 0], [1, 90], [2, 45], [3, 10]]);
+  assert.match(rot.expression, /^\/\/ ae-motion spring/, "the spring on the kept 0-1 segment stays");
+  r = ok(w.call("set_keyframes", { layer_id: a.id, path: "rotation", keys: [{ t: 0, v: 5 }] }));
+  assert.equal(r.replaced, 4, "replace mode reports every key it removed"); assert.equal(rot.keys.length, 1);
 });
 
 t("set_keyframes / edit_keyframes interp spring: any property springs; moves, deletes and re-interps keep the expression in step", () => {

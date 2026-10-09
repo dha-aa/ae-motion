@@ -13,12 +13,6 @@ function channelSlider(l, ch) {
   return safe(function () { return fx.property(ch).property(1); }) || null;
 }
 
-function setWorkArea(c, s, d) {
-  c.workAreaDuration = c.frameDuration; // shrink first, so the new start always fits
-  c.workAreaStart = s;
-  c.workAreaDuration = d;
-}
-
 // The amplitude null for an audio layer. With reuse, an existing one (by name) is returned. Otherwise the menu
 // command runs with only this layer audible and the work area set to it (it analyses the comp's audio in the work
 // area); other layers' audio and the work area are restored afterwards, even on failure.

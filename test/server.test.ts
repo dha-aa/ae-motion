@@ -50,12 +50,16 @@ await new Promise<void>((r) => bridge.listen(0, "127.0.0.1", () => r()));
 fs.writeFileSync(path.join(DIR, "bridge.json"), JSON.stringify({ port: (bridge.address() as AddressInfo).port, token: TOKEN }));
 
 const fake = path.join(DIR, "aerender");
-fs.writeFileSync(fake, `#!/bin/bash\necho $$ > ${DIR}/aerender.pid\nif [ "$FAKE_MODE" = "write" ]; then\n  while [ "$1" != "-output" ]; do shift; done\n  out="$2"; echo "PROGRESS: finished"; printf data > "\${out%.*}.mp4"; exit 0\nfi\nexec sleep 300\n`, { mode: 0o755 });
+fs.writeFileSync(fake, `#!/bin/bash\necho $$ > ${DIR}/aerender.pid\nif [ "$FAKE_MODE" = "write" ] || [ "$FAKE_MODE" = "gpu" ]; then\n  while [ "$1" != "-output" ]; do shift; done\n  out="$2"\n  if [ "$FAKE_MODE" = "gpu" ]; then echo "PROGRESS:  0:00:29:00 (870): 0 Seconds"; echo "PROGRESS:  After Effects has encountered a failure (code: 19969) related to GPU-enabled effects on this frame. This is likely because your GPU is out of memory."; fi\n  echo "PROGRESS: finished"; printf data > "\${out%.*}.mp4"; exit 0\nfi\nif [ "$FAKE_MODE" = "progress" ]; then\n  sleep 0.6; for f in 1 2 3 4; do echo "PROGRESS:  0:00:00:0$f ($f): 0 Seconds"; sleep 0.25; done\nfi\nexec sleep 300\n`, { mode: 0o755 });
+
+// a fake ffmpeg: a probe sees video and audio, the check finds black 2-4 s, deliver writes its output (last argument)
+const fakeFf = path.join(DIR, "ffmpeg");
+fs.writeFileSync(fakeFf, `#!/bin/bash\necho "$@" >> ${DIR}/ffmpeg.calls\nlast="\${@: -1}"\nif [ "$last" = "-" ]; then echo "[blackdetect] black_start:2 black_end:4 black_duration:2" >&2; exit 0; fi\nif [ "$#" -le 3 ]; then echo "  Duration: 00:00:04.00, start" >&2; echo "  Stream #0:0: Video: h264" >&2; echo "  Stream #0:1: Audio: aac" >&2; exit 1; fi\nprintf mp4 > "$last"; exit 0\n`, { mode: 0o755 });
 
 function startServer(extraEnv: Record<string, string> = {}) {
   const p = spawn("node", [SERVER], {
     // update checks stay off unless a test turns them on (no real network calls from tests)
-    env: { ...process.env, AE_MCP_BRIDGE_FILE: path.join(DIR, "bridge.json"), AE_AERENDER: fake, AE_MCP_ALLOWED_DIRS: DIR, AE_MCP_UPDATE_CHECK: "0", ...extraEnv },
+    env: { ...process.env, AE_MCP_BRIDGE_FILE: path.join(DIR, "bridge.json"), AE_AERENDER: fake, AE_MCP_ALLOWED_DIRS: DIR, AE_MCP_UPDATE_CHECK: "0", AE_MCP_FFMPEG: fakeFf, ...extraEnv },
     stdio: ["pipe", "pipe", "pipe"],
   });
   let buf = "";
@@ -156,6 +160,72 @@ const results: [name: string, pass: boolean][] = [];
   results.push(["C: job finishes", st.state === "done"]);
   results.push(["C: status reports the file actually written (.mp4)", typeof st.output_path === "string" && st.output_path.endsWith(".mp4") && st.output_exists === true]);
   results.push(["C: status keeps the requested path and explains the difference", typeof st.requested_path === "string" && st.requested_path.endsWith("c.mov") && typeof st.note === "string"]);
+  s.p.stdin.end();
+  await Promise.race([s.exited, sleep(3000)]);
+  s.p.kill();
+}
+
+// Phase C2: aerender exits 0 after a GPU out-of-memory failure (black frames): the job fails, with the errors and the fix.
+{
+  prepareOk = true;
+  const s = startServer({ FAKE_MODE: "gpu" });
+  await s.init();
+  const r = await s.call("tools/call", { name: "render_start", arguments: { comp_id: 1, output_path: path.join(DIR, "g.mp4"), software: true } });
+  const job = JSON.parse(textOf(r)).job_id;
+  let st: Json = {};
+  for (let i = 0; i < 50 && (st.state === undefined || st.state === "running"); i++) {
+    await sleep(100);
+    st = JSON.parse(textOf(await s.call("tools/call", { name: "render_status", arguments: { job_id: job } })));
+  }
+  results.push(["C2: software: true reaches prepare_render", received.prepare_render?.software === true]);
+  results.push(["C2: a GPU failure with exit code 0 fails the job and says to render with software: true",
+    st.state === "failed" && Array.isArray(st.errors) && /GPU/.test(st.errors[0]) && /software: true/.test(st.hint)]);
+  s.p.stdin.end();
+  await Promise.race([s.exited, sleep(3000)]);
+  s.p.kill();
+}
+
+// Phase C3: while a job runs, render_status says how far it is and how long it still needs.
+{
+  prepareOk = true;
+  const s = startServer({ FAKE_MODE: "progress" });
+  await s.init();
+  const r = await s.call("tools/call", { name: "render_start", arguments: { comp_id: 1, output_path: path.join(DIR, "p.mp4") } });
+  const job = JSON.parse(textOf(r)).job_id;
+  const status = async () => JSON.parse(textOf(await s.call("tools/call", { name: "render_status", arguments: { job_id: job } })));
+  const first = await status();
+  await sleep(1600);
+  const mid = await status();
+  results.push(["C3: before the first frame the job is 'starting' with a poll hint", first.frames_done === 0 && first.phase === "starting" && first.poll_after_s === 10]);
+  results.push(["C3: mid-render status has frames, speed, eta, finish time and poll_after_s",
+    mid.state === "running" && mid.frames_done === 4 && mid.total_frames === 10 && mid.percent === 40 && mid.seconds_per_frame > 0.1 && mid.seconds_per_frame < 1
+    && mid.eta_s >= 1 && mid.eta_s <= 6 && typeof mid.finishes_at === "string" && mid.poll_after_s === 5 && mid.elapsed_s > 1]);
+  await s.call("tools/call", { name: "render_cancel", arguments: { job_id: job } });
+  s.p.stdin.end();
+  await Promise.race([s.exited, sleep(3000)]);
+  s.p.kill();
+}
+
+// Phase C4: deliver renders a ProRes master, encodes the MP4 and removes the master; the finished file is checked.
+{
+  prepareOk = true;
+  try { fs.rmSync(path.join(DIR, "ffmpeg.calls")); } catch {}
+  const s = startServer({ FAKE_MODE: "write" });
+  await s.init();
+  const out = path.join(DIR, "film.mp4");
+  const r = await s.call("tools/call", { name: "render_start", arguments: { comp_id: 1, output_path: out, deliver: true, loudness: -16 } });
+  const job = JSON.parse(textOf(r)).job_id;
+  let st: Json = {};
+  for (let i = 0; i < 80 && st.state !== "done" && st.state !== "failed"; i++) {
+    await sleep(100);
+    st = JSON.parse(textOf(await s.call("tools/call", { name: "render_status", arguments: { job_id: job } })));
+  }
+  const ffCalls = fs.existsSync(path.join(DIR, "ffmpeg.calls")) ? fs.readFileSync(path.join(DIR, "ffmpeg.calls"), "utf8") : "";
+  results.push(["C4: deliver encodes the MP4 at the loudness asked, then removes the master", st.state === "done" && fs.existsSync(out) && !fs.existsSync(path.join(DIR, "film.master.mp4")) && /loudnorm=I=-16/.test(ffCalls) && /libx264/.test(ffCalls)]);
+  results.push(["C4: the finished file is checked and its issues reported", Array.isArray(st.check?.issues) && /^Black picture 2-4 s/.test(st.check.issues[0]) && st.check.black?.[0]?.[1] === 4]);
+  const both = await s.call("tools/call", { name: "render_start", arguments: { comp_id: 1, output_path: path.join(DIR, "x.mp4"), deliver: true, audio_only: true } });
+  const bothErr = both.result?.isError === true;
+  results.push(["C4: deliver and audio_only together are refused", bothErr]);
   s.p.stdin.end();
   await Promise.race([s.exited, sleep(3000)]);
   s.p.kill();
@@ -276,6 +346,18 @@ const results: [name: string, pass: boolean][] = [];
   const [failed, failedErr] = await body("batch", { steps: [{ tool: "delete_layer", args: { layer_id: 13 } }, { tool: "set_layer", args: { layer_id: 1 } }] });
   results.push(["H: a host error stops the batch with the host's code", failedErr && failed.error?.code === "NOT_FOUND" && calls.length === 1]);
 
+  // resume: a batch that stopped at step 2 runs again from there with the fixed step, and $1 still resolves
+  calls.length = 0;
+  const three = (del: number) => [{ tool: "add_layer", args: { comp_id: 1, kind: "null" } }, { tool: "delete_layer", args: { layer_id: del } }, { tool: "set_layer", args: { layer_id: "$1.id" } }];
+  const [stop, stopErr] = await body("batch", { steps: three(13) });
+  calls.length = 0;
+  const [resumed, resumedErr] = await body("batch", { steps: three(14), resume: { batch_id: stop.batch_id, from: 2 } });
+  results.push(["H: a failed batch returns batch_id and says how to resume", stopErr && typeof stop.batch_id === "string" && /resume/.test(stop.error?.hint)]);
+  results.push(["H: resume runs from the given step with the earlier results ($1 resolves, step 1 does not run again)",
+    !resumedErr && resumed.steps === 3 && calls.join(",") === "delete_layer,set_layer" && received.set_layer?.layer_id === 42]);
+  const [, unknownErr] = await body("batch", { steps: three(14), resume: { batch_id: "nope", from: 2 } });
+  results.push(["H: resuming an unknown batch is refused", unknownErr]);
+
   calls.length = 0;
   const [outside, outsideErr0] = await body("batch", { steps: [{ tool: "import_footage", args: { path: "/etc/passwd" } }] });
   const outsideErr = outsideErr0 && outside.error?.code === "FORBIDDEN";
@@ -286,6 +368,12 @@ const results: [name: string, pass: boolean][] = [];
   const [, jsxErr] = await body("batch", { steps: [{ tool: "run_jsx", args: { code: "1" } }] });
   const [, openErr] = await body("batch", { steps: [{ tool: "open_project", args: { path: path.join(DIR, "x.aep") } }] });
   results.push(["H: paths are sandboxed, forward references, run_jsx and open_project are refused", sandboxed && outsideErr && refErr && jsxErr && openErr && calls.length === 0]);
+
+  // "$$" is a literal dollar: a price as text reaches the host as "$99"; a bare "$99" is a reference and says how to escape it
+  calls.length = 0;
+  const [, priceErr] = await body("batch", { steps: [{ tool: "add_layer", args: { comp_id: 1, kind: "text", options: { text: "$$99" } } }] });
+  const [bare, bareErr] = await body("batch", { steps: [{ tool: "add_layer", args: { comp_id: 1, kind: "text", options: { text: "$99" } } }] });
+  results.push(["H: \"$$99\" is the literal text $99; a bare \"$99\" is refused with the escape in the message", !priceErr && received.add_layer?.options?.text === "$99" && bareErr && /\$\$99/.test(JSON.stringify(bare)) && calls.length === 1]);
 
   const [last] = await body("batch", { steps: [{ tool: "add_layer", args: { comp_id: 1, kind: "null" } }, { tool: "set_layer", args: { layer_id: "$1.id" } }], results: "none" });
   results.push(["H: results none returns only the step count", JSON.stringify(last) === '{"steps":2}']);

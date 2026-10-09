@@ -3,10 +3,34 @@
 var FRAMEBLEND = { off: "NO_FRAME_BLEND", frame_mix: "FRAME_MIX", pixel_motion: "PIXEL_MOTION" };
 var QUALITY = { best: "BEST", draft: "DRAFT", wireframe: "WIREFRAME" };
 
+// A box that fits another layer's content (a highlight behind a word, a pill, a button): its rect is sized and placed
+// from the target's sourceRectAtTime by expressions, and it is parented to the target and sits just under it, so it
+// keeps fitting when the text changes, moves, scales or turns 3D. padding is px (a number, or [x, y]).
+function fitToLayer(l, target, padding) {
+  var n = typeof padding === "number" ? padding : 0, pad = padding instanceof Array ? padding : [n, n],
+    root = l.property("ADBE Root Vectors Group"), rect = null, i, j, g;
+  if (!root.numProperties) addShapeContent(l, { type: "rect" });
+  for (i = 1; i <= root.numProperties && !rect; i++) {
+    g = root.property(i).property("ADBE Vectors Group");
+    for (j = 1; g && j <= g.numProperties; j++) { if (g.property(j).matchName === "ADBE Vector Shape - Rect") { rect = g.property(j); break; } }
+  }
+  if (!rect) fail("BAD_ARGS", "fit_to needs a rect shape");
+  if (target.threeDLayer) l.threeDLayer = true;
+  l.parent = target;
+  // in the target's own layer space: the target's content bounds are the box's coordinates
+  tp(l, "ADBE Anchor Point").setValue(l.threeDLayer ? [0, 0, 0] : [0, 0]);
+  tp(l, "ADBE Position").setValue(l.threeDLayer ? [0, 0, 0] : [0, 0]);
+  tp(l, "ADBE Scale").setValue(l.threeDLayer ? [100, 100, 100] : [100, 100]);
+  tp(l, "ADBE Rotate Z").setValue(0);
+  rect.property("ADBE Vector Rect Size").expression = "// ae-motion fit\nvar r = thisLayer.parent.sourceRectAtTime(time, false);\n[r.width + " + 2 * pad[0] + ", r.height + " + 2 * pad[1] + "]";
+  rect.property("ADBE Vector Rect Position").expression = "// ae-motion fit\nvar r = thisLayer.parent.sourceRectAtTime(time, false);\n[r.left + r.width / 2, r.top + r.height / 2]";
+  l.moveAfter(target);
+}
+
 C.add_layer = function (a) {
   need(a, ["comp_id", "kind"]);
   var comp = getComp(a.comp_id), o = a.options || {}, kind = a.kind, dur = has(o, "duration") ? o.duration : comp.duration,
-    center = o.center || [comp.width / 2, comp.height / 2], l, item, col, size, lt, styled = null, styleArgs, k, out;
+    center = o.center || [comp.width / 2, comp.height / 2], l, item, col, size, lt, styled = null, styleArgs, k, out, fit = null;
   if (o.text_style && kind !== "text") fail("BAD_ARGS", "text_style is for text layers");
   if (o.text_style && o.text_style.font) checkFont(o.text_style.font); // before the layer exists
   if (kind === "shape" && o.shape && o.shape.type && " rect ellipse star polygon path ".indexOf(" " + o.shape.type + " ") === -1) fail("BAD_ARGS", "shape.type must be rect, ellipse, star, polygon or path");
@@ -16,6 +40,12 @@ C.add_layer = function (a) {
   }
   if (kind === "footage" || kind === "precomp") { need(o, ["item_id"]); item = getItem(o.item_id); }
   if (kind === "shape" && o.shape) checkShapeSpec(o.shape);
+  if (o.fit_to) {
+    if (kind !== "shape" || (o.shape && o.shape.type && o.shape.type !== "rect")) fail("BAD_ARGS", "fit_to makes a rect shape layer (kind shape, shape type rect)");
+    fit = getLayer(o.fit_to.layer_id);
+    if (fit.containingComp !== comp) fail("BAD_ARGS", "fit_to must be a layer in the same comp");
+    if (typeof fit.sourceRectAtTime !== "function") fail("BAD_ARGS", "fit_to needs a layer with content bounds (text, shape, footage)");
+  }
   if (kind === "solid" || kind === "adjustment") {
     col = o.color || [1, 1, 1]; size = o.size || [comp.width, comp.height];
     l = comp.layers.addSolid([col[0], col[1], col[2]], o.name || (kind === "solid" ? "Solid" : "Adjustment Layer"), size[0], size[1], 1, dur);
@@ -45,8 +75,10 @@ C.add_layer = function (a) {
     for (k in o.text_style) { if (o.text_style.hasOwnProperty(k)) styleArgs[k] = o.text_style[k]; }
     styled = C.set_text(styleArgs);
   }
-  if (o.anchor) C.set_anchor({ layer_id: l.id, anchor: o.anchor, keep_position: false });
-  if (has(o, "position")) setLayerPosition(l, o.position);
+  if (fit) fitToLayer(l, fit, o.fit_to.padding);
+  if (o.anchor) C.set_anchor({ layer_id: l.id, anchor: o.anchor, keep_position: fit !== null });
+  if (has(o, "position") && !fit) setLayerPosition(l, o.position);
+  if (fit && !has(o, "in") && !has(o, "out") && !has(o, "start")) { l.startTime = fit.startTime; setIn(l, fit.inPoint); l.outPoint = fit.outPoint; }
   if (has(o, "start")) l.startTime = o.start;
   if (has(o, "in")) setIn(l, o["in"]);
   if (has(o, "out")) l.outPoint = o.out;
@@ -68,6 +100,7 @@ C.set_layer = function (a) {
   if (has(a, "auto_orient") && (l instanceof CameraLayer || l instanceof LightLayer)) fail("BAD_ARGS", "For cameras and lights use set_camera two_node / point_of_interest");
   if (has(a, "frame_blending") && !FRAMEBLEND[a.frame_blending]) fail("BAD_ARGS", "frame_blending must be off, frame_mix or pixel_motion");
   if (has(a, "quality") && !QUALITY[a.quality]) fail("BAD_ARGS", "quality must be best, draft or wireframe");
+  if (has(a, "sampling") && a.sampling !== "bilinear" && a.sampling !== "bicubic") fail("BAD_ARGS", "sampling must be bilinear or bicubic");
   if ((has(a, "solid_color") || has(a, "solid_size")) && !(l.source && l.source.mainSource instanceof SolidSource)) fail("BAD_ARGS", "solid_color and solid_size need a solid (or adjustment / null) layer");
   // unlock first and lock last, so the other edits in the same call can be applied
   if (a.locked === false) l.locked = false;
@@ -87,6 +120,8 @@ C.set_layer = function (a) {
   if (has(a, "separate_dimensions")) tp(l, "ADBE Position").dimensionsSeparated = a.separate_dimensions;
   if (has(a, "frame_blending")) { try { l.frameBlendingType = FrameBlendingType[FRAMEBLEND[a.frame_blending]]; } catch (e1) { fail("BAD_ARGS", "This layer has no frame blending (only footage and precomp layers do)"); } }
   if (has(a, "quality")) l.quality = LayerQuality[QUALITY[a.quality]];
+  // bicubic keeps scaled-up images and screenshots sharp (bilinear softens text in them)
+  if (has(a, "sampling")) { try { l.samplingQuality = a.sampling === "bicubic" ? LayerSamplingQuality.BICUBIC : LayerSamplingQuality.BILINEAR; } catch (e3) { fail("BAD_ARGS", "This layer has no sampling quality (only footage, precomp and solid layers do)"); } }
   if (has(a, "collapse")) { try { l.collapseTransformation = a.collapse; } catch (e2) { fail("BAD_ARGS", "This layer cannot collapse transformations (only precomp and vector layers can)"); } }
   if (has(a, "guide")) l.guideLayer = a.guide;
   if (has(a, "adjustment")) l.adjustmentLayer = a.adjustment;

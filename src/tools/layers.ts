@@ -6,7 +6,7 @@ import { Anchor, Color, id, Label, LayerIds, LightType, ShapeLayerSpec, Size, Te
 export function registerLayerTools(r: ToolRegistry): void {
   r.bridged(
     "add_layer",
-    "Add a layer. item_id: footage/precomp source. center: camera/light. position with 3 values turns 3D on. box_size: box text; text_style styles it as set_text does. anchor moves the anchor onto the content (as set_anchor) before position is applied, so position places e.g. the text's center. shape: the first shape of a shape layer (as add_shape; more with add_shape).",
+    "Add a layer. item_id: footage/precomp source. center: camera/light. position with 3 values turns 3D on. box_size: box text; text_style as set_text. anchor moves the anchor onto the content (as set_anchor) before position, so position places e.g. the text's center. shape: a shape layer's first shape (as add_shape). fit_to (shape): a rect that keeps fitting that layer's content + padding (a highlight behind text).",
     {
       comp_id: id("Comp"),
       kind: z.enum(["solid", "text", "shape", "null", "adjustment", "footage", "precomp", "camera", "light"]),
@@ -16,6 +16,7 @@ export function registerLayerTools(r: ToolRegistry): void {
           text: z.string().optional(), item_id: z.number().int().optional(), center: z.array(z.number()).min(2).max(3).optional(), light_type: LightType.optional(),
           start: z.number().optional(), in: z.number().optional(), out: z.number().optional(), position: V3.optional(), three_d: z.boolean().optional(),
           box_size: Size.optional(), text_style: TextStyleRef.optional(), anchor: Anchor.optional(), shape: ShapeLayerSpec.optional(),
+          fit_to: z.object({ layer_id: z.number().int(), padding: z.union([z.number(), z.array(z.number()).length(2)]).optional() }).optional(),
         })
         .default({}),
     },
@@ -24,14 +25,14 @@ export function registerLayerTools(r: ToolRegistry): void {
 
   r.bridged(
     "set_layer",
-    "Edit a layer; only the fields you pass change. stretch: percent (200 = half speed, negative reverses). parent_id null unparents. blend_mode: e.g. ADD, SCREEN, MULTIPLY. motion_blur and frame_blending render only with the same switch on in set_comp. separate_dimensions splits position into x_position / y_position / z_position. auto_orient path rotates along the motion path. collapse: collapse transformations / continuously rasterize. guide: visible in the comp, not rendered. solid_color / solid_size change the solid item (every layer using it).",
+    "Edit a layer; only the fields you pass change. stretch: percent (200 = half speed, negative reverses). parent_id null unparents. blend_mode: e.g. ADD, SCREEN. motion_blur / frame_blending need the switch in set_comp too. separate_dimensions: x_position / y_position / z_position. auto_orient path: along the motion path. collapse: continuously rasterize. guide: not rendered. sampling bicubic: sharper scaled images. solid_color / solid_size change the solid item (every layer using it).",
     {
       layer_id: id("Layer"), name: z.string().optional(), start: z.number().optional(), in: z.number().optional(), out: z.number().optional(),
       parent_id: z.number().int().nullable().optional(), blend_mode: z.string().optional(), enabled: z.boolean().optional(),
       stretch: z.number().refine((n) => n !== 0, "stretch cannot be 0").optional(), three_d: z.boolean().optional(), shy: z.boolean().optional(), solo: z.boolean().optional(),
       locked: z.boolean().optional(), label: Label.optional(), motion_blur: z.boolean().optional(), time_remap: z.boolean().optional(),
       separate_dimensions: z.boolean().optional(), auto_orient: z.enum(["path", "off"]).optional(),
-      frame_blending: z.enum(["off", "frame_mix", "pixel_motion"]).optional(), quality: z.enum(["best", "draft", "wireframe"]).optional(), collapse: z.boolean().optional(),
+      frame_blending: z.enum(["off", "frame_mix", "pixel_motion"]).optional(), quality: z.enum(["best", "draft", "wireframe"]).optional(), sampling: z.enum(["bilinear", "bicubic"]).optional(), collapse: z.boolean().optional(),
       guide: z.boolean().optional(), adjustment: z.boolean().optional(), effects: z.boolean().optional(), audio: z.boolean().optional(), preserve_transparency: z.boolean().optional(),
       solid_color: Color.optional(), solid_size: Size.optional(),
     },

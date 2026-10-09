@@ -30,7 +30,7 @@ export function registerAudioTools(r: ToolRegistry): void {
 
   r.bridged(
     "find_sound_cues",
-    "Pick where a comp wants sound effects, as a sound designer would: landings (impact), cuts (hit), big moves and spins (whoosh at peak speed), pops, reveals, type-ons and draw-ons. What happens on one frame is one cue (layer_ids lists the layers). Cues are ranked (priority, tier hero|major|minor) and only the most important are kept, spaced out: density sparse|normal|dense (about 1 / 1.6 / 3.5 per second) or max, min_gap. Sound the heroes; few sounds read better than many. Pass each t to add_sfx.",
+    "Pick where a comp wants sound effects, as a sound designer would: landings (impact), cuts (hit), big moves and spins (whoosh at peak speed), pops, reveals, type-ons, draw-ons. One frame is one cue (layer_ids). Cues are ranked (priority, tier hero|major|minor); the most important are kept, spaced out: density sparse|normal|dense (~1 / 1.6 / 3.5 per s) or max, min_gap. Few sounds read better than many. Pass each t to add_sfx.",
     {
       comp_id: id("Comp"), layer_ids: LayerIds.optional(), start: Time.optional(), end: Time.optional(), max: z.number().int().min(1).max(200).optional(),
       density: z.enum(["sparse", "normal", "dense"]).optional(), min_gap: z.number().min(0).optional(),
