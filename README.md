@@ -91,6 +91,8 @@ Restart After Effects, then open **Window > Extensions > AE Motion MCP** and kee
 
 The panel starts a small server on `127.0.0.1` (port 47670, or the next free port up to 47690) and writes its port and a random token to `~/.ae-motion-mcp/bridge.json`. The MCP server reads that file to find it. If the panel is closed, every tool returns `BRIDGE_DOWN`.
 
+The panel also shows a **token meter**: an estimate of what ae-motion adds to the model's context this session (tool-result text and preview images), how big its tool definitions are per request, today's total, and the costliest tools. It counts only what ae-motion sends; your messages and the model's replies are on top (your client shows the full count).
+
 ### 4. Register the server with your client
 
 Use the **absolute path** to `dist/index.js`.

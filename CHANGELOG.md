@@ -2,6 +2,11 @@
 
 All notable changes. Versions follow [semantic versioning](https://semver.org); each release is a git tag `vX.Y.Z`, which is what the update check looks for.
 
+## 2.9.0 — 2026-10-09
+
+### Added
+- A token meter in the After Effects panel: an estimate of what ae-motion adds to the model's context in this session (tool-result text and preview images, with a split bar), the size of the tool definitions each request carries, today's total across sessions, and the three costliest tools. The server (`src/usage.ts`) estimates text at about 3.6 characters per token and images at width x height / 750 (Anthropic's formula), and writes `usage/<pid>.json` next to the bridge file; the panel reads it every 2 s. The server cannot see the client's real counts, so your messages and the model's replies are not included.
+
 ## 2.8.3 — 2026-10-09
 
 ### Added

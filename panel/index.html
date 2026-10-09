@@ -17,6 +17,12 @@
   button:disabled { opacity: 0.5; cursor: default; }
   #update-log { margin: 6px 0 0; padding: 6px; background: #1b1b1b; border-radius: 3px; white-space: pre-wrap; word-break: break-word; font: 11px/1.4 ui-monospace, Menlo, monospace; color: #bbb; }
   #update-log.bad { color: #ff8a80; }
+  h2 { font-size: 12px; margin: 12px 0 4px; display: flex; justify-content: space-between; }
+  h2 small { color: #777; font-weight: normal; }
+  .big { color: #ffd479; font-weight: 600; }
+  .bar { height: 4px; background: #333; border-radius: 2px; overflow: hidden; margin: 4px 0 2px; display: flex; }
+  .bar span { display: block; height: 100%; }
+  #tok-top { color: #999; font-size: 11px; padding-top: 3px; border-top: 1px solid #333; }
 </style>
 </head>
 <body>
@@ -27,6 +33,14 @@
   <div class="row"><span class="k">Last error</span><span id="err">-</span></div>
   <div class="row"><span class="k">Version</span><span id="version">-</span></div>
   <div class="row" id="update-row" style="display:none"><span class="k">Update</span><span id="update" class="bad"></span></div>
+  <h2 title="Estimated tokens ae-motion adds to the model's context: tool results (text at ~3.6 characters per token, images at width x height / 750) and its tool definitions. Your client's total also includes your messages and the model's replies.">Tokens <small>estimate &#9432;</small></h2>
+  <div class="row"><span class="k">This session</span><span><span id="tok-session" class="big">-</span> <span id="tok-calls" class="k"></span></span></div>
+  <div class="bar" title="text results / images"><span id="tok-bar-text" style="background:#7fb2ff;width:0"></span><span id="tok-bar-img" style="background:#ff9f6e;width:0"></span></div>
+  <div class="row"><span class="k">&nbsp;&nbsp;text results</span><span id="tok-text">-</span></div>
+  <div class="row"><span class="k">&nbsp;&nbsp;images (previews)</span><span id="tok-img">-</span></div>
+  <div class="row" title="Sent with every request; most clients cache it, which makes repeats much cheaper. AE_MCP_TOOLSETS=core shrinks it."><span class="k">Tool definitions</span><span id="tok-defs">-</span></div>
+  <div class="row"><span class="k">Today (all sessions)</span><span id="tok-today">-</span></div>
+  <div id="tok-top"></div>
   <div class="actions"><button id="update-btn" data-label="Reinstall" title="git pull, then re-run the installer, then restart this panel">Reinstall</button></div>
   <pre id="update-log" style="display:none"></pre>
   <script src="main.js"></script>

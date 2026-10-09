@@ -7,6 +7,7 @@ import { RenderManager } from "./render/manager.js";
 import { registerResources } from "./resources.js";
 import { registerAllTools } from "./tools/index.js";
 import { slimToolList, ToolRegistry } from "./tools/registry.js";
+import { usage } from "./usage.js";
 
 export interface AeMotionServer {
   server: McpServer;
@@ -23,5 +24,6 @@ export function createServer(bridge: Bridge): AeMotionServer {
   registerResources(server, bridge);
   registerPrompts(server);
   slimToolList(server);
+  usage.clientName = () => server.server.getClientVersion()?.name ?? null;
   return { server, renders };
 }

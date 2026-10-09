@@ -21,6 +21,7 @@ import { CHARACTER_LIMIT } from "../config.js";
 import { toErrorBody, type ToolErrorBody } from "../errors.js";
 import type { RenderManager } from "../render/manager.js";
 import { assertAllowed, toAe } from "../sandbox.js";
+import { usage } from "../usage.js";
 
 export interface ToolDeps {
   bridge: Bridge;
@@ -160,11 +161,14 @@ export class ToolRegistry {
 
   tool<S extends z.ZodRawShape>(name: string, description: string, shape: S, run: (args: Args<S>, extra?: ToolExtra) => Promise<CallToolResult>, opts: ToolOptions = {}): void {
     const handler = async (args: Args<S>, extra?: ToolExtra): Promise<CallToolResult> => {
+      let out: CallToolResult;
       try {
-        return capSize(await run(args, extra), opts.tooLargeHint);
+        out = capSize(await run(args, extra), opts.tooLargeHint);
       } catch (e) {
-        return errorResult(toErrorBody(e));
+        out = errorResult(toErrorBody(e));
       }
+      usage.record(name, out); // the token meter in the panel
+      return out;
     };
     this.names.push(name);
     const config = { title: opts.title ?? titleFromName(name), description, inputSchema: deepStrict(z.object(shape)), annotations: annotationsFor(opts) };
@@ -241,6 +245,7 @@ export function slimToolList(server: McpServer): void {
       if (t.inputSchema) t.inputSchema = slimSchema(t.inputSchema as Record<string, unknown>);
       delete t.execution;
     }
+    usage.definitions(JSON.stringify(res.tools));
     return res;
   });
 }
