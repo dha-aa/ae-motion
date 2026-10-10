@@ -2,12 +2,17 @@
 // (Animation > Keyframe Assistant > Convert Audio to Keyframes): a null with Left / Right / Both Channels sliders,
 // keyed once per frame. (src/tools/timeline.ts)
 
+/** A slider's keys (one per frame): times and values. */
+type Series = { t: number[]; v: number[] };
+/** Adds one sound cue (find_sound_cues): the layer, time, event, suggested sound, strength 0-1, and its duration. */
+type PushCue = (layer: Layer, t: number, event: string, sound: string, strength: number, duration?: number) => void;
+
 var AUDIO_NULL_PREFIX = "Audio Amplitude: ";
 
-function hasAudioOn(l) { return safe(function () { return l.hasAudio === true && l.audioEnabled === true; }) === true; }
+function hasAudioOn(l: AVLayer): boolean { return safe(function () { return l.hasAudio === true && l.audioEnabled === true; }) === true; }
 
 // The slider of an amplitude null's channel effect (1 left, 2 right, 3 both). Effect names are localized, so by index.
-function channelSlider(l, ch) {
+function channelSlider(l: Layer, ch: number): Prop | null {
   var fx = safe(function () { return l.property("ADBE Effect Parade"); });
   if (!fx || fx.numProperties < 3) return null;
   return safe(function () { return fx.property(ch).property(1); }) || null;
@@ -16,14 +21,14 @@ function channelSlider(l, ch) {
 // The amplitude null for an audio layer. With reuse, an existing one (by name) is returned. Otherwise the menu
 // command runs with only this layer audible and the work area set to it (it analyses the comp's audio in the work
 // area); other layers' audio and the work area are restored afterwards, even on failure.
-function amplitudeNull(audio, reuse) {
-  var c = audio.containingComp, name = AUDIO_NULL_PREFIX + audio.name, before = {}, muted = [], made = null,
-    ws = c.workAreaStart, wd = c.workAreaDuration, s = Math.max(0, audio.inPoint), e = Math.min(c.duration, audio.outPoint), i, l;
-  if (reuse) for (i = 1; i <= c.numLayers; i++) { if (c.layer(i).name === name && channelSlider(c.layer(i), 3)) return c.layer(i); }
+function amplitudeNull(audio: AVLayer, reuse: boolean): AVLayer {
+  var c = audio.containingComp, name = AUDIO_NULL_PREFIX + audio.name, before: { [id: number]: boolean } = {}, muted: AVLayer[] = [], made: AVLayer | null = null,
+    ws = c.workAreaStart, wd = c.workAreaDuration, s = Math.max(0, audio.inPoint), e = Math.min(c.duration, audio.outPoint), i, l: AVLayer;
+  if (reuse) for (i = 1; i <= c.numLayers; i++) { if (c.layer(i).name === name && channelSlider(c.layer(i), 3)) return c.layer(i) as AVLayer; }
   if (!safe(function () { return audio.hasAudio === true; })) fail("BAD_ARGS", "Layer " + audio.name + " has no audio", "Pass an audio (or video with sound) layer");
   if (e - s < c.frameDuration) fail("BAD_ARGS", "The audio layer is not inside the comp's duration");
   for (i = 1; i <= c.numLayers; i++) {
-    l = c.layer(i);
+    l = c.layer(i) as AVLayer;
     before[l.id] = true;
     if (l !== audio && hasAudioOn(l)) { l.audioEnabled = false; muted.push(l); }
   }
@@ -32,26 +37,26 @@ function amplitudeNull(audio, reuse) {
     setWorkArea(c, s, e - s);
     selectOnly(audio);
     runMenu("Convert Audio to Keyframes", 0);
-    for (i = 1; i <= c.numLayers; i++) { if (!before[c.layer(i).id]) { made = c.layer(i); break; } }
+    for (i = 1; i <= c.numLayers; i++) { if (!before[c.layer(i).id]) { made = c.layer(i) as AVLayer; break; } }
   } finally {
     for (i = 0; i < muted.length; i++) muted[i].audioEnabled = true;
     setWorkArea(c, ws, wd);
   }
   if (!made || !channelSlider(made, 3)) fail("AE_ERROR", "Convert Audio to Keyframes did not create its amplitude layer", "Check that the layer's audio switch is on and the track is not silent");
-  made.name = name;
-  return made;
+  made!.name = name;
+  return made!;
 }
 
 // Delete a temporary amplitude null and its source item (the null's solid would stay in the project otherwise).
-function removeAmplitude(amp) {
+function removeAmplitude(amp: AVLayer): void {
   var src = safe(function () { return amp.source; });
   amp.remove();
   if (src && safe(function () { return src.usedIn.length === 0; })) src.remove();
 }
 
 // Key times and values of a slider (one key per frame).
-function keySeries(p) {
-  var ts = [], vs = [], i;
+function keySeries(p: Prop): Series {
+  var ts: number[] = [], vs: number[] = [], i;
   for (i = 1; i <= p.numKeys; i++) { ts.push(p.keyTime(i)); vs.push(p.keyValue(i)); }
   return { t: ts, v: vs };
 }
@@ -60,8 +65,8 @@ function keySeries(p) {
 // (an adaptive threshold, so quiet and loud passages both work) and by a real fraction of the track's loud level.
 // A beat is reported at the first frame of its rise.
 // sensitivity 0-1 (higher finds more, softer beats); minGap in seconds between beats.
-function pickBeats(ts, vs, fps, sensitivity, minGap) {
-  var n = vs.length, o = [], beats = [], mx = 0, last = -1e9, w = Math.max(2, Math.round(fps * 0.4)),
+function pickBeats(ts: number[], vs: number[], fps: number, sensitivity: number, minGap: number): number[] {
+  var n = vs.length, o: number[] = [], beats: number[] = [], mx = 0, last = -1e9, w = Math.max(2, Math.round(fps * 0.4)),
     k = 1 + 3 * (1 - sensitivity), floor, i, j, sum, cnt, t;
   for (i = 0; i < n; i++) { o[i] = i ? Math.max(0, vs[i] - vs[i - 1]) : 0; if (o[i] > mx) mx = o[i]; }
   if (mx <= 0) return beats;
@@ -84,8 +89,8 @@ function pickBeats(ts, vs, fps, sensitivity, minGap) {
 
 // Tempo from beat spacing: the mean of the gaps near the median gap (beats sit on whole frames, so single gaps are
 // a frame off), folded into 70-180 BPM.
-function estimateBpm(beats) {
-  var g = [], i, m, sum = 0, cnt = 0, bpm;
+function estimateBpm(beats: number[]): number | null {
+  var g: number[] = [], i, m, sum = 0, cnt = 0, bpm;
   for (i = 1; i < beats.length; i++) g.push(beats[i] - beats[i - 1]);
   if (!g.length) return null;
   g.sort(function (x, y) { return x - y; });
@@ -99,17 +104,17 @@ function estimateBpm(beats) {
 }
 
 // Value at fraction q (0-1) of the sorted values.
-function quantile(vs, q) {
+function quantile(vs: number[], q: number): number {
   var s = vs.slice(0);
   s.sort(function (x, y) { return x - y; });
   return s.length ? s[Math.min(s.length - 1, Math.max(0, Math.round(q * (s.length - 1))))] : 0;
 }
 
-C.beat_markers = function (a) {
+C.beat_markers = function (a: Args["beat_markers"]) {
   need(a, ["audio_layer_id"]);
   var audio = getLayer(a.audio_layer_id), c = audio.containingComp, fps = c.frameRate, every = a.every || 1,
     s = has(a, "start") ? a.start : Math.max(0, audio.inPoint), e = has(a, "end") ? a.end : Math.min(c.duration, audio.outPoint),
-    times = [], picked = [], prop = a.on === "layer" ? audio.property("ADBE Marker") : c.markerProperty, amp, ser, bpm, t, i, step, removed = 0;
+times: number[] = [], picked: number[] = [], prop = a.on === "layer" ? audio.property("ADBE Marker") : c.markerProperty, amp, ser, bpm, t, i, step, removed = 0;
   if (e <= s) fail("BAD_ARGS", "end must be after start");
   if (has(a, "bpm")) {
     if (!(a.bpm > 0)) fail("BAD_ARGS", "bpm must be positive");
@@ -118,7 +123,7 @@ C.beat_markers = function (a) {
     bpm = a.bpm;
   } else {
     amp = amplitudeNull(audio, false);
-    ser = keySeries(channelSlider(amp, 3));
+    ser = keySeries(channelSlider(amp, 3)!);
     if (!a.keep_amplitude) removeAmplitude(amp);
     times = pickBeats(ser.t, ser.v, fps, has(a, "sensitivity") ? a.sensitivity : 0.5, has(a, "min_gap") ? a.min_gap : 0.2);
     bpm = estimateBpm(times);
@@ -135,13 +140,13 @@ C.beat_markers = function (a) {
   return { count: picked.length, bpm: bpm, on: a.on === "layer" ? "layer" : "comp", times: picked.slice(0, 300), replaced: removed };
 };
 
-C.audio_react = function (a) {
+C.audio_react = function (a: Args["audio_react"]) {
   need(a, ["audio_layer_id", "layer_ids", "path", "from", "to"]);
   var audio = getLayer(a.audio_layer_id), ch = { left: 1, right: 2, both: 3 }[a.channel || "both"], n = a.smoothing || 2,
     amp, vs, lo, hi, ex, r;
   if (!ch) fail("BAD_ARGS", "channel must be left, right or both");
   amp = amplitudeNull(audio, true);
-  vs = keySeries(channelSlider(amp, ch)).v;
+  vs = keySeries(channelSlider(amp, ch)!).v;
   // the quiet floor and loud ceiling of this track, so from/to span what the music actually does
   lo = quantile(vs, 0.05); hi = quantile(vs, 0.97);
   if (hi - lo < 1e-6) fail("BAD_ARGS", "The track is (almost) silent: nothing to react to");
@@ -156,37 +161,37 @@ C.audio_react = function (a) {
 // ---- Sound effects ----
 
 var SFX_SILENT = -48; // dB used for the ends of fades
-var SFX_PEAKS = {}; // file path -> seconds from the file's start to its loudest frame (cached per session)
+var SFX_PEAKS: { [path: string]: number } = {}; // file path -> seconds from the file's start to its loudest frame (cached per session)
 
 // The footage item for a sound file: an existing import of the same file is reused.
-function soundItem(path) {
-  var f = new File(path), i, it, io;
+function soundItem(path: string): FootageItem {
+  var f = new File(path), i, it: _ItemClasses, io;
   if (!f.exists) fail("NOT_FOUND", "Sound file not found: " + path);
   for (i = 1; i <= app.project.numItems; i++) {
     it = app.project.item(i);
-    if (it instanceof FootageItem && safe(function () { return it.file && it.file.fsName === f.fsName; })) return it;
+    if (it instanceof FootageItem && safe(function () { return (it as FootageItem).file && (it as FootageItem).file!.fsName === f.fsName; })) return it;
   }
   io = new ImportOptions(f);
   if (!io.canImportAs(ImportAsType.FOOTAGE)) fail("BAD_ARGS", "File cannot be imported: " + path);
   io.importAs = ImportAsType.FOOTAGE;
   it = app.project.importFile(io);
-  if (!it.hasAudio) { it.remove(); fail("BAD_ARGS", "File has no audio: " + path); }
-  return it;
+  if (!(it as FootageItem).hasAudio) { it.remove(); fail("BAD_ARGS", "File has no audio: " + path); }
+  return it as FootageItem;
 }
 
 // Seconds from the start of an audio layer's source to its loudest frame (the layer starts at 0 while measured).
-function loudestOffset(l, key) {
+function loudestOffset(l: AVLayer, key: string): number {
   var amp, ser, i, best = 0;
   if (SFX_PEAKS.hasOwnProperty(key)) return SFX_PEAKS[key];
   amp = amplitudeNull(l, false);
-  ser = keySeries(channelSlider(amp, 3));
+  ser = keySeries(channelSlider(amp, 3)!);
   removeAmplitude(amp);
   for (i = 1; i < ser.v.length; i++) { if (ser.v[i] > ser.v[best]) best = i; }
   SFX_PEAKS[key] = ser.t.length ? ser.t[best] - l.startTime : 0;
   return SFX_PEAKS[key];
 }
 
-C.add_sfx = function (a) {
+C.add_sfx = function (a: Args["add_sfx"]) {
   need(a, ["comp_id", "path", "time"]);
   var c = getComp(a.comp_id), it = soundItem(a.path), l = c.layers.add(it), align = a.align || "peak",
     vol = has(a, "volume") ? a.volume : -6, fi = a.fade_in || 0, fo = a.fade_out || 0, peak = 0, lv, s, e, hit = snapT(c, a.time);
@@ -216,13 +221,13 @@ C.add_sfx = function (a) {
 };
 
 // Keyframe segments [t0, t1] of a property with their start and end values.
-function segments(p) {
-  var out = [], i;
+function segments(p: Prop): { t0: number; t1: number; v0: any; v1: any }[] {
+  var out: { t0: number; t1: number; v0: any; v1: any }[] = [], i;
   for (i = 1; i < p.numKeys; i++) out.push({ t0: p.keyTime(i), t1: p.keyTime(i + 1), v0: p.keyValue(i), v1: p.keyValue(i + 1) });
   return out;
 }
 
-function dist(a, b) {
+function dist(a: any, b: any): number {
   var s = 0, i;
   if (typeof a === "number") return Math.abs(b - a);
   for (i = 0; i < a.length; i++) s += (b[i] - a[i]) * (b[i] - a[i]);
@@ -230,7 +235,7 @@ function dist(a, b) {
 }
 
 // The frame of fastest change in [t0, t1], and the speed there compared with the speed into t1.
-function fastest(p, t0, t1, fd) {
+function fastest(p: Prop, t0: number, t1: number, fd: number): { t: number; speed: number; end: number } {
   var best = t0, top = 0, t, d, prev = p.valueAtTime(t0, false), endSpeed = 0;
   for (t = t0 + fd; t <= t1 + 1e-6; t += fd) {
     d = dist(prev, p.valueAtTime(t, false)) / fd;
@@ -242,7 +247,7 @@ function fastest(p, t0, t1, fd) {
 }
 
 // Every keyframed property under a group whose match name is in names (text selectors, trim paths and so on).
-function keyedUnder(g, names, out) {
+function keyedUnder(g: any, names: { [matchName: string]: number }, out: Prop[]): Prop[] {
   var i, p;
   if (!g) return out;
   for (i = 1; i <= g.numProperties; i++) {
@@ -253,12 +258,12 @@ function keyedUnder(g, names, out) {
   return out;
 }
 
-var CUE_TYPE_ON = { "ADBE Text Percent Start": 1, "ADBE Text Percent End": 1, "ADBE Text Index Start": 1, "ADBE Text Index End": 1 };
-var CUE_DRAW_ON = { "ADBE Vector Trim Start": 1, "ADBE Vector Trim End": 1 };
+var CUE_TYPE_ON: { [matchName: string]: number } = { "ADBE Text Percent Start": 1, "ADBE Text Percent End": 1, "ADBE Text Index Start": 1, "ADBE Text Index End": 1 };
+var CUE_DRAW_ON: { [matchName: string]: number } = { "ADBE Vector Trim Start": 1, "ADBE Vector Trim End": 1 };
 
 // The sound cues of one layer, from its keyframes.
-function layerCues(l, c, push) {
-  var fd = c.frameDuration, small = Math.min(c.width, c.height), kind = layerKind(l), segs, i, s, f, p, ps, k, v0, v1, mx;
+function layerCues(l: AVLayer, c: CompItem, push: PushCue): void {
+  var fd = c.frameDuration, small = Math.min(c.width, c.height), kind = layerKind(l), segs, i, s, f, p, ps: Prop[], k, v0, v1, mx;
   if (l.inPoint > 0.05) push(l, l.inPoint, "appear", "pop", 0.35);
   p = safe(function () { return tp(l, "ADBE Position"); });
   if (p && !p.dimensionsSeparated && p.numKeys >= 2) {
@@ -310,8 +315,8 @@ function layerCues(l, c, push) {
 }
 
 // text_reveal animations (expression selectors): one cue for the whole reveal, not one per letter.
-function revealCues(l, push) {
-  var ans = safe(function () { return l.property("ADBE Text Properties").property("ADBE Text Animators"); }), i, sel, amt, sp;
+function revealCues(l: AVLayer, push: PushCue): void {
+  var ans = safe(function () { return l.property("ADBE Text Properties").property("ADBE Text Animators"); }), i: number, sel: any, amt, sp;
   for (i = 1; ans && i <= ans.numProperties; i++) {
     sel = safe(function () { return ans.property(i).property("ADBE Text Selectors").property(1); });
     amt = sel ? safe(function () { return sel.property("ADBE Text Expressible Amount"); }) : null;
@@ -322,20 +327,21 @@ function revealCues(l, push) {
 }
 
 // How much a sound designer cares about each kind of moment (before strength).
-var CUE_WEIGHT = { land: 1, cut: 0.7, camera_move: 0.8, move: 0.65, pop_in: 0.6, reveal: 0.55, spin: 0.5, draw_on: 0.5, type_on: 0.5, pop_out: 0.4, flash_in: 0.35, appear: 0.3 };
+var CUE_WEIGHT: { [event: string]: number } = { land: 1, cut: 0.7, camera_move: 0.8, move: 0.65, pop_in: 0.6, reveal: 0.55, spin: 0.5, draw_on: 0.5, type_on: 0.5, pop_out: 0.4, flash_in: 0.35, appear: 0.3 };
 // cues per second and the minimum spacing between cues at each density
-var CUE_DENSITY = { sparse: [1, 0.45], normal: [1.6, 0.25], dense: [3.5, 0.12] };
+var CUE_DENSITY: { [density: string]: number[] } = { sparse: [1, 0.45], normal: [1.6, 0.25], dense: [3.5, 0.12] };
 
-C.find_sound_cues = function (a) {
+C.find_sound_cues = function (a: Args["find_sound_cues"]) {
   need(a, ["comp_id"]);
   var c = getComp(a.comp_id), fd = c.frameDuration, s = has(a, "start") ? a.start : 0, e = has(a, "end") ? a.end : c.duration,
-    dens = CUE_DENSITY[a.density || "normal"], pick = {}, cues = [], own = [], groups = [], out = [], ends = {}, i, l, j, q, g, kept, max, gap, chosen, kind;
+    dens = CUE_DENSITY[a.density || "normal"], pick: { [id: number]: boolean } = {}, cues: Obj[] = [], own: Obj[] = [], groups: Obj[] = [], out: Obj[] = [],
+    ends: { [frame: number]: boolean } = {}, i, l: any, j, q, g, kept, max, gap, chosen: Obj[], kind;
   if (!dens) fail("BAD_ARGS", "density must be sparse, normal or dense");
   max = a.max || Math.max(3, Math.round((e - s) * dens[0]));
   gap = has(a, "min_gap") ? a.min_gap : dens[1];
   if (has(a, "layer_ids")) { for (i = 0; i < a.layer_ids.length; i++) pick[a.layer_ids[i]] = true; }
-  function push(layer, t, event, sound, strength, duration) {
-    var cue = { t: snapT(c, t), layer_id: layer.id, layer: layer.name, event: event, sound: sound, strength: Math.round(strength * 100) / 100 };
+  function push(layer: Layer, t: number, event: string, sound: string, strength: number, duration?: number): void {
+    var cue: Obj = { t: snapT(c, t), layer_id: layer.id, layer: layer.name, event: event, sound: sound, strength: Math.round(strength * 100) / 100 };
     if (duration) cue.duration = Math.round(duration * 1000) / 1000;
     cues.push(cue);
   }
@@ -367,7 +373,7 @@ C.find_sound_cues = function (a) {
     g.cues.push(q);
   }
   for (i = 0; i < groups.length; i++) {
-    g = groups[i]; g.cues.sort(function (x, y) { return y.strength - x.strength; });
+    g = groups[i]; g.cues.sort(function (x: Obj, y: Obj) { return y.strength - x.strength; });
     q = g.cues[0]; l = { t: q.t, layer_id: q.layer_id, layer: q.layer, event: q.event, sound: q.sound, strength: q.strength };
     if (q.duration) l.duration = q.duration;
     if (g.cues.length > 1) { l.layer_ids = []; for (j = 0; j < g.cues.length; j++) l.layer_ids.push(g.cues[j].layer_id); }
@@ -393,8 +399,8 @@ C.find_sound_cues = function (a) {
 
 // When a layer's audio is actually audible, as [start, end] comp times: frames above a tenth of its loud level,
 // with gaps under 0.3 s bridged (pauses between words).
-function audibleSpans(l) {
-  var amp = amplitudeNull(l, false), ser = keySeries(channelSlider(amp, 3)), thr, out = [], i, on = -1, last = -1, fd = l.containingComp.frameDuration;
+function audibleSpans(l: AVLayer): number[][] {
+  var amp = amplitudeNull(l, false), ser = keySeries(channelSlider(amp, 3)!), thr, out: number[][] = [], i, on = -1, last = -1, fd = l.containingComp.frameDuration;
   removeAmplitude(amp);
   thr = quantile(ser.v, 0.9) * 0.1;
   for (i = 0; i < ser.v.length; i++) {
@@ -407,8 +413,8 @@ function audibleSpans(l) {
 }
 
 // Spans sorted and merged when closer than gap (so the music does not pump between close sounds).
-function mergeSpans(spans, gap) {
-  var out = [], i, s;
+function mergeSpans(spans: number[][], gap: number): number[][] {
+  var out: number[][] = [], i, s;
   spans.sort(function (x, y) { return x[0] - y[0]; });
   for (i = 0; i < spans.length; i++) {
     s = spans[i];
@@ -419,7 +425,7 @@ function mergeSpans(spans, gap) {
 }
 
 // A layer's loudest volume setting in dB (its audio levels' keys, or its static level).
-function layerLevel(l) {
+function layerLevel(l: Layer): number {
   var lv = safe(function () { return l.property("ADBE Audio Group").property("ADBE Audio Levels"); }), mx = -1e9, i, v;
   if (!lv) return 0;
   if (!lv.numKeys) { v = lv.value; return typeof v === "number" ? v : Math.max(v[0], v[1]); }
@@ -427,18 +433,18 @@ function layerLevel(l) {
   return mx;
 }
 
-C.duck_music = function (a) {
+C.duck_music = function (a: Args["duck_music"]) {
   need(a, ["music_layer_id"]);
   var music = getLayer(a.music_layer_id), c = music.containingComp, amount = has(a, "amount") ? a.amount : -10,
     att = has(a, "attack") ? a.attack : 0.15, rel = has(a, "release") ? a.release : 0.4, mode = a.mode || "auto",
-    minLevel = has(a, "min_level") ? a.min_level : -9, triggers = [], quiet = 0, spans = [], i, l, sp, j, mk = music.property("ADBE Marker"), lv, mv, removed = 0, ex, cover = 0, res;
+    minLevel = has(a, "min_level") ? a.min_level : -9, triggers: AVLayer[] = [], quiet = 0, spans: number[][] = [], i, l: AVLayer, sp, j, mk = music.property("ADBE Marker"), lv, mv, removed = 0, ex, cover = 0, res: Obj;
   if (amount >= 0) fail("BAD_ARGS", "amount is the drop in dB and must be negative (e.g. -10)");
   if (mode !== "auto" && mode !== "span" && mode !== "loudness") fail("BAD_ARGS", "mode must be auto, span or loudness");
   if (!safe(function () { return music.hasAudio === true; })) fail("BAD_ARGS", "The music layer has no audio");
   if (has(a, "under_layer_ids")) { for (i = 0; i < a.under_layer_ids.length; i++) triggers.push(getLayer(a.under_layer_ids[i])); }
   else {
     for (i = 1; i <= c.numLayers; i++) {
-      l = c.layer(i);
+      l = c.layer(i) as AVLayer;
       if (l === music || !hasAudioOn(l) || l.name.indexOf(AUDIO_NULL_PREFIX) === 0) continue;
       // quiet effects sit under the music anyway: ducking for each of them only pumps the music
       if (layerLevel(l) < minLevel) { quiet++; continue; }

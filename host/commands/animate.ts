@@ -2,7 +2,7 @@
 
 var MODIFIERS = { trim_paths: "ADBE Vector Filter - Trim", repeater: "ADBE Vector Filter - Repeater", round_corners: "ADBE Vector Filter - RC" };
 
-C.set_property = function (a) {
+C.set_property = function (a: Args["set_property"]) {
   need(a, ["layer_id", "path", "value"]);
   var l = getLayer(a.layer_id), p = resolvePath(l, a.path), v = coerce(p, a.value), rv;
   if (has(a, "time")) {
@@ -16,10 +16,10 @@ C.set_property = function (a) {
   return { value: rv === undefined ? null : rv, num_keys: p.numKeys };
 };
 
-C.set_keyframes = function (a) {
+C.set_keyframes = function (a: Args["set_keyframes"]) {
   need(a, ["layer_id", "path", "keys"]);
   var l = getLayer(a.layer_id), p = resolvePath(l, a.path), keys = [], i, j, k, idx, merge = a.merge === true, replaced = 0,
-    tol = l.containingComp.frameDuration / 2, res;
+    tol = l.containingComp.frameDuration / 2, res: Obj;
   if (!p.canVaryOverTime) fail("BAD_ARGS", "Property is not keyframable");
   if (!(a.keys instanceof Array) || !a.keys.length) fail("BAD_ARGS", "keys must be a non-empty array");
   if (springList(p) === null) fail("BAD_ARGS", "Property has an active expression", "Clear it with set_expression and an empty expression");
@@ -53,7 +53,9 @@ C.set_keyframes = function (a) {
 };
 
 // Find the key an edit addresses: by 1-based index, or by time (the key within half a frame of t).
-function findKey(p, e, tol) {
+type KeyEdit = Args["edit_keyframes"]["edits"][number];
+
+function findKey(p: Prop, e: { index?: number; t?: number }, tol: number): number {
   var i;
   if (has(e, "index")) {
     if (e.index < 1 || e.index > p.numKeys) fail("NOT_FOUND", "No key " + e.index + " (the property has " + p.numKeys + ")", "Use get_keyframes");
@@ -66,14 +68,14 @@ function findKey(p, e, tol) {
 }
 
 // Tangent arrays must match the property's dimensions ([x,y] for 2D position, [x,y,z] for 3D).
-function tangentFor(p, v) {
-  var n = p.value.length, o = [], i;
+function tangentFor(p: Prop, v: number[]): number[] {
+  var n = p.value.length, o: number[] = [], i;
   for (i = 0; i < n; i++) o.push(i < v.length ? v[i] : 0);
   return o;
 }
 
 // Settings an edit may change on key idx.
-function applyEdit(p, idx, e) {
+function applyEdit(p: Prop, idx: number, e: KeyEdit): void {
   var spatial = has(e, "spatial_in") || has(e, "spatial_out") || has(e, "auto_bezier") || has(e, "continuous") || has(e, "roving"), si, so;
   applyKeyMeta(p, idx, e);
   if (!spatial) return;
@@ -83,7 +85,7 @@ function applyEdit(p, idx, e) {
   if (has(e, "spatial_in") || has(e, "spatial_out")) {
     si = has(e, "spatial_in") ? tangentFor(p, e.spatial_in) : p.keyInSpatialTangent(idx);
     so = has(e, "spatial_out") ? tangentFor(p, e.spatial_out) : p.keyOutSpatialTangent(idx);
-    p.setSpatialTangentsAtKey(idx, si, so);
+    p.setSpatialTangentsAtKey(idx, si as [number, number], so as [number, number]);
   }
   if (has(e, "roving")) {
     if (e.roving && (idx === 1 || idx === p.numKeys)) fail("BAD_ARGS", "The first and last keys cannot rove");
@@ -92,9 +94,9 @@ function applyEdit(p, idx, e) {
 }
 
 // Edit single keys without rewriting the rest: set (create or update), move (keeps every setting) and delete.
-C.edit_keyframes = function (a) {
+C.edit_keyframes = function (a: Args["edit_keyframes"]) {
   need(a, ["layer_id", "path", "edits"]);
-  var l = getLayer(a.layer_id), p = resolvePath(l, a.path), tol = l.containingComp.frameDuration / 2, done = [], i, e, idx, k, v;
+  var l = getLayer(a.layer_id), p = resolvePath(l, a.path), tol = l.containingComp.frameDuration / 2, done: Obj[] = [], i, e, idx, k: any, v: { [index: number]: boolean };
   if (p.propertyType !== PropertyType.PROPERTY || !p.canVaryOverTime) fail("BAD_ARGS", "Property is not keyframable", "Use list_properties");
   if (!(a.edits instanceof Array) || !a.edits.length) fail("BAD_ARGS", "edits must be a non-empty array");
   for (i = 0; i < a.edits.length; i++) {
@@ -145,7 +147,7 @@ C.edit_keyframes = function (a) {
 };
 
 // Copy one property's animation (every key setting, or the static value, and any expression) to other layers.
-C.copy_animation = function (a) {
+C.copy_animation = function (a: Args["copy_animation"]) {
   need(a, ["from_layer_id", "path", "to_layer_ids"]);
   var src = resolvePath(getLayer(a.from_layer_id), a.path), toPath = has(a, "to_path") ? a.to_path : a.path,
     dt = has(a, "offset_seconds") ? a.offset_seconds : 0, step = has(a, "stagger_seconds") ? a.stagger_seconds : 0, targets = [], out = [], i, l, dst;
@@ -172,9 +174,9 @@ C.copy_animation = function (a) {
 };
 
 // One layer (layer_id) or many (layer_ids): every property is found and checked before any expression is set.
-C.set_expression = function (a) {
+C.set_expression = function (a: Args["set_expression"]) {
   need(a, ["path"]);
-  var many = has(a, "layer_ids"), ids = many ? a.layer_ids : [a.layer_id], ex = a.expression || "", props = [], bad = [], i, p, err;
+  var many = has(a, "layer_ids"), ids = many ? a.layer_ids! : [a.layer_id as number], ex = a.expression || "", props = [], bad = [], i, p, err;
   if (many === has(a, "layer_id")) fail("BAD_ARGS", "Pass layer_id or layer_ids (not both)");
   if (!(ids instanceof Array) || ids.length === 0) fail("BAD_ARGS", "layer_ids must list at least one layer");
   for (i = 0; i < ids.length; i++) {
@@ -192,31 +194,31 @@ C.set_expression = function (a) {
 };
 
 // Returns the new property's path: indexed groups (e.g. text animators) are addressed by index, others by match name.
-C.add_property = function (a) {
+C.add_property = function (a: Args["add_property"]) {
   need(a, ["layer_id", "match_name"]);
-  var l = getLayer(a.layer_id), hasGroup = has(a, "group_path") && a.group_path.length, g = hasGroup ? resolvePath(l, a.group_path) : l, np, path;
+  var l = getLayer(a.layer_id), hasGroup = has(a, "group_path") && a.group_path.length, g = hasGroup ? resolvePath<PropertyGroup>(l, a.group_path!) : l, np, path;
   if (!g.canAddProperty(a.match_name)) fail("BAD_ARGS", "Cannot add '" + a.match_name + "' there", "Check the group_path and match name with list_properties (text animators: group ADBE Text Animators, match ADBE Text Animator; selectors ADBE Text Selectors / ADBE Text Selector; animator properties such as ADBE Text Position 3D, ADBE Text Opacity)");
   np = g.addProperty(a.match_name);
-  path = hasGroup ? (typeof a.group_path === "string" ? [a.group_path] : a.group_path.slice(0)) : [];
+  path = hasGroup ? (typeof a.group_path === "string" ? [a.group_path] : a.group_path!.slice(0)) : [];
   path.push(g.propertyType === PropertyType.INDEXED_GROUP ? np.propertyIndex : np.matchName);
   return { name: np.name, match_name: np.matchName, path: path };
 };
 
 // Set named / match-named / 1-based-index parameters on a newly added effect or modifier; on any failure remove it again.
-function setParams(owner, params, what, numericKeys) {
-  var key, p, errs = [];
+function setParams(owner: PropertyBase, params: { [name: string]: any }, what: string, numericKeys?: boolean): void {
+  var key, p, errs: string[] = [];
   for (key in params) {
     if (!params.hasOwnProperty(key)) continue;
     try {
       p = owner.property(numericKeys && /^\d+$/.test(key) ? parseInt(key, 10) : key);
       if (!p) throw new Error("no such parameter");
       p.setValue(coerce(p, params[key]));
-    } catch (e) { errs.push(key + ": " + (e && e.message ? e.message : String(e))); }
+    } catch (e: any) { errs.push(key + ": " + (e && e.message ? e.message : String(e))); }
   }
   if (errs.length) { owner.remove(); fail("BAD_ARGS", what + " params failed: " + errs.join("; "), "Use list_properties on an existing " + what.toLowerCase() + " to see parameter names"); }
 }
 
-C.apply_effect = function (a) {
+C.apply_effect = function (a: Args["apply_effect"]) {
   need(a, ["layer_id", "match_name"]);
   var l = getLayer(a.layer_id), parade = l.property("ADBE Effect Parade"), fx;
   if (!parade) fail("BAD_ARGS", "Layer does not support effects");
@@ -227,7 +229,7 @@ C.apply_effect = function (a) {
   return { effect_index: fx.propertyIndex, name: fx.name, match_name: fx.matchName };
 };
 
-C.edit_effect = function (a) {
+C.edit_effect = function (a: Args["edit_effect"]) {
   need(a, ["layer_id", "effect_index", "action"]);
   var l = getLayer(a.layer_id), fx = l.property("ADBE Effect Parade"), e, info;
   if (!fx || a.effect_index < 1 || a.effect_index > fx.numProperties) fail("NOT_FOUND", "No effect at index " + a.effect_index, "Use get_layer to list effects");
@@ -240,7 +242,7 @@ C.edit_effect = function (a) {
   return { effect: info, action: a.action, remaining: fx.numProperties };
 };
 
-C.apply_preset = function (a) {
+C.apply_preset = function (a: Args["apply_preset"]) {
   need(a, ["layer_id", "ffx_path"]);
   var l = getLayer(a.layer_id), f = new File(a.ffx_path);
   if (!f.exists) fail("NOT_FOUND", "Preset not found: " + a.ffx_path);
@@ -248,7 +250,7 @@ C.apply_preset = function (a) {
   return layerRef(l);
 };
 
-C.stagger = function (a) {
+C.stagger = function (a: Args["stagger"]) {
   need(a, ["layer_ids", "path", "offset_seconds"]);
   var ids = copyArr(a.layer_ids), props = [], i, p;
   if (a.order === "reverse") ids.reverse();
@@ -261,7 +263,7 @@ C.stagger = function (a) {
   return { staggered: ids.length };
 };
 
-C.add_shape_modifier = function (a) {
+C.add_shape_modifier = function (a: Args["add_shape_modifier"]) {
   need(a, ["layer_id", "modifier"]);
   var l = getLayer(a.layer_id), mn = MODIFIERS[a.modifier], gi = has(a, "group_index") ? a.group_index : 1, root, m, props = [], i;
   if (!mn) fail("BAD_ARGS", "modifier must be trim_paths, repeater or round_corners");

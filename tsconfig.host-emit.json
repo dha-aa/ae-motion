@@ -1,0 +1,12 @@
+{
+  // Emits host/**/*.ts as ES5 to build/host/ for scripts/build-host.ts. TypeScript 7 can't emit ES5 any more, so this
+  // one step uses TypeScript 5.9 (the typescript-es5 package); TypeScript 7 still type-checks the host through
+  // tsconfig.host.json, which this extends.
+  "extends": "./tsconfig.host.json",
+  "compilerOptions": {
+    "target": "ES5",
+    "module": "none",
+    "alwaysStrict": false,
+    "noEmit": false
+  }
+}

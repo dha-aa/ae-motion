@@ -13,7 +13,7 @@ const Xform = {
   rotation: Rot3.optional(),
 };
 
-const Material = z.object({
+const Material = z.strictObject({
   casts_shadows: z.enum(["off", "on", "only"]).optional(), accepts_shadows: z.boolean().optional(), accepts_lights: z.boolean().optional(),
   light_transmission: z.number().optional(), ambient: z.number().optional(), diffuse: z.number().optional(), specular_intensity: z.number().optional(),
   specular_shininess: z.number().optional(), metal: z.number().optional(), reflection_intensity: z.number().optional(), reflection_sharpness: z.number().optional(),
@@ -55,7 +55,7 @@ export function registerScene3dTools(r: ToolRegistry): void {
       target: V3.optional(), step_degrees: z.number().min(1).max(45).optional().describe("Degrees between keyframes for orbit, pan and tilt (default 5)"),
       to_zoom: z.number().positive().optional(), to_focal_length: z.number().positive().optional(), to_fov: z.number().gt(0).lt(180).optional(),
       to_focus_distance: z.number().min(0).optional(), to_layer_id: z.number().int().optional(), enable_dof: z.boolean().optional(),
-      waypoints: z.array(z.object({ t: Time, position: V3.optional(), point_of_interest: V3.optional() })).min(2).optional(),
+      waypoints: z.array(z.strictObject({ t: Time, position: V3.optional(), point_of_interest: V3.optional() })).min(2).optional(),
     },
   );
 

@@ -1,7 +1,8 @@
 // Static checks (run after `npm run build`):
 //  1. panel/host/host.jsx is up to date with host/ and parses.
 //  2. host/ sources use only ES3 syntax (ExtendScript has no ES5+ syntax or array/string helpers).
-//  3. The server's tools/list matches the host commands: every bridged tool has a C.<name> and vice versa.
+//  3. The server's tools/list matches the host commands: every bridged tool has a C.<name> and vice versa, and
+//     host/args.d.ts (the commands' argument types) is generated from its current schemas.
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -9,6 +10,7 @@ import { fileURLToPath } from "node:url";
 import { spawn, execFileSync } from "node:child_process";
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 import { buildHost, emittedPath, HOST_OUT, HOST_SOURCES } from "../scripts/build-host.ts";
+import { ARGS_OUT, argsFile, SERVER_ONLY } from "../scripts/host-args.ts";
 import { Ajv2020 } from "ajv/dist/2020.js";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -19,7 +21,7 @@ const EXPECTED_TOOLS = 77; // update when adding or removing a tool
 // (raised to 69k for the audio group in 2.6.0: about 66.3k chars for 72 tools; AE_MCP_TOOLSETS=core leaves audio out;
 // 72k for the motion group in 2.8.0: 77 tools; back to 69k in 2.10.0 after slimming nested schemas).
 const TOOLS_LIST_BUDGET = 69_000;
-const SERVER_ONLY_TOOLS = new Set(["render_start", "render_status", "render_cancel", "check_for_updates", "batch", "load_tools"]); // implemented in TypeScript, no host command
+const SERVER_ONLY_TOOLS = SERVER_ONLY; // implemented in the server, no host command (scripts/host-args.ts)
 const HOST_ONLY_COMMANDS = new Set(["get_selection", "prepare_render"]); // used by a resource / render_start, not tools
 
 let bad = 0;
@@ -33,6 +35,14 @@ const checkFile = path.join(TMP, "host_check.js");
 fs.writeFileSync(checkFile, host);
 try { execFileSync(process.execPath, ["--check", checkFile]); report(true, "host.jsx parses"); } catch (e) { report(false, "host.jsx syntax: " + (e instanceof Error ? e.message : String(e))); }
 fs.rmSync(TMP, { recursive: true, force: true });
+
+// 1a. every object schema in src/ rejects unknown keys (a typo like `colour` must fail, not be dropped silently)
+const plainObjects: string[] = [];
+for (const f of fs.readdirSync(path.join(ROOT, "src"), { recursive: true }) as string[]) {
+  if (!f.endsWith(".ts")) continue;
+  fs.readFileSync(path.join(ROOT, "src", f), "utf8").split("\n").forEach((line, i) => { if (/\bz\.(object|looseObject)\(/.test(line)) plainObjects.push(`src/${f}:${i + 1}`); });
+}
+report(!plainObjects.length, "schemas use z.strictObject, never z.object" + (plainObjects.length ? ": " + plainObjects.join(", ") : ""));
 
 // 1b. one version everywhere: package.json, the panel manifest and the host stamp
 const pkgVersion: string = JSON.parse(fs.readFileSync(path.join(ROOT, "package.json"), "utf8")).version;
@@ -93,6 +103,9 @@ const unannotated = tools.filter((t) => !t.title || !t.annotations || ANNOTATION
 report(unannotated.length === 0, `every tool has a title and all four annotations${unannotated.length ? " (" + unannotated.join(", ") + ")" : ""}`);
 const loose = tools.filter((t) => t.inputSchema.additionalProperties !== false).map((t) => t.name);
 report(loose.length === 0, `every input schema rejects unknown keys${loose.length ? " (" + loose.join(", ") + ")" : ""}`);
+// the host's argument types (host/args.d.ts) are generated from these schemas: a stale file type-checks the host
+// against arguments the server no longer sends
+report(fs.readFileSync(ARGS_OUT, "utf8") === argsFile(tools as Parameters<typeof argsFile>[0], SERVER_ONLY), "host/args.d.ts matches the tool schemas (run `npm run build`)");
 const listSize = JSON.stringify(tools).length;
 report(listSize <= TOOLS_LIST_BUDGET, `tools/list is ${listSize} chars, within the ${TOOLS_LIST_BUDGET} budget`);
 // Clients read the schemas as JSON Schema 2020-12 (there is no $schema header), and the Claude API refuses a tool

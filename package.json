@@ -1,6 +1,6 @@
 {
   "name": "ae-motion-mcp",
-  "version": "2.12.0",
+  "version": "2.13.0",
   "description": "MCP server for building, animating, previewing and rendering motion graphics in Adobe After Effects",
   "keywords": [
     "mcp",
@@ -27,11 +27,11 @@
     "LICENSE"
   ],
   "scripts": {
-    "build": "npm run clean && npm run build:host && npm run build:server",
-    "build:host": "tsc -p tsconfig.host.json && node scripts/build-host.ts",
-    "build:server": "tsc",
+    "build": "npm run clean && npm run build:server && npm run build:host",
+    "build:host": "node scripts/host-args.ts && node node_modules/typescript-es5/bin/tsc -p tsconfig.host-emit.json && node scripts/build-host.ts",
+    "build:server": "node node_modules/typescript/bin/tsc",
     "clean": "node -e \"for (const d of ['dist','build']) require('node:fs').rmSync(d,{recursive:true,force:true})\"",
-    "typecheck": "tsc --noEmit && tsc -p tsconfig.tools.json && tsc -p tsconfig.host.json --noEmit",
+    "typecheck": "node node_modules/typescript/bin/tsc --noEmit && node node_modules/typescript/bin/tsc -p tsconfig.tools.json && node node_modules/typescript/bin/tsc -p tsconfig.host.json --noEmit",
     "start": "node dist/index.js",
     "test": "npm run build && node test/run-all.ts"
   },
@@ -39,15 +39,16 @@
     "node": ">=22.18"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.12.0",
+    "@modelcontextprotocol/sdk": "^1.32.1",
     "pngjs": "^7.0.0",
-    "zod": "^3.25.0"
+    "zod": "^4.6.5"
   },
   "devDependencies": {
     "@types/node": "^22.20.5",
     "@types/pngjs": "^6.0.5",
     "ajv": "^8.20.0",
     "types-for-adobe": "^7.2.6",
-    "typescript": "^5.4.0"
+    "typescript": "^7.0.2",
+    "typescript-es5": "npm:typescript@~5.9.3"
   }
 }

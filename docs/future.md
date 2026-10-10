@@ -24,7 +24,7 @@ Adobe guarantees at least two years between After Effects' UXP public beta and C
 - **The bridge.** Today the panel is the HTTP server and the MCP server connects to it (`src/bridge.ts`, `panel/main.js`). Adobe's pages don't say whether a UXP plugin can listen for connections or only make outgoing ones (fetch, WebSocket client). If only outgoing, the direction flips: the MCP server listens on 127.0.0.1 and the plugin connects to it, still with the token.
 - **The host.** Every command in `host/` would be ported from ES3 ExtendScript to the UXP After Effects API. The ES3 rules, the `host.jsx` build and the `evalScript` string round trip go away; the TypeScript pilot (`host/core/layout.ts`, `host/commands/design.ts`) is the closest starting point. Calls become async.
 - **The quirks.** Every After Effects quirk in `CLAUDE.md` and `docs/development.md` was found in ExtendScript. Each needs re-checking under UXP, and the mocks in `test/` re-modelling to match.
-- **The panel.** The status UI, token meter and Update button move to UXP's HTML/Spectrum UI, and the Update button can't shell out to `git pull` and the installer the way the CEP panel's Node can.
+- **The panel.** The status UI, token meter and Update button move to UXP's HTML/Spectrum UI, and the Update button can't run `scripts/update.ts` and the installer the way the CEP panel's Node can.
 - **Mostly unchanged.** The MCP server in `src/`: tool definitions, schemas, sandboxing, `batch`, rendering through `aerender` and the ffmpeg checks.
 
 ### When to start

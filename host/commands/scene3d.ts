@@ -1,27 +1,30 @@
 // Cameras, camera moves / shake / rigs, 3D layers, lights and the 3D viewer. (src/tools/scene3d.ts)
-// Helpers live in core/scene3d.jsx and core/vector.jsx.
+// Helpers live in core/scene3d.ts and core/vector.ts.
 
-var EASE_NAMES = { linear: 1, ease_in: 1, ease_out: 1, ease_in_out: 1 };
-var FALLOFFS = { none: 1, smooth: 2, inverse_square_clamped: 3 };
-var CASTS = { off: 0, on: 1, only: 2 };
-var MATERIAL = {
+/** A move's keys before they are set: a number (zoom, roll, focus) or a vector (position, point of interest) per time. */
+type PlanKey = { t: number; v: any };
+
+var EASE_NAMES: { [name: string]: number } = { linear: 1, ease_in: 1, ease_out: 1, ease_in_out: 1 };
+var FALLOFFS: { [name: string]: number } = { none: 1, smooth: 2, inverse_square_clamped: 3 };
+var CASTS: { [name: string]: number } = { off: 0, on: 1, only: 2 };
+var MATERIAL: { [field: string]: string } = {
   light_transmission: "ADBE Light Transmission", ambient: "ADBE Ambient Coefficient", diffuse: "ADBE Diffuse Coefficient",
   specular_intensity: "ADBE Specular Coefficient", specular_shininess: "ADBE Shininess Coefficient", metal: "ADBE Metal Coefficient",
   reflection_intensity: "ADBE Reflection Coefficient", reflection_sharpness: "ADBE Glossiness Coefficient", reflection_rolloff: "ADBE Fresnel Coefficient",
   transparency: "ADBE Transparency Coefficient", transparency_rolloff: "ADBE Transp Rolloff", index_of_refraction: "ADBE Index of Refraction"
 };
 // Menu item names under View > Switch 3D View. Verify a new name there before adding it.
-var VIEWS = {
+var VIEWS: { [view: string]: string } = {
   "active_camera": "Active Camera", "default": "Default", "front": "Front", "left": "Left", "top": "Top", "back": "Back", "right": "Right", "bottom": "Bottom",
   "custom_1": "Custom View 1", "custom_2": "Custom View 2", "custom_3": "Custom View 3"
 };
 
-C.get_camera = function (a) {
+C.get_camera = function (a: Args["get_camera"]) {
   need(a, ["layer_id"]);
   return camInfo(camLayer(a.layer_id), has(a, "time") ? a.time : 0);
 };
 
-C.set_camera = function (a) {
+C.set_camera = function (a: Args["set_camera"]) {
   need(a, ["layer_id"]);
   var l = camLayer(a.layer_id), W = l.containingComp.width, t = has(a, "time") ? a.time : null, nlens = 0, z, k, other, p;
   if (has(a, "zoom")) nlens++;
@@ -44,7 +47,7 @@ C.set_camera = function (a) {
   }
   if (has(a, "aperture")) setAt(camOpt(l, "ADBE Camera Aperture"), a.aperture, t);
   if (has(a, "blur_level")) setAt(camOpt(l, "ADBE Camera Blur Level"), a.blur_level, t);
-  for (k in IRIS) { if (IRIS.hasOwnProperty(k) && has(a, k)) setAt(camOpt(l, IRIS[k]), a[k], t); }
+  for (k in IRIS) { if (IRIS.hasOwnProperty(k) && has(a as Obj, k)) setAt(camOpt(l, IRIS[k]), (a as Obj)[k], t); }
   applyXform(l, a, t);
   if (has(a, "look_at_layer_id")) {
     needTwoNode(l);
@@ -65,11 +68,11 @@ C.set_camera = function (a) {
 // Each move type builds "plans" (lists of {t, v}) for the properties it changes, then writes them with putKeys.
 // Rotational moves (pan, tilt, orbit) are sampled every step_degrees with the easing baked into the values.
 // Numbers or vectors, for combining moves on any camera property.
-function addAny(a, b) { var o = [], i; if (typeof a === "number") return a + b; for (i = 0; i < a.length; i++) o.push(a[i] + b[i]); return o; }
-function subAny(a, b) { var o = [], i; if (typeof a === "number") return a - b; for (i = 0; i < a.length; i++) o.push(a[i] - b[i]); return o; }
+function addAny(a: any, b: any): any { var o: number[] = [], i; if (typeof a === "number") return a + b; for (i = 0; i < a.length; i++) o.push(a[i] + b[i]); return o; }
+function subAny(a: any, b: any): any { var o: number[] = [], i; if (typeof a === "number") return a - b; for (i = 0; i < a.length; i++) o.push(a[i] - b[i]); return o; }
 
 // A move plan's value at t: its keys with the move's easing (sampled plans are already eased, so linear between).
-function planAt(plan, easing, sampled, t) {
+function planAt(plan: PlanKey[], easing: string, sampled: boolean, t: number): any {
   var n = plan.length, i, u;
   if (t <= plan[0].t) return plan[0].v;
   if (t >= plan[n - 1].t) return plan[n - 1].v;
@@ -82,9 +85,9 @@ function planAt(plan, easing, sampled, t) {
 // Layer a move over the property's existing animation instead of replacing it: inside the move every value gets
 // the move's offset (sampled so the easing survives), and keys after the move keep its final offset. So a dolly
 // and a truck over the same seconds add up.
-function combineKeys(p, plan, easing, sampled) {
+function combineKeys(p: Prop, plan: PlanKey[], easing: string, sampled: boolean): number {
   var t0 = plan[0].t, t1 = plan[plan.length - 1].t, base = planAt(plan, easing, sampled, t0), dEnd = subAny(planAt(plan, easing, sampled, t1), base),
-    times = [], vals = [], after = [], i, j, t, lin = KeyframeInterpolationType.LINEAR, N = 12;
+    times: number[] = [], vals: any[] = [], after: PlanKey[] = [], i, j, t, lin = KeyframeInterpolationType.LINEAR, N = 12;
   for (i = 0; i <= N; i++) times.push(t0 + (t1 - t0) * i / N);
   for (i = 0; i < plan.length; i++) times.push(plan[i].t);
   for (i = 1; i <= p.numKeys; i++) {
@@ -105,8 +108,8 @@ function combineKeys(p, plan, easing, sampled) {
 
 // Straight lines between the keys in t0..t1 of a spatial property: After Effects gives new spatial keys auto-bezier
 // tangents, so a path through waypoints curves and overshoots between them (the framing drifts off what was asked).
-function straightPath(p, t0, t1) {
-  var i, z = [0, 0, 0];
+function straightPath(p: Prop, t0: number, t1: number): void {
+  var i, z: [number, number, number] = [0, 0, 0];
   for (i = 1; i <= p.numKeys; i++) {
     if (p.keyTime(i) < t0 - EPS || p.keyTime(i) > t1 + EPS) continue;
     p.setSpatialAutoBezierAtKey(i, false);
@@ -115,11 +118,12 @@ function straightPath(p, t0, t1) {
   }
 }
 
-C.camera_move = function (a) {
+C.camera_move = function (a: Args["camera_move"]) {
   need(a, ["layer_id", "type"]);
-  var l = camLayer(a.layer_id), comp = l.containingComp, type = a.type, easing = a.easing || "ease_in_out", t0 = has(a, "start") ? a.start : 0, dur = a.duration, t1,
+  var l = camLayer(a.layer_id), comp = l.containingComp, type = a.type, easing = a.easing || "ease_in_out", t0 = has(a, "start") ? a.start : 0, dur = a.duration as number, t1!: number,
     st, f, d, delta, n, i, u, e, w, v, target, deg, vdeg, p, z0, z1, other, wp,
-    planPos = null, planPoi = null, planRoll = null, planZoom = null, planFocus = null, posSampled = false, poiSampled = false, res = { type: type, keyframes: {} };
+    planPos: PlanKey[] | null = null, planPoi: PlanKey[] | null = null, planRoll: PlanKey[] | null = null, planZoom: PlanKey[] | null = null, planFocus: PlanKey[] | null = null,
+    posSampled = false, poiSampled = false, res: Obj = { type: type, keyframes: {} };
   if (!EASE_NAMES[easing]) fail("BAD_ARGS", "easing must be linear, ease_in, ease_out or ease_in_out");
   if (t0 < 0) fail("BAD_ARGS", "start must be 0 or more");
   if (type !== "path") {
@@ -192,8 +196,8 @@ C.camera_move = function (a) {
     for (i = 0; i < wp.length; i++) {
       if (!has(wp[i], "t")) fail("BAD_ARGS", "Every waypoint needs a time t");
       if (i > 0 && !(wp[i].t > wp[i - 1].t)) fail("BAD_ARGS", "Waypoint times must increase");
-      if (has(wp[i], "position")) planPos.push({ t: wp[i].t, v: v3(wp[i].position) });
-      if (has(wp[i], "point_of_interest")) planPoi.push({ t: wp[i].t, v: v3(wp[i].point_of_interest) });
+      if (has(wp[i], "position")) planPos.push({ t: wp[i].t, v: v3(wp[i].position!) });
+      if (has(wp[i], "point_of_interest")) planPoi.push({ t: wp[i].t, v: v3(wp[i].point_of_interest!) });
     }
     if (planPoi.length) needTwoNode(l);
     if (!planPos.length) planPos = null;
@@ -207,7 +211,7 @@ C.camera_move = function (a) {
   if (t1 > comp.duration + EPS) fail("BAD_ARGS", "The move ends at " + t1 + " s, after the comp does (" + comp.duration + " s)", "Shorten it or lengthen the comp with set_comp");
 
   // combine layers the move over what is already animated; otherwise its keys replace the keys in its range
-  function put(p, plan, sampled) { return a.combine === true ? combineKeys(p, plan, easing, sampled) : putKeys(p, plan, easing, sampled); }
+  function put(p: Prop, plan: PlanKey[], sampled: boolean): number { return a.combine === true ? combineKeys(p, plan, easing, sampled) : putKeys(p, plan, easing, sampled); }
   if (has(a, "spatial") && a.spatial !== "linear" && a.spatial !== "smooth") fail("BAD_ARGS", "spatial must be linear or smooth");
   if (planPos) { p = keyTarget(l, "ADBE Position", "Position"); res.keyframes.position = put(p, planPos, posSampled); if (a.spatial === "linear") straightPath(p, t0, t1); res.final_position = copyArr(p.valueAtTime(t1, true)); }
   if (planPoi) { p = keyTarget(l, "ADBE Anchor Point", "Point of Interest"); res.keyframes.point_of_interest = put(p, planPoi, poiSampled); if (a.spatial === "linear") straightPath(p, t0, t1); res.final_point_of_interest = copyArr(p.valueAtTime(t1, true)); }
@@ -219,7 +223,7 @@ C.camera_move = function (a) {
   return res;
 };
 
-C.camera_shake = function (a) {
+C.camera_shake = function (a: Args["camera_shake"]) {
   need(a, ["layer_id"]);
   var l = camLayer(a.layer_id), target = a.target || "position", amount = has(a, "amount") ? a.amount : 10, freq = has(a, "frequency") ? a.frequency : 2,
     oct = has(a, "octaves") ? a.octaves : 2, rotAmt = has(a, "rotation_amount") ? a.rotation_amount : 0.3, seed = has(a, "seed") ? a.seed : 1,
@@ -248,9 +252,9 @@ C.camera_shake = function (a) {
 };
 
 // A rig is two 3D nulls ("<camera> Position", "<camera> Target") whose positions drive the camera through expressions.
-C.camera_rig = function (a) {
+C.camera_rig = function (a: Args["camera_rig"]) {
   need(a, ["layer_id", "action"]);
-  var l = camLayer(a.layer_id), comp = l.containingComp, posP = tp(l, "ADBE Position"), poiP = tp(l, "ADBE Anchor Point"), names = [], pairs, i, ctrl, ctrlPos, m, existing, info = { action: a.action, controls: [] };
+  var l = camLayer(a.layer_id), comp = l.containingComp, posP = tp(l, "ADBE Position"), poiP = tp(l, "ADBE Anchor Point"), names: string[] = [], pairs: [Prop, string][], i, ctrl, ctrlPos, m, existing, info: Obj = { action: a.action, controls: [] };
   if (a.action === "create") {
     needTwoNode(l);
     if (posP.expressionEnabled || poiP.expressionEnabled) fail("BAD_ARGS", "The camera position or point of interest already has an expression", "Use camera_rig remove first, or clear the expression");
@@ -298,7 +302,7 @@ C.camera_rig = function (a) {
 
 // Put a 3D layer at depth z and keep its x/y: every position key gets the new z (its other settings stay), so a
 // layer that already moves keeps moving. Works with position separated into x/y/z too.
-function setDepth(l, z) {
+function setDepth(l: Layer, z: number): void {
   var P = tp(l, "ADBE Position"), Z, i, v;
   if (P.dimensionsSeparated) {
     Z = tp(l, "ADBE Position_2");
@@ -309,7 +313,7 @@ function setDepth(l, z) {
   else { v = P.value; P.setValue([v[0], v[1], z]); }
 }
 
-C.set_3d = function (a) {
+C.set_3d = function (a: Args["set_3d"]) {
   need(a, ["layer_id"]);
   var l = getLayer(a.layer_id), t = has(a, "time") ? a.time : null, m = a.material, grp, k, any;
   if (l instanceof CameraLayer) fail("BAD_ARGS", "Use set_camera for camera layers");
@@ -326,13 +330,13 @@ C.set_3d = function (a) {
     if (has(m, "casts_shadows")) { if (CASTS[m.casts_shadows] === undefined) fail("BAD_ARGS", "casts_shadows must be off, on or only"); setAt(grp.property("ADBE Casts Shadows"), CASTS[m.casts_shadows], t); }
     if (has(m, "accepts_shadows")) setAt(grp.property("ADBE Accepts Shadows"), m.accepts_shadows ? 1 : 0, t);
     if (has(m, "accepts_lights")) setAt(grp.property("ADBE Accepts Lights"), m.accepts_lights ? 1 : 0, t);
-    for (k in MATERIAL) { if (MATERIAL.hasOwnProperty(k) && has(m, k)) setAt(grp.property(MATERIAL[k]), m[k], t); }
+    for (k in MATERIAL) { if (MATERIAL.hasOwnProperty(k) && has(m as Obj, k)) setAt(grp.property(MATERIAL[k]), (m as Obj)[k], t); }
   }
   k = xformInfo(l, t === null ? 0 : t);
   return { layer: layerRef(l), three_d: l.threeDLayer === true, position: k.position, orientation: k.orientation, rotation: k.rotation };
 };
 
-C.set_light = function (a) {
+C.set_light = function (a: Args["set_light"]) {
   need(a, ["layer_id"]);
   var l = getLayer(a.layer_id), t = has(a, "time") ? a.time : null, g, lt, fo;
   if (!(l instanceof LightLayer)) fail("BAD_ARGS", "Layer is not a light", "Add one with add_layer kind light");
@@ -340,7 +344,7 @@ C.set_light = function (a) {
   if (has(a, "light_type")) {
     lt = LIGHTTYPES[a.light_type];
     if (!lt) fail("BAD_ARGS", "light_type must be point, spot, parallel or ambient");
-    l.lightType = LightType[lt];
+    l.lightType = (LightType as any)[lt];
   }
   g = l.property("ADBE Light Options Group");
   if ((has(a, "cone_angle") || has(a, "cone_feather")) && l.lightType !== LightType.SPOT) fail("BAD_ARGS", "cone_angle and cone_feather need a spot light");
@@ -359,7 +363,7 @@ C.set_light = function (a) {
 };
 
 // Runs the View > Switch 3D View menu command. It cannot be undone from a script and clears the layer selection.
-C.set_3d_view = function (a) {
+C.set_3d_view = function (a: Args["set_3d_view"]) {
   need(a, ["view"]);
   var name, cmd, comp, cam;
   if (!VIEWS.hasOwnProperty(a.view)) fail("BAD_ARGS", "view must be active_camera, default, front, left, top, back, right, bottom, custom_1, custom_2 or custom_3");

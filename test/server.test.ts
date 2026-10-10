@@ -343,7 +343,7 @@ const results: [name: string, pass: boolean, detail?: string][] = [];
     { tool: "camera_teleport", args: {} },
   ] });
   const msgs = (pre.problems ?? []).map((x: Json) => `${x.step}:${x.message}`).join(" | ");
-  results.push(["H: the pre-check lists every problem: unknown keys next to a reference, forward references, unknown tools", preErr && calls.length === 0 && pre.problems?.length === 4 && /3:args: Unrecognized key.*'type'/.test(msgs) && /3:shape: Required/.test(msgs) && /4:.*step 9/.test(msgs) && /5:unknown/.test(msgs) && !/^2:/.test(msgs)]);
+  results.push(["H: the pre-check lists every problem: unknown keys next to a reference, forward references, unknown tools", preErr && calls.length === 0 && pre.problems?.length === 4 && /3:args: Unrecognized key.*"type"/.test(msgs) && /3:shape: Required/.test(msgs) && /4:.*step 9/.test(msgs) && /5:unknown/.test(msgs) && !/^2:/.test(msgs)]);
 
   calls.length = 0;
   const [failed, failedErr] = await body("batch", { steps: [{ tool: "delete_layer", args: { layer_id: 13 } }, { tool: "set_layer", args: { layer_id: 1 } }] });

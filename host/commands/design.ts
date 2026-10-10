@@ -1,22 +1,9 @@
 // Design commands: alignment, anchor points, shapes, layer styles, text to shapes. (src/tools/design.ts)
-// TypeScript, compiled to ES5 by tsconfig.host.json. Geometry helpers live in core/layout.ts; shape building in core/shapes.jsx.
+// Geometry helpers live in core/layout.ts; shape building in core/shapes.ts.
 
-// Arguments as the server sends them (validated by zod in src/tools/design.ts).
-interface AlignArgs {
-  layer_ids: number[];
-  align?: "left" | "h_center" | "right" | "top" | "v_center" | "bottom" | "center";
-  to?: "comp" | "selection" | "layer";
-  to_layer_id?: number;
-  distribute?: "horizontal" | "vertical";
-  margin?: number;
-  time?: number;
-}
-type AnchorName = "top_left" | "top" | "top_right" | "left" | "center" | "right" | "bottom_left" | "bottom" | "bottom_right";
-interface SetAnchorArgs { layer_id: number; anchor?: AnchorName; point?: [number, number]; keep_position?: boolean; time?: number }
-interface AddShapeArgs { layer_id: number; shape: { type?: string; [option: string]: unknown }; at?: string }
-interface TextToShapesArgs { layer_id: number }
-type StyleName = "drop_shadow" | "inner_shadow" | "outer_glow" | "inner_glow" | "bevel_emboss" | "satin" | "color_overlay" | "gradient_overlay" | "stroke";
-interface LayerStyleArgs { layer_id: number; style: StyleName; params?: { [name: string]: unknown }; enabled?: boolean }
+// Arguments: Args["<tool>"] (host/args.d.ts, generated from the server's schemas in src/tools/design.ts).
+type AnchorName = NonNullable<Args["set_anchor"]["anchor"]>;
+type StyleName = Args["add_layer_style"]["style"];
 
 // Layer styles: [menu command id (Layer > Layer Styles), property group match name]. Scripts cannot add styles
 // directly, so the menu command runs on the selected layer; the ids were checked in After Effects 26.3.
@@ -49,7 +36,7 @@ function runMenu(name: string, fallbackId: number): void {
   app.executeCommand(id);
 }
 
-C.align_layers = function (a: AlignArgs) {
+C.align_layers = function (a: Args["align_layers"]) {
   need(a, ["layer_ids"]);
   const ls = pickLayers(a.layer_ids), comp = sameComp(ls), t = has(a, "time") ? a.time! : 0, m = has(a, "margin") ? a.margin! : 0, al = a.align, dist = a.distribute;
   if (!al && !dist) fail("BAD_ARGS", "Pass align and/or distribute");
@@ -106,7 +93,7 @@ C.align_layers = function (a: AlignArgs) {
 };
 
 // Move the anchor point onto the content (center, a corner or an edge) or to a point, keeping the layer in place.
-C.set_anchor = function (a: SetAnchorArgs) {
+C.set_anchor = function (a: Args["set_anchor"]) {
   need(a, ["layer_id"]);
   const l = getLayer(a.layer_id), t = has(a, "time") ? a.time! : 0, an = tp(l, "ADBE Anchor Point");
   if (!is2D(l) && !(l as AVLayer).threeDLayer) fail("BAD_ARGS", "Cameras and lights have no anchor point");
@@ -134,7 +121,7 @@ C.set_anchor = function (a: SetAnchorArgs) {
 
 // Add a shape group to a shape layer: on top (group 1, earlier groups move down one) or at the bottom (at: "bottom",
 // earlier groups keep their indexes, which suits scripts that key groups by index as they add them).
-C.add_shape = function (a: AddShapeArgs) {
+C.add_shape = function (a: Args["add_shape"]) {
   need(a, ["layer_id", "shape"]);
   const l = getLayer(a.layer_id), at = a.at || "top";
   if (at !== "top" && at !== "bottom") fail("BAD_ARGS", "at must be top or bottom");
@@ -149,7 +136,7 @@ C.add_shape = function (a: AddShapeArgs) {
 };
 
 // Run Layer > Create > Create Shapes from Text: a new shape layer with the outlines appears above; the text layer is turned off.
-C.text_to_shapes = function (a: TextToShapesArgs) {
+C.text_to_shapes = function (a: Args["text_to_shapes"]) {
   need(a, ["layer_id"]);
   const l = getLayer(a.layer_id), c = l.containingComp, n0 = c.numLayers;
   if (!(l instanceof TextLayer)) fail("BAD_ARGS", "Layer is not a text layer");
@@ -161,7 +148,7 @@ C.text_to_shapes = function (a: TextToShapesArgs) {
 };
 
 // Turn on a layer style and set its parameters (property names without the style prefix, e.g. distance, color).
-C.add_layer_style = function (a: LayerStyleArgs) {
+C.add_layer_style = function (a: Args["add_layer_style"]) {
   need(a, ["layer_id", "style"]);
   const l = getLayer(a.layer_id), s = LAYER_STYLES[a.style], names: string[] = [], errs: string[] = [];
   if (!s) fail("BAD_ARGS", "style must be one of drop_shadow, inner_shadow, outer_glow, inner_glow, bevel_emboss, satin, color_overlay, gradient_overlay, stroke");

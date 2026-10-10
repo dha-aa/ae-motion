@@ -3,12 +3,12 @@
 
 // Open a project file. Refuses to throw away unsaved changes unless discard_unsaved is true; then the current project
 // is closed without saving first, so After Effects never shows a "save changes?" dialog (which would block the bridge).
-C.open_project = function (a) {
+C.open_project = function (a: Args["open_project"]) {
   var f, p = app.project, fresh = a["new"] === true;
   if (fresh === has(a, "path")) fail("BAD_ARGS", "Pass path to open a project, or new: true for an empty one");
   if (!fresh) {
     f = new File(a.path);
-    if (!/\.(aep|aepx)$/i.test(a.path)) fail("BAD_ARGS", "Project path must end in .aep or .aepx");
+    if (!/\.(aep|aepx)$/i.test(a.path!)) fail("BAD_ARGS", "Project path must end in .aep or .aepx");
     if (!f.exists) fail("NOT_FOUND", "Project file not found: " + a.path);
   }
   if (p && p.dirty && a.discard_unsaved !== true) fail("BAD_ARGS", "The open project has unsaved changes", "Save them with save_project first, or pass discard_unsaved: true to throw them away");
@@ -19,7 +19,7 @@ C.open_project = function (a) {
   return C.get_project();
 };
 
-C.save_project = function (a) {
+C.save_project = function (a: Args["save_project"]) {
   var p = app.project, f;
   if (has(a, "path")) {
     if (!/\.aepx?$/i.test(a.path)) fail("BAD_ARGS", "Project path must end in .aep or .aepx");
@@ -34,7 +34,7 @@ C.save_project = function (a) {
   return { project_path: p.file ? p.file.fsName : null };
 };
 
-C.create_comp = function (a) {
+C.create_comp = function (a: Args["create_comp"]) {
   need(a, ["name", "width", "height", "fps", "duration"]);
   var c = app.project.items.addComp(a.name, a.width, a.height, 1, a.duration, a.fps);
   if (a.bg_color) c.bgColor = [a.bg_color[0], a.bg_color[1], a.bg_color[2]];
@@ -42,7 +42,7 @@ C.create_comp = function (a) {
   return compInfo(c, false);
 };
 
-C.set_comp = function (a) {
+C.set_comp = function (a: Args["set_comp"]) {
   need(a, ["comp_id"]);
   var c = getComp(a.comp_id), wa = a.work_area, ws, wd;
   if (has(a, "name")) c.name = a.name;
@@ -67,7 +67,7 @@ C.set_comp = function (a) {
   return compInfo(c, false);
 };
 
-C.import_footage = function (a) {
+C.import_footage = function (a: Args["import_footage"]) {
   need(a, ["path"]);
   var f = new File(a.path), io, it;
   if (!f.exists) fail("NOT_FOUND", "File not found: " + a.path);
@@ -79,7 +79,7 @@ C.import_footage = function (a) {
   return itemInfo(it);
 };
 
-C.delete_item = function (a) {
+C.delete_item = function (a: Args["delete_item"]) {
   need(a, ["item_id"]);
   var it = getItem(a.item_id), info = itemInfo(it), used = 0;
   if (!a.force) {

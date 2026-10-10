@@ -1,12 +1,12 @@
 // Layer commands: add, edit, link, delete, duplicate, reorder, precompose, replace source. (src/tools/layers.ts)
 
-var FRAMEBLEND = { off: "NO_FRAME_BLEND", frame_mix: "FRAME_MIX", pixel_motion: "PIXEL_MOTION" };
-var QUALITY = { best: "BEST", draft: "DRAFT", wireframe: "WIREFRAME" };
+var FRAMEBLEND: { [name: string]: string } = { off: "NO_FRAME_BLEND", frame_mix: "FRAME_MIX", pixel_motion: "PIXEL_MOTION" };
+var QUALITY: { [name: string]: string } = { best: "BEST", draft: "DRAFT", wireframe: "WIREFRAME" };
 
 // A box that fits another layer's content (a highlight behind a word, a pill, a button): its rect is sized and placed
 // from the target's sourceRectAtTime by expressions, and it is parented to the target and sits just under it, so it
 // keeps fitting when the text changes, moves, scales or turns 3D. padding is px (a number, or [x, y]).
-function fitToLayer(l, target, padding) {
+function fitToLayer(l: AVLayer, target: AVLayer, padding?: number | number[]): void {
   var n = typeof padding === "number" ? padding : 0, pad = padding instanceof Array ? padding : [n, n],
     root = l.property("ADBE Root Vectors Group"), rect = null, i, j, g;
   if (!root.numProperties) addShapeContent(l, { type: "rect" });
@@ -27,12 +27,12 @@ function fitToLayer(l, target, padding) {
   l.moveAfter(target);
 }
 
-C.add_layer = function (a) {
+C.add_layer = function (a: Args["add_layer"]) {
   need(a, ["comp_id", "kind"]);
   var comp = getComp(a.comp_id), o = a.options || {}, kind = a.kind, dur = has(o, "duration") ? o.duration : comp.duration,
-    center = o.center || [comp.width / 2, comp.height / 2], l, item, col, size, lt, styled = null, styleArgs, k, out, fit = null;
+    center = o.center || [comp.width / 2, comp.height / 2], l, item, col, size, lt, styled = null, styleArgs: Obj, k, out, fit: AVLayer | null = null;
   if (o.text_style && kind !== "text") fail("BAD_ARGS", "text_style is for text layers");
-  if (o.text_style && o.text_style.font) checkFont(o.text_style.font); // before the layer exists
+  if (o.text_style && o.text_style.font) checkFont(o.text_style.font as string); // before the layer exists
   if (kind === "shape" && o.shape && o.shape.type && " rect ellipse star polygon path ".indexOf(" " + o.shape.type + " ") === -1) fail("BAD_ARGS", "shape.type must be rect, ellipse, star, polygon or path");
   if (kind === "light" && o.light_type) {
     lt = LIGHTTYPES[o.light_type];
@@ -58,24 +58,24 @@ C.add_layer = function (a) {
   } else if (kind === "null") {
     l = comp.layers.addNull(dur);
   } else if (kind === "footage" || kind === "precomp") {
-    l = comp.layers.add(item);
+    l = comp.layers.add(item as AVItem);
   } else if (kind === "camera") {
-    l = comp.layers.addCamera(o.name || "Camera 1", center);
+    l = comp.layers.addCamera(o.name || "Camera 1", center as [number, number]);
     centerLayer(l, center);
   } else if (kind === "light") {
     l = comp.layers.addLight(o.name || "Light 1", [center[0], center[1]]);
     centerLayer(l, center);
-    if (lt) l.lightType = LightType[lt];
+    if (lt) l.lightType = (LightType as any)[lt];
   } else { fail("BAD_ARGS", "Unknown layer kind: " + kind); }
   if (o.name) l.name = o.name;
-  if (has(o, "three_d")) l.threeDLayer = o.three_d;
+  if (has(o, "three_d")) (l as AVLayer).threeDLayer = o.three_d;
   // style, then anchor (it measures the styled content), then position (it places that anchor)
   if (o.text_style) {
     styleArgs = { layer_id: l.id };
     for (k in o.text_style) { if (o.text_style.hasOwnProperty(k)) styleArgs[k] = o.text_style[k]; }
     styled = C.set_text(styleArgs);
   }
-  if (fit) fitToLayer(l, fit, o.fit_to.padding);
+  if (fit) fitToLayer(l as AVLayer, fit, o.fit_to!.padding);
   if (o.anchor) C.set_anchor({ layer_id: l.id, anchor: o.anchor, keep_position: fit !== null });
   if (has(o, "position") && !fit) setLayerPosition(l, o.position);
   if (fit && !has(o, "in") && !has(o, "out") && !has(o, "start")) { l.startTime = fit.startTime; setIn(l, fit.inPoint); l.outPoint = fit.outPoint; }
@@ -87,12 +87,12 @@ C.add_layer = function (a) {
   return out;
 };
 
-C.set_layer = function (a) {
+C.set_layer = function (a: Args["set_layer"]) {
   need(a, ["layer_id"]);
   var l = getLayer(a.layer_id), par, bm;
   // validate before changing anything
   if (has(a, "blend_mode")) {
-    bm = BlendingMode[String(a.blend_mode).toUpperCase().replace(/ /g, "_")];
+    bm = (BlendingMode as any)[String(a.blend_mode).toUpperCase().replace(/ /g, "_")];
     if (bm === undefined) fail("BAD_ARGS", "Unknown blend mode: " + a.blend_mode);
   }
   if (has(a, "parent_id")) par = getLayer(a.parent_id);
@@ -118,8 +118,8 @@ C.set_layer = function (a) {
   if (has(a, "enabled")) l.enabled = a.enabled;
   // separated position is addressed as x_position / y_position / z_position (ADBE Position_0/1/2)
   if (has(a, "separate_dimensions")) tp(l, "ADBE Position").dimensionsSeparated = a.separate_dimensions;
-  if (has(a, "frame_blending")) { try { l.frameBlendingType = FrameBlendingType[FRAMEBLEND[a.frame_blending]]; } catch (e1) { fail("BAD_ARGS", "This layer has no frame blending (only footage and precomp layers do)"); } }
-  if (has(a, "quality")) l.quality = LayerQuality[QUALITY[a.quality]];
+  if (has(a, "frame_blending")) { try { l.frameBlendingType = (FrameBlendingType as any)[FRAMEBLEND[a.frame_blending]]; } catch (e1) { fail("BAD_ARGS", "This layer has no frame blending (only footage and precomp layers do)"); } }
+  if (has(a, "quality")) l.quality = (LayerQuality as any)[QUALITY[a.quality]];
   // bicubic keeps scaled-up images and screenshots sharp (bilinear softens text in them)
   if (has(a, "sampling")) { try { l.samplingQuality = a.sampling === "bicubic" ? LayerSamplingQuality.BICUBIC : LayerSamplingQuality.BILINEAR; } catch (e3) { fail("BAD_ARGS", "This layer has no sampling quality (only footage, precomp and solid layers do)"); } }
   if (has(a, "collapse")) { try { l.collapseTransformation = a.collapse; } catch (e2) { fail("BAD_ARGS", "This layer cannot collapse transformations (only precomp and vector layers can)"); } }
@@ -139,26 +139,26 @@ C.set_layer = function (a) {
 };
 
 // parent = x keeps the layer where it is on screen (After Effects compensates); setParentWithJump keeps its own values.
-C.link_layers = function (a) {
+C.link_layers = function (a: Args["link_layers"]) {
   need(a, ["layer_ids"]);
-  var ids = a.layer_ids, layers = [], seen = {}, i, l, comp = null, par = null, nn = null, byId = has(a, "parent_id"), unlink = (a.parent_id === null),
+  var ids = a.layer_ids, layers: AVLayer[] = [], seen: { [id: number]: boolean } = {}, i, l, comp: CompItem | null = null, par: Layer | null = null, nn: NonNullable<Args["link_layers"]["new_null"]> | null = null, byId = has(a, "parent_id"), unlink = (a.parent_id === null),
     anc, top, sum = [0, 0, 0], v, any3 = false, pos, made = null, out = [];
   if (!(ids instanceof Array) || ids.length === 0) fail("BAD_ARGS", "layer_ids must be a non-empty array");
-  if (has(a, "new_null")) nn = a.new_null === true ? {} : a.new_null;
+  if (has(a, "new_null")) nn = (a.new_null as unknown) === true ? {} : a.new_null; // older clients sent true
   if (((byId || unlink) ? 1 : 0) + (nn ? 1 : 0) !== 1) fail("BAD_ARGS", "Pass exactly one of parent_id (a layer id, or null to unlink) and new_null");
   for (i = 0; i < ids.length; i++) {
     if (seen[ids[i]]) continue;
     seen[ids[i]] = true;
     l = getLayer(ids[i]);
     if (comp === null) comp = l.containingComp;
-    else if (l.containingComp.id !== comp.id) fail("BAD_ARGS", "All layers must be in the same composition");
+    else if (l.containingComp.id !== comp!.id) fail("BAD_ARGS", "All layers must be in the same composition");
     if (l.locked) fail("BAD_ARGS", "Layer " + l.name + " is locked", "Unlock it with set_layer locked: false");
     layers.push(l);
   }
   // validate everything before changing anything
   if (byId) {
-    par = getLayer(a.parent_id);
-    if (par.containingComp.id !== comp.id) fail("BAD_ARGS", "The parent is in a different composition");
+    par = getLayer(a.parent_id as number);
+    if (par.containingComp.id !== comp!.id) fail("BAD_ARGS", "The parent is in a different composition");
     if (seen[par.id]) fail("BAD_ARGS", "A layer cannot be its own parent");
     for (anc = par.parent; anc; anc = anc.parent) {
       if (seen[anc.id]) fail("BAD_ARGS", "That would link " + anc.name + " to its own child " + par.name);
@@ -174,7 +174,7 @@ C.link_layers = function (a) {
       if (l.index < top.index) top = l;
     }
     pos = has(nn, "position") ? v3(nn.position) : [sum[0] / layers.length, sum[1] / layers.length, sum[2] / layers.length];
-    made = comp.layers.addNull(comp.duration);
+    made = comp!.layers.addNull(comp!.duration);
     made.name = nn.name || "Link Null";
     if (has(nn, "three_d") ? nn.three_d : (any3 || (has(nn, "position") && nn.position.length > 2))) made.threeDLayer = true;
     setLayerPosition(made, made.threeDLayer ? pos : [pos[0], pos[1]]);
@@ -191,25 +191,25 @@ C.link_layers = function (a) {
 };
 
 // Swap the footage / precomp / solid a layer shows, keeping its timing, keyframes and effects.
-C.replace_source = function (a) {
+C.replace_source = function (a: Args["replace_source"]) {
   need(a, ["layer_id", "item_id"]);
   var l = getLayer(a.layer_id), it = getItem(a.item_id);
   if (!l.source || l instanceof TextLayer || l instanceof ShapeLayer) fail("BAD_ARGS", "Layer " + l.id + " has no source to replace (only footage, precomp, solid and null layers do)");
   if (!(it instanceof FootageItem || it instanceof CompItem)) fail("BAD_ARGS", "Item " + it.id + " is not footage or a composition");
   if (it === l.containingComp) fail("BAD_ARGS", "A comp cannot contain itself");
   try { l.replaceSource(it, a.fix_expressions !== false); }
-  catch (e) { fail("BAD_ARGS", "After Effects refused the replacement: " + (e.message || e), "A precomp cannot contain the comp it is placed in"); }
+  catch (e: any) { fail("BAD_ARGS", "After Effects refused the replacement: " + (e.message || e), "A precomp cannot contain the comp it is placed in"); }
   return layerRef(l);
 };
 
-C.delete_layer = function (a) {
+C.delete_layer = function (a: Args["delete_layer"]) {
   need(a, ["layer_id"]);
   var l = getLayer(a.layer_id), info = layerRef(l);
   l.remove();
   return { deleted: info };
 };
 
-C.duplicate_layer = function (a) {
+C.duplicate_layer = function (a: Args["duplicate_layer"]) {
   need(a, ["layer_id"]);
   var l = getLayer(a.layer_id), n = has(a, "count") ? a.count : 1, out = [], i, d;
   if (n < 1 || n > 50) fail("BAD_ARGS", "count must be 1 to 50");
@@ -217,12 +217,12 @@ C.duplicate_layer = function (a) {
     d = l.duplicate();
     if (a.name) d.name = n === 1 ? a.name : a.name + " " + (i + 1);
     if (has(a, "offset_seconds")) shiftLayer(d, a.offset_seconds * (i + 1));
-    out.push(layerTiming(d));
+    out.push(layerTiming(d as AVLayer));
   }
   return { layers: out };
 };
 
-C.reorder_layer = function (a) {
+C.reorder_layer = function (a: Args["reorder_layer"]) {
   need(a, ["layer_id"]);
   var l = getLayer(a.layer_id), comp = l.containingComp, n = 0, ref, to = a.to;
   if (to !== undefined && to !== null) n++;
@@ -247,7 +247,7 @@ C.reorder_layer = function (a) {
   return layerRef(l);
 };
 
-C.precompose = function (a) {
+C.precompose = function (a: Args["precompose"]) {
   need(a, ["layer_ids", "name"]);
   var ls = pickLayers(a.layer_ids), comp = sameComp(ls), idx = [], i, move = a.move_attributes !== false;
   // "leave all attributes" keeps transforms, effects and masks on the layer; After Effects only allows it for one layer

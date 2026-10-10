@@ -32,8 +32,12 @@ that incident. How-to material (setup, adding a tool step by step, the quirk lis
 
 ## 2. Host code (ExtendScript, `host/`)
 
-1. **ES3 only.** The lint in `npm test` catches most of it: no `let` / `const` / arrows / template literals / spread,
-   no ES5 array methods, no `Array.prototype.indexOf`, no `...` or backticks even in comments.
+1. **ES3 output.** `host/` is TypeScript compiled to ES5 syntax for an ES3 engine. `const` / `let` / arrows /
+   template strings are lowered and fine; spread, destructuring, `for...of`, classes and async need helpers and are
+   not. ES5+ library methods are type errors (the ES3 library types). The lint in `npm test` checks the compiled
+   output: no `Array.prototype.indexOf`, no `...` or backticks even in comments (comments are copied into host.jsx).
+   Commands take `a: Args["<tool>"]` (generated, never edit `host/args.d.ts`); type parameters, don't reach for `any`
+   except for property trees (`property()` results).
 2. **No Java reserved words as names**: `long`, `int`, `char`, `byte`, `short`, `float`, `double`, `final`, `native`,
    `goto`, `boolean`, `abstract`, `volatile`, `transient`, `synchronized`, `throws`. *Incident: a variable named
    `long` made After Effects refuse the whole `host.jsx`; the old code kept running and every test of the new code
@@ -43,7 +47,7 @@ that incident. How-to material (setup, adding a tool step by step, the quirk lis
 4. **Read-only commands never add layers, effects or expressions**, not even temporarily. Compute in ExtendScript.
    *Incident: a "read-only" review check added a probe layer with expressions to a 211-layer 3D comp and crashed
    After Effects.*
-5. **Every mutating command is one undo group** (`host/dispatch.jsx`); read-only commands are listed in `READONLY`.
+5. **Every mutating command is one undo group** (`host/dispatch.ts`); read-only commands are listed in `READONLY`.
 6. **Errors are `fail(code, message, hint)`** with a code from the list in `CLAUDE.md` and a hint that says what to do
    next. TypeScript throws `AeToolError` the same way. Schema failures are rewritten into the same format by
    `toolInputErrors`; do not let any other error format reach the model.
@@ -86,9 +90,12 @@ that incident. How-to material (setup, adding a tool step by step, the quirk lis
 1. `npm run build`, `bash scripts/install.sh`, then `node .claude/skills/run-ae-motion/driver.ts reload-host` and
    **check it printed `"ok": true`**. If it did not, After Effects is still running the old code (see 2.2).
 2. Exercise the change with the driver (`call` or `script`), including its error paths.
-3. For anything visual, look at it: `preview_frame` at the key times (several in one call), and `review_motion` for
+3. Run the live tests: `node test/live/run.ts --yes` (replaces the open project). They check the behaviours the mocks
+   model against real After Effects; a mock that no longer matches shows up here and nowhere else. When you add a
+   quirk to a mock, add a live check for it too.
+4. For anything visual, look at it: `preview_frame` at the key times (several in one call), and `review_motion` for
    motion. For renders, read `render_status`'s `check`.
-4. Note in the PR what was verified live and what was not.
+5. Note in the PR what was verified live and what was not.
 
 ## 6. Documentation
 
@@ -100,7 +107,8 @@ Update in the same change: `docs/tools.md` (tool reference), the README group ta
 
 1. Work on a branch, never on `main`.
 2. Release: bump the version in `package.json` and both places in `panel/CSXS/manifest.xml`, turn `## Unreleased`
-   into `## X.Y.Z — date`, then `npm install --package-lock-only`, `npm run typecheck`, `npm test`.
+   into `## X.Y.Z — date`, then `npm install --package-lock-only`, `npm run typecheck`, `npm test`, and the live tests
+   (`node test/live/run.ts --yes`) when After Effects is available.
 3. Commit with the attribution line, push, open a PR whose description says what changed, why, and how it was
    tested (including live checks).
 4. **Merge only when CI is green on every runner** (`gh pr checks <n> --watch`). *Incident: 2.11.1 was merged
@@ -118,7 +126,7 @@ Update in the same change: `docs/tools.md` (tool reference), the README group ta
 - [ ] ES3 clean, no reserved-word names, flags tested `=== true`, read-only stays read-only
 - [ ] Errors in the standard format with hints; paths sandboxed; destructive results report what they removed
 - [ ] Tests added (fail without the change); no fixed sleeps; `npm test` + `npm run typecheck` pass
-- [ ] Host change reloaded (`"ok": true`) and verified live; visual changes previewed
+- [ ] Host change reloaded (`"ok": true`) and verified live; `test/live/run.ts` passes; visual changes previewed
 - [ ] Token budget respected (or raised with a reason)
 - [ ] Docs and `CHANGELOG.md` updated
 - [ ] CI green on every runner before merge; tag + release after

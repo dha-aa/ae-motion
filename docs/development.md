@@ -31,19 +31,22 @@ What a change needs before you can see it in After Effects:
 
 | Files | Language | Why |
 |---|---|---|
-| `src/` | TypeScript, compiled by `tsc` to `dist/` | The published entry point (`bin`, MCP client configs) is `dist/index.js`; `tsc` also type-checks. |
+| `src/` | TypeScript, compiled by `tsc` (TypeScript 7) to `dist/` | The published entry point (`bin`, MCP client configs) is `dist/index.js`; `tsc` also type-checks. |
 | `test/`, `scripts/`, `.claude/skills/run-ae-motion/driver.ts` | TypeScript, run directly by Node | Node 22.18+ strips types at load time, so there is no build step. Only erasable syntax is allowed (no `enum`, `namespace` or `constructor(public x)`), imports use the `.ts` extension, and type-only imports use `import type`; `tsconfig.tools.json` enforces this and type-checks them (`npm run typecheck`). The mock-DOM tests (`test/mock-*.test.ts`) are `// @ts-nocheck`: their After Effects fakes are deliberately loose. |
-| `host/*.jsx` | ExtendScript (ES3 JavaScript) | Runs inside After Effects' ExtendScript engine, which predates ES5. |
-| `host/*.ts` (`core/layout.ts`, `commands/design.ts`) | TypeScript, compiled by `tsc -p tsconfig.host.json` to `build/host/` | A pilot of typed host code: checked against the After Effects 22.0 API and the ES3 standard library (`types-for-adobe`), compiled to ES5 syntax, then joined with the `.jsx` files by `scripts/build-host.ts`. See below. |
+| `host/**/*.ts` | TypeScript, type-checked by TypeScript 7 (`tsconfig.host.json`), compiled to ES5 by TypeScript 5.9 (`tsconfig.host-emit.json`) to `build/host/` | Runs inside After Effects' ExtendScript engine (ES3). Checked against the After Effects 22.0 API, the ES3 standard library (`types-for-adobe`) and the server's own tool schemas (`host/args.d.ts`), then joined into one `panel/host/host.jsx` by `scripts/build-host.ts`. See below. |
+| `host/json.jsx` | JavaScript | The vendored JSON polyfill (ExtendScript has no `JSON`), used as is. |
 | `panel/main.js` | JavaScript | Loaded directly by the CEP panel's own (older) Node, without a build step. |
 
 ### Host TypeScript (`host/*.ts`)
 
-- **Build:** `npm run build:host` runs `tsc -p tsconfig.host.json` (to `build/host/`, gitignored) and then `scripts/build-host.ts`, which takes the compiled `.js` for every `.ts` entry in `MODULES`. The ES3 lint in `test/static-checks.ts` runs on that compiled output.
-- **Types:** After Effects 22.0 (the manifest minimum), so an API added later (for example `setTrackMatte`, 23.0) needs a cast and a feature check. The standard library is ES3: `map`, `forEach`, `JSON` and other ES5+ runtime APIs are compile errors, while modern *syntax* (`const`, arrows, template strings) is lowered by `tsc`.
-- **One global scope:** files are scripts (`module: none`), all wrapped in the same closure, so every top-level name is shared across `host/` and with the After Effects declarations. Interfaces with a colliding name **merge silently** (a `Bounds` interface merged with ScriptUI's): prefix type names (`LayerBounds`, `Affine`).
-- **Using `.jsx` helpers from `.ts`:** `allowJs` lets TypeScript see them; give the ones you call a JSDoc type (`/** @param {number} id @returns {Layer} */`), especially `@returns {never}` on `fail`. JSDoc in `.jsx` must still pass the ES3 lint, so write `function(): T`, not `() => T`, and avoid `...`.
-- **`property()` returns a union** of every property kind; `group()` / `prop()` in `commands/design.ts` name what a call site expects instead of casting inline.
+- **Build:** `npm run build:host` compiles with `tsconfig.host-emit.json` (to `build/host/`, gitignored) and then runs `scripts/build-host.ts`, which takes the compiled `.js` for every `.ts` entry in `MODULES`. The ES3 lint in `test/static-checks.ts` runs on that compiled output.
+- **Two TypeScript versions:** TypeScript 7 removed ES5 output, so the host is compiled by TypeScript 5.9, installed as the `typescript-es5` package (`npm:typescript@~5.9.3`); TypeScript 7 (`typescript`) does all type checking, the host's included (`npm run typecheck`), and compiles `src/`. Both packages install a `tsc` command and only one wins `node_modules/.bin/tsc`, so the npm scripts call each by path (`node node_modules/typescript/bin/tsc`, `node node_modules/typescript-es5/bin/tsc`); don't use a bare `tsc` or `npx tsc`.
+- **Types:** After Effects 22.0 (the manifest minimum). APIs added later, and the few the declarations miss, are declared in `host/env.d.ts` (optional when newer, so the feature check is enforced: `setTrackMatte`, `app.fonts`, `FontCapsOption`, `trackMatteLayer`; plus `app.path`, `Project.dirty`, `JSON` from the polyfill). The standard library is ES3: `map`, `forEach` and other ES5+ runtime APIs are compile errors, while `const` / `let`, arrows and template strings are lowered by `tsc`. Spread, destructuring, `for...of`, classes and async compile to helper functions (and break the build's duplicate-name check), so don't use them.
+- **Arguments:** every command is `C.<tool> = function (a: Args["<tool>"])`. `host/args.d.ts` is generated from the server's tool schemas (`scripts/host-args.ts`, run by `npm run build`; `test/static-checks.ts` fails when it is stale), so a renamed or retyped argument breaks the host's type check instead of silently reading `undefined`. Commands the server calls with other arguments (`preview_frame`'s `output_path`, `prepare_render`) are typed in `HostArgs` in `host/env.d.ts`.
+- **Narrowing:** `has(o, k)` is a type guard and `need(a, names)` an assertion function, so after `if (has(a, "time"))` `a.time` is a number, and a typo in a field name is a compile error. A check TypeScript can't follow (a boolean computed earlier) takes a `!`.
+- **Property trees:** what `property("ADBE ...")` returns depends on the match name, so `host/env.d.ts` makes it `any`; give the variable the type the path leads to when it matters (`resolvePath<PropertyGroup>(l, path)`, `Prop` = `Property<any>`). Layers, comps, items, keys and every helper's parameters are strictly typed. `getLayer` returns `AVLayer`, the kind nearly every command needs; code that may meet a camera or light checks `instanceof` or reads through `safe()`.
+- **One global scope:** files are scripts (no imports or exports), all wrapped in the same closure, so every top-level name is shared across `host/` and with the After Effects declarations. Interfaces with a colliding name **merge silently** (a `Bounds` interface merged with ScriptUI's): prefix type names (`LayerBounds`, `Affine`).
+- **Casts:** cast an operand (`(l as AVLayer).threeDLayer`, `it as Pt2s`), not a whole expression: TypeScript keeps parentheses around a cast expression, and the code should read the same compiled.
 - The type definitions are not perfect: they omit `Error.message` (ExtendScript has it; the declarations only list `description`).
 
 ## Adding a tool
@@ -67,10 +70,10 @@ A tool has two halves with the same name: a schema on the server and a command i
    - Use `r.tool(...)` instead only when the server must do real work (see `src/tools/output.ts`).
    - Write the description for the model: what the tool does, units, defaults, and what it refuses.
 
-2. **Host**: add `C.set_layer_color` to the matching `host/commands/<group>.jsx`:
+2. **Host**: add `C.set_layer_color` to the matching `host/commands/<group>.ts`:
 
-   ```js
-   C.set_layer_color = function (a) {
+   ```ts
+   C.set_layer_color = function (a: Args["set_layer_color"]) {
      need(a, ["layer_id", "label"]);
      var l = getLayer(a.layer_id);
      if (a.label < 0 || a.label > 16) fail("BAD_ARGS", "label must be 0 to 16");
@@ -79,10 +82,11 @@ A tool has two halves with the same name: a schema on the server and a command i
    };
    ```
 
-   - **ES3 only** (see below). Validate before you change anything.
+   - `Args["set_layer_color"]` appears once `npm run build` regenerates `host/args.d.ts` from step 1's schema.
+   - **ES3 output** (see below). Validate before you change anything.
    - Raise errors with `fail(code, message, hint)`; give a hint that tells the model what to do next.
    - Return plain JSON (copy After Effects arrays with `copyArr`).
-   - If the command changes nothing undoable, add it to `READONLY` in `host/dispatch.jsx`.
+   - If the command changes nothing undoable, add it to `READONLY` in `host/dispatch.ts`.
    - A new host file must be added to `MODULES` in `scripts/build-host.ts`. Top-level names must be unique across `host/`; the build fails on a duplicate.
 
 3. **Tests**: bump `EXPECTED_TOOLS` in `test/static-checks.ts`, and add logic tests to `test/mock-host.test.ts` or `test/mock-camera.test.ts` when the command has real logic.
@@ -95,27 +99,27 @@ A tool has two halves with the same name: a schema on the server and a command i
 
 ## ExtendScript rules
 
-After Effects runs `host.jsx` in ExtendScript, an ES3 engine:
+After Effects runs `host.jsx` in ExtendScript, an ES3 engine. `host/` is TypeScript compiled to ES5 syntax, so:
 
-- No `let`/`const`, arrow functions, template literals, spread, destructuring or classes.
-- No ES5+ helpers: `forEach`, `map`, `filter`, `reduce`, `some`, `every`, `Object.keys`, `Array.isArray`, `.trim()`, `.includes()`, `.startsWith()`, `.endsWith()`, `.padStart()`, `.repeat()`.
+- `const` / `let`, arrow functions and template strings are fine (lowered). No spread, destructuring, `for...of`, classes or async: they need helper functions.
+- No ES5+ library methods (compile errors with the ES3 library types): `forEach`, `map`, `filter`, `reduce`, `some`, `every`, `Object.keys`, `Array.isArray`, `.trim()`, `.includes()`, `.startsWith()`, `.endsWith()`, `.padStart()`, `.repeat()`.
 - No `Array.prototype.indexOf`. `String.prototype.indexOf` is fine; the static check lists every `indexOf` so you can confirm each one is on a string.
 - No built-in `JSON`; `host/json.jsx` provides `JSON.stringify` and `JSON.parse`.
-- Declare all `var`s at the top of the function. Function-scoped `var` is the only scope there is.
+- The existing code declares `var`s at the top of each function (function scope is the only scope ExtendScript has; `const` / `let` compile to `var`).
 
-`test/static-checks.ts` lints `host/` for these, comments included, and reports `host/<file>:<line>`.
+`test/static-checks.ts` lints the compiled output for these, comments included, and reports `build/host/<file>:<line>`.
 
 ## After Effects quirks
 
 Found in live testing; the code relies on all of these.
 
-- Setting a layer's `inPoint` also moves its `outPoint` (the layer keeps its length). Use `setIn(layer, t)` (`host/core/timing.jsx`), which puts `outPoint` back. Assigning `outPoint` on its own is safe.
+- Setting a layer's `inPoint` also moves its `outPoint` (the layer keeps its length). Use `setIn(layer, t)` (`host/core/timing.ts`), which puts `outPoint` back. Assigning `outPoint` on its own is safe.
 - Changing `startTime` moves the in and out points with it. `shiftLayer` relies on that but still checks.
 - Using a layer as a track matte hides it (`enabled` becomes false).
 - `app.path` is a Folder object, not a string: use `app.path.fsName` (`appDir()`). `new Folder(app.path)` gives a bogus temp path.
 - `aerender` takes the output file's extension from the output module, so the written file can differ from `-output` (a `.mov` request became `.mp4`). `render_status` looks for the real file once the job is done.
 - Time changes should snap to whole frames (`snapT`); several tools rely on exact frame boundaries.
-- Coordinates are x right, y down, z into the screen: a camera in front of the comp has negative z, and up on screen is negative y. The camera helpers (`yaw`, `elevate`, `rightOf` in `host/core/vector.jsx`) rely on this.
+- Coordinates are x right, y down, z into the screen: a camera in front of the comp has negative z, and up on screen is negative y. The camera helpers (`yaw`, `elevate`, `rightOf` in `host/core/vector.ts`) rely on this.
 - Rig, shake and look-at expressions are marked on their first line: `// ae-motion rig`, `// ae-motion shake`, `// ae-motion look-at`. `keyTarget` sends keyframes to a rig's control layers, lets keys sit under a shake, and refuses any other expression.
 - Lens maths assumes a 36 mm film width: zoom px = focal length × comp width / 36.
 - `addCamera` and `addLight` leave x and y at 0 even when given a center; `centerLayer` puts them over the comp center.
@@ -168,9 +172,25 @@ CI (`.github/workflows/ci.yml`) runs `npm run typecheck` and `npm test` on macOS
 
 A green `npm test` doesn't prove a change works in real After Effects: the mocks only know the behavior already seen there.
 
+## Live tests
+
+`npm test` runs against mock After Effects objects written by hand, so it can pass while real After Effects behaves differently (a new AE version, a quirk modelled wrong). `test/live/run.ts` checks the same behaviours against a real After Effects through the built server: layer timing, frame snapping, split, track mattes, parenting, precompose, insert_time, markers, keyframe easing kept on a move, springs (overshoot and exact landing), expressions under `get_keyframes`, text, effects, masks and shapes, alignment by bounds, camera direction, 3D, the motion tools, previews, `batch` and the error format.
+
+```bash
+npm run build && node test/live/run.ts --yes            # replaces the open project with a new, unsaved one
+node test/live/run.ts --yes --only spring               # checks whose name contains "spring"
+```
+
+Each check gets its own comp. CI can't run them (no After Effects), so run them before a release and after any change to `host/` or `panel/`; when a mock gets a new quirk, add a live check for it. `scripts/mcp-client.ts` is the small stdio MCP client they (and the evals) use.
+
 ## Evaluations
 
-`evals/` holds ten read-only questions about a fixed test project, run through headless Claude Code (`claude -p`, no API key) against a live After Effects: `npm run build && node evals/run.ts`. Use it after changing tool descriptions, result shapes or `SERVER_INSTRUCTIONS`, and compare the score and tool calls per question with the previous run. Details in `evals/README.md`.
+`evals/` checks how well a model uses the tools, through headless Claude Code (`claude -p`, no API key) against a live After Effects:
+
+- `node evals/run.ts`: ten read-only questions about a fixed test project, graded on the answer.
+- `node evals/run.ts --build`: seven build tasks on the same project (add an eased text layer, fade layers out, re-time a stagger, add markers, change an effect, re-time a camera key, centre a layer); the model gets the tools that change things, and each task's check (`evals/build-tasks.ts`) reads the result through the tools.
+
+Use them after changing tool descriptions, result shapes or `SERVER_INSTRUCTIONS`, and compare the score and tool calls per question with the previous run. Details in `evals/README.md`.
 
 ## Verification status
 

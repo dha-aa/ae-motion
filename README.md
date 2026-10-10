@@ -189,7 +189,7 @@ All settings are environment variables on the MCP server process. The one except
 | `preview_frame` or `import_footage` fail with a scripting permission error | Enable **Allow Scripts to Write Files and Access Network** in After Effects (see [Installation](#2-allow-scripts-in-after-effects)). |
 | `FORBIDDEN`: path outside the allowed folders | Add the folder to `AE_MCP_ALLOWED_DIRS`. |
 | `FORBIDDEN`: `run_jsx` is disabled | Set `AE_MCP_ALLOW_JSX=1` in the server's environment. |
-| `TIMEOUT` | The command may still be running. Check the panel, inspect state, then retry. A modal dialog open in After Effects also blocks commands. |
+| `TIMEOUT` | The message says what happened: still running (it finishes on its own: inspect state before retrying), or dropped before it started because After Effects was busy with another command (safe to retry). A modal dialog open in After Effects blocks commands. |
 | `AE_ERROR`: aerender not found | Set `AE_AERENDER` to the full path of the `aerender` executable. |
 | `BAD_ARGS`: Project has never been saved | Save the project once (or call `save_project` with a path), then call `render_start` again. |
 | `EXISTS` on `render_start` | The output file exists. Pass `overwrite: true` or choose another path. |
@@ -212,9 +212,9 @@ How the check works: the MCP server asks GitHub for the repository's version tag
 
 ## Updating and uninstalling
 
-**Update from the panel:** click **Update to vX.Y.Z** (or **Reinstall**) in the AE Motion MCP panel, then click again to confirm. It runs `git pull` and the installer in your ae-motion folder, shows the output, and restarts the panel with the new version; then restart your AI client so it uses the new server. The panel finds the folder and your `git` / `node` / `npm` through `install.json`, which the installer writes, so a panel installed before this button existed needs one manual update first. If `git pull` fails (local changes, a branch without an upstream), update by hand.
+**Update from the panel:** click **Update to vX.Y.Z** (or **Reinstall**) in the AE Motion MCP panel, then click again to confirm. It runs `scripts/update.ts` in your ae-motion folder, which checks out the newest release tag (never unreleased work on `main`) and runs the installer, shows the output, and restarts the panel with the new version; then restart your AI client so it uses the new server. The checkout is left on that tag (`git switch main` goes back). The panel finds the folder and your `git` / `node` / `npm` through `install.json`, which the installer writes, so a panel installed before this button existed needs one manual update first. If you have local changes, it stops and says so: commit or stash them, or update by hand.
 
-**Update by hand:** in the repo folder, `git pull`, then run the installer again (`bash scripts/install.sh`, or `./scripts/install.ps1` on Windows; it rebuilds and replaces the installed panel). Reopen the AE Motion MCP panel (or restart After Effects) and restart the MCP server from your client. The panel's Version line shows the new version.
+**Update by hand:** in the repo folder, `node scripts/update.ts` (the newest release, then the installer). Or `git pull` for the latest `main`, then run the installer again (`bash scripts/install.sh`, or `./scripts/install.ps1` on Windows; it rebuilds and replaces the installed panel). Reopen the AE Motion MCP panel (or restart After Effects) and restart the MCP server from your client. The panel's Version line shows the new version.
 
 **Uninstall:**
 

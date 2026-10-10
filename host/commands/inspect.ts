@@ -13,23 +13,23 @@ C.get_project = function () {
 C.get_selection = function () {
   var ai = app.project.activeItem, out = [], i;
   if (!(ai instanceof CompItem)) return { comp_id: null, layers: [] };
-  for (i = 0; i < ai.selectedLayers.length; i++) out.push(layerInfo(ai.selectedLayers[i]));
+  for (i = 0; i < ai.selectedLayers.length; i++) out.push(layerInfo(ai.selectedLayers[i] as AVLayer));
   return { comp_id: ai.id, layers: out };
 };
 
 // A comp and its layers (top of the stack first). On big comps, name / kind / at narrow the list and limit / offset
 // page it; kinds counts every layer by kind.
-C.get_comp = function (a) {
+C.get_comp = function (a: Args["get_comp"]) {
   need(a, ["comp_id"]);
   var c = getComp(a.comp_id), o = compInfo(c, false), q = a.name ? String(a.name).toLowerCase() : "", lim = a.limit || 150, off = a.offset || 0,
-    rows = [], kinds = {}, i, l, k, n = 0;
+    rows = [], kinds: { [kind: string]: number } = {}, i, l, k, n = 0;
   for (i = 1; i <= c.numLayers; i++) {
     l = c.layer(i); k = layerKind(l); kinds[k] = (kinds[k] || 0) + 1;
     if (q && l.name.toLowerCase().indexOf(q) === -1) continue;
     if (a.kind && k !== a.kind) continue;
     if (has(a, "at") && (a.at < l.inPoint - 1e-6 || a.at >= l.outPoint - 1e-6)) continue;
     if (n++ < off || rows.length >= lim) continue;
-    rows.push(layerBrief(l, c));
+    rows.push(layerBrief(l as AVLayer, c));
   }
   o.layers = rows;
   if (c.numLayers > 20) o.kinds = kinds;
@@ -37,17 +37,17 @@ C.get_comp = function (a) {
   return o;
 };
 
-C.get_layer = function (a) {
+C.get_layer = function (a: Args["get_layer"]) {
   var many = has(a, "layer_ids"), out = [], i;
   if (many === has(a, "layer_id")) fail("BAD_ARGS", "Pass layer_id or layer_ids (not both)", "layer_ids reads several layers in one call");
-  if (!many) return layerDetail(getLayer(a.layer_id), a.time || 0);
+  if (!many) return layerDetail(getLayer(a.layer_id!), a.time || 0);
   if (!(a.layer_ids instanceof Array) || a.layer_ids.length === 0) fail("BAD_ARGS", "layer_ids must list at least one layer");
   for (i = 0; i < a.layer_ids.length; i++) out.push(layerDetail(getLayer(a.layer_ids[i]), a.time || 0));
   return { layers: out };
 };
 
-function layerDetail(l, time) {
-  var o = layerInfo(l), names = ["anchor", "position", "scale", "rotation", "opacity"], i, p, v, fx, eff;
+function layerDetail(l: AVLayer, time: number): Obj {
+  var o: Obj = layerInfo(l), names = ["anchor", "position", "scale", "rotation", "opacity"], i, p, v, fx, eff;
   o.transform = {}; o.expressions = [];
   for (i = 0; i < names.length; i++) {
     try {
@@ -64,7 +64,7 @@ function layerDetail(l, time) {
   if (fx) for (i = 1; i <= fx.numProperties; i++) { eff = fx.property(i); o.effects.push({ index: i, name: eff.name, match_name: eff.matchName, enabled: eff.enabled }); }
   try { o.num_markers = l.property("ADBE Marker").numKeys; } catch (e2) { o.num_markers = 0; }
   o.masks = safe(function () {
-    var ms = l.property("ADBE Mask Parade"), out = [], k, m;
+    var ms = l.property("ADBE Mask Parade"), out: Obj[] = [], k, m;
     if (!ms) return out;
     for (k = 1; k <= ms.numProperties; k++) { m = ms.property(k); out.push({ index: k, name: m.name, mode: maskModeName(m.maskMode), inverted: m.inverted, locked: m.locked }); }
     return out;
@@ -75,22 +75,22 @@ function layerDetail(l, time) {
   });
   o.track_matte = safe(function () {
     if (!l.hasTrackMatte) return null;
-    return { type: matteTypeName(l.trackMatteType), matte_layer_id: safe(function () { return l.trackMatteLayer.id; }) };
+    return { type: matteTypeName(l.trackMatteType), matte_layer_id: safe(function () { return l.trackMatteLayer!.id; }) };
   });
   return o;
 }
 
-C.list_properties = function (a) {
+C.list_properties = function (a: Args["list_properties"]) {
   need(a, ["layer_id"]);
-  var l = getLayer(a.layer_id), root = l, maxDepth = a.depth === undefined ? 3 : a.depth;
-  if (a.group_path) root = resolvePath(l, a.group_path);
+  var l = getLayer(a.layer_id), root: PropertyGroup = l, maxDepth = a.depth === undefined ? 3 : a.depth;
+  if (a.group_path) root = resolvePath<PropertyGroup>(l, a.group_path);
   // a group_path straight into a skipped group (e.g. Material Options) lists it
   return { properties: walk(root, 1, maxDepth, a.time || 0, a.all === true || (a.group_path && WALK_SKIP[root.matchName] === 1)) };
 };
 
-C.get_keyframes = function (a) {
+C.get_keyframes = function (a: Args["get_keyframes"]) {
   need(a, ["layer_id", "path"]);
-  var l = getLayer(a.layer_id), p = resolvePath(l, a.path), out = [], i, n, v, res;
+  var l = getLayer(a.layer_id), p = resolvePath(l, a.path), out: KeyInfo[] = [], i, n, v, res: Obj;
   if (p.propertyType !== PropertyType.PROPERTY) fail("BAD_ARGS", "path must point to a property, not a group", "Use list_properties");
   n = p.numKeys;
   for (i = 1; i <= n && i <= 500; i++) out.push(keyInfo(p, i));
@@ -100,7 +100,7 @@ C.get_keyframes = function (a) {
   return res;
 };
 
-C.find_effects = function (a) {
+C.find_effects = function (a: Args["find_effects"]) {
   var qs = String(a.query || "").toLowerCase(), out = [], i, e;
   for (i = 0; i < app.effects.length && out.length < 50; i++) {
     e = app.effects[i];

@@ -50,7 +50,7 @@ export function registerDesignTools(r: ToolRegistry): void {
     {
       layer_id: id("Layer"),
       style: z.enum(["drop_shadow", "inner_shadow", "outer_glow", "inner_glow", "bevel_emboss", "satin", "color_overlay", "gradient_overlay", "stroke"]),
-      params: z.record(Value).optional(), enabled: z.boolean().optional(),
+      params: z.record(z.string(), Value).optional(), enabled: z.boolean().optional(),
     },
     { idempotent: true },
   );
