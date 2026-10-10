@@ -57,9 +57,11 @@ committing (`node .claude/skills/run-ae-motion/driver.ts call get_comp '{"comp_i
 |---|---|---|---|---|---|
 | 2026-10-10 | 2.11.3 | default | 10/10 | 9.2 | `batch` denied in 5 questions; layers fetched one by one; precomp source guessed from comp times |
 | 2026-10-10 | 2.12.0 | default | 10/10 | 5.6 | `get_layer layer_ids`, `source_id`, layer `text`, `get_keyframes` static `value` |
+| 2026-10-10 | 2.13.0 | default | 10/10 | 5.5 | host in TypeScript, zod 4, SDK 1.32: unchanged behaviour |
 
 Build tasks:
 
 | Date | Version | Model | Score | Tool calls / task | Notes |
 |---|---|---|---|---|---|
 | 2026-10-10 | 2.12.0 + unreleased | default | 7/7 | 6.0 | first run; `batch` for repeated steps, `edit_keyframes` move kept the camera key's value, nothing denied |
+| 2026-10-10 | 2.13.0 | default | 7/7 | 6.1 | host in TypeScript, zod 4, SDK 1.32 |
