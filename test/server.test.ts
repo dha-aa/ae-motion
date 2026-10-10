@@ -372,6 +372,13 @@ const results: [name: string, pass: boolean, detail?: string][] = [];
   const [, openErr] = await body("batch", { steps: [{ tool: "open_project", args: { path: path.join(DIR, "x.aep") } }] });
   results.push(["H: paths are sandboxed, forward references, run_jsx and open_project are refused", sandboxed && outsideErr && refErr && jsxErr && openErr && calls.length === 0]);
 
+  // a schema failure is a tool error in ae-motion's format (isError, BAD_ARGS, a hint), not the SDK's raw text
+  calls.length = 0;
+  const [badArgs, badArgsErr] = await body("set_layer", { layer_id: "abc", colour: 1 });
+  results.push(["H: bad arguments come back as isError {error: {code: BAD_ARGS, message, hint}} without reaching the host",
+    badArgsErr && badArgs.error?.code === "BAD_ARGS" && /layer_id/.test(badArgs.error.message) && /colour/.test(badArgs.error.message) && !/MCP error/.test(badArgs.error.message) && typeof badArgs.error.hint === "string" && calls.length === 0,
+    JSON.stringify(badArgs)]);
+
   // "$$" is a literal dollar: a price as text reaches the host as "$99"; a bare "$99" is a reference and says how to escape it
   calls.length = 0;
   const [, priceErr] = await body("batch", { steps: [{ tool: "add_layer", args: { comp_id: 1, kind: "text", options: { text: "$$99" } } }] });
