@@ -47,6 +47,8 @@ const banned: [RegExp, string][] = [
   [/\.(forEach|map|filter|reduce|some|every)\(/, "ES5 array method"],
   [/Object\.keys|Array\.isArray|\.trim\(\)|\.includes\(|\.startsWith\(|\.endsWith\(|\.padStart\(|\.repeat\(/, "ES5+/ES6 helper"],
   [/\.\.\./, "spread"], [/[\u2028\u2029]/, "raw line/paragraph separator (use \\u2028 / \\u2029)"],
+  // ES3 reserves Java's words: a variable named one of them stops After Effects loading host.jsx at all
+  [/(?:\bvar\s+|,\s*|\(\s*)(?:abstract|boolean|byte|char|double|final|float|goto|int|long|native|short|synchronized|throws|transient|volatile)\s*(?:=|,|;|\))/, "ES3 reserved word as a name"],
 ];
 let lintHits = 0;
 const indexOfUses: string[] = [];

@@ -42,6 +42,16 @@ await t("deliver encodes an H.264 MP4 at the loudness target", async () => {
   ok(r.loudness_lufs !== undefined && Math.abs(r.loudness_lufs + 14) < 1.5, "loudness " + r.loudness_lufs);
 });
 
+await t("a small move on a plain frame is not frozen; a held frame is", async () => {
+  const small = path.join(tmp, "small.mp4"), held = path.join(tmp, "held.mp4");
+  // a 40 px dot crossing a white 1280 x 720 frame at 200 px/s (about what a stick figure's arm changes)
+  execFileSync(ff, ["-loglevel", "error", "-y", "-f", "lavfi", "-i", "color=c=white:s=1280x720:r=30:d=3", "-f", "lavfi", "-i", "color=c=black:s=40x40:r=30:d=3",
+    "-filter_complex", "[0][1]overlay=x='100+t*200':y=300:eval=frame", "-c:v", "libx264", small]);
+  execFileSync(ff, ["-loglevel", "error", "-y", "-f", "lavfi", "-i", "testsrc2=s=640x360:r=30:d=1", "-vf", "tpad=stop_mode=clone:stop_duration=3", "-c:v", "libx264", held]);
+  ok((await checkMedia(ff, small)).frozen.length === 0, "small move read as frozen");
+  ok((await checkMedia(ff, held)).frozen.length === 1, "held frame not found");
+});
+
 await t("a clean audio-only file reports no issues", async () => {
   const aif = path.join(tmp, "mix.aif");
   execFileSync(ff, ["-loglevel", "error", "-y", "-f", "lavfi", "-i", "sine=f=220:d=3,volume=1.5", aif]);

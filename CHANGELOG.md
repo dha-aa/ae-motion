@@ -2,6 +2,13 @@
 
 All notable changes. Versions follow [semantic versioning](https://semver.org); each release is a git tag `vX.Y.Z`, which is what the update check looks for.
 
+## 2.11.1 — 2026-10-10
+
+### Fixed
+- A delivery render could fail with "master not found": aerender can exit a moment before its file is on disk, so the render manager now waits for the file to settle before encoding and checking.
+- The ES3 lint now flags Java reserved words used as names (`long`, `int`, `final` and so on): one stops After Effects loading host.jsx at all, which is how it was found.
+- The render check's frozen-picture test read a small figure moving on a plain frame as frozen (noise threshold 0.003, now 0.0005).
+
 ## 2.11.0 — 2026-10-10
 
 Everything that got in the way while making a 60 s documentary film with ae-motion: the tools now check their own

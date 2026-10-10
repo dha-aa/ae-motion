@@ -71,7 +71,8 @@ export async function checkMedia(ffmpeg: string, file: string): Promise<MediaChe
   const duration = d ? +d[1] * 3600 + +d[2] * 60 + parseFloat(d[3]) : null;
   const hasVideo = /Stream #.*Video:/.test(probe), hasAudio = /Stream #.*Audio:/.test(probe);
   const args = ["-hide_banner", "-nostats", "-i", file];
-  if (hasVideo) args.push("-vf", "blackdetect=d=0.5:pix_th=0.10,freezedetect=n=0.003:d=2");
+  // freezedetect noise 0.0005: at 0.003 a small figure moving on a plain frame read as frozen
+  if (hasVideo) args.push("-vf", "blackdetect=d=0.5:pix_th=0.10,freezedetect=n=0.0005:d=2");
   else args.push("-vn");
   if (hasAudio) args.push("-af", "silencedetect=noise=-50dB:d=1,ebur128=peak=true");
   else args.push("-an");
