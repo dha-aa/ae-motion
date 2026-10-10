@@ -1,0 +1,44 @@
+<!-- Questions about the project evals/build-fixture.ts builds. Answers verified against it in After Effects 26.3
+     with ae-motion's read-only tools. Each is answerable only by reading the project through the tools. -->
+<evaluation>
+  <qa_pair>
+    <question>The brand logo (the orange circle) sits inside a comp that is nested inside one of the scenes of the main film. How many seconds into the main film does the logo first become visible? Answer with a number of seconds.</question>
+    <answer>16</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Of the scenes placed in the main film, take the one that plays first. Exactly one layer in it is blurred. What is its blurriness value?</question>
+    <answer>12</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>The first scene has a row of repeated rectangles that come on screen one after another. Which of them appears last? Answer with its layer name.</question>
+    <answer>Card 1</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>In the second scene, a coloured solid is cut out by another layer's shape. What text does that cutting layer contain?</question>
+    <answer>REACH</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>One rectangle in the first scene moves by itself without any keyframes. By at most how many degrees does it turn away from its rest angle? Answer with a number.</question>
+    <answer>15</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>At what time, in seconds, does the main film's camera stop moving?</question>
+    <answer>9.5</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>The main film is divided into sections by timeline markers. How long, in seconds, is the section labelled as the problem?</question>
+    <answer>5.5</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>What font size is the main film's subtitle line set in? Answer with a number.</question>
+    <answer>64</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>In the second scene, several single words come on screen at different times. Which word appears last? Answer with the word exactly as it is written.</question>
+    <answer>WINS</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>In the main film, which section marker is active at the moment the third scene begins? Answer with the marker's comment.</question>
+    <answer>Turn</answer>
+  </qa_pair>
+</evaluation>

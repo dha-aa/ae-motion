@@ -38,8 +38,16 @@ C.get_comp = function (a) {
 };
 
 C.get_layer = function (a) {
-  need(a, ["layer_id"]);
-  var l = getLayer(a.layer_id), time = a.time || 0, o = layerInfo(l), names = ["anchor", "position", "scale", "rotation", "opacity"], i, p, v, fx, eff;
+  var many = has(a, "layer_ids"), out = [], i;
+  if (many === has(a, "layer_id")) fail("BAD_ARGS", "Pass layer_id or layer_ids (not both)", "layer_ids reads several layers in one call");
+  if (!many) return layerDetail(getLayer(a.layer_id), a.time || 0);
+  if (!(a.layer_ids instanceof Array) || a.layer_ids.length === 0) fail("BAD_ARGS", "layer_ids must list at least one layer");
+  for (i = 0; i < a.layer_ids.length; i++) out.push(layerDetail(getLayer(a.layer_ids[i]), a.time || 0));
+  return { layers: out };
+};
+
+function layerDetail(l, time) {
+  var o = layerInfo(l), names = ["anchor", "position", "scale", "rotation", "opacity"], i, p, v, fx, eff;
   o.transform = {}; o.expressions = [];
   for (i = 0; i < names.length; i++) {
     try {
@@ -48,6 +56,10 @@ C.get_layer = function (a) {
       if (p.expressionEnabled) o.expressions.push(names[i]);
     } catch (e1) {}
   }
+  if (o.kind === "text") o.text = safe(function () {
+    var d = l.property("ADBE Text Properties").property("ADBE Text Document");
+    return (d.numKeys ? d.valueAtTime(time, false) : d.value).text;
+  });
   o.effects = []; fx = l.property("ADBE Effect Parade");
   if (fx) for (i = 1; i <= fx.numProperties; i++) { eff = fx.property(i); o.effects.push({ index: i, name: eff.name, match_name: eff.matchName, enabled: eff.enabled }); }
   try { o.num_markers = l.property("ADBE Marker").numKeys; } catch (e2) { o.num_markers = 0; }
@@ -66,7 +78,7 @@ C.get_layer = function (a) {
     return { type: matteTypeName(l.trackMatteType), matte_layer_id: safe(function () { return l.trackMatteLayer.id; }) };
   });
   return o;
-};
+}
 
 C.list_properties = function (a) {
   need(a, ["layer_id"]);
@@ -78,11 +90,14 @@ C.list_properties = function (a) {
 
 C.get_keyframes = function (a) {
   need(a, ["layer_id", "path"]);
-  var l = getLayer(a.layer_id), p = resolvePath(l, a.path), out = [], i, n;
+  var l = getLayer(a.layer_id), p = resolvePath(l, a.path), out = [], i, n, v, res;
   if (p.propertyType !== PropertyType.PROPERTY) fail("BAD_ARGS", "path must point to a property, not a group", "Use list_properties");
   n = p.numKeys;
   for (i = 1; i <= n && i <= 500; i++) out.push(keyInfo(p, i));
-  return { num_keys: n, keys: out, expression: (p.canSetExpression && p.expressionEnabled) ? p.expression : null };
+  res = { num_keys: n };
+  if (n === 0) { v = safeVal(p, 0, true); if (v !== undefined) res.value = v; } // unanimated: its value, before any expression
+  res.keys = out; res.expression = (p.canSetExpression && p.expressionEnabled) ? p.expression : null;
+  return res;
 };
 
 C.find_effects = function (a) {

@@ -168,6 +168,10 @@ CI (`.github/workflows/ci.yml`) runs `npm run typecheck` and `npm test` on macOS
 
 A green `npm test` doesn't prove a change works in real After Effects: the mocks only know the behavior already seen there.
 
+## Evaluations
+
+`evals/` holds ten read-only questions about a fixed test project, run through headless Claude Code (`claude -p`, no API key) against a live After Effects: `npm run build && node evals/run.ts`. Use it after changing tool descriptions, result shapes or `SERVER_INSTRUCTIONS`, and compare the score and tool calls per question with the previous run. Details in `evals/README.md`.
+
 ## Verification status
 
 Checked by hand on macOS with After Effects 26.3: every tool has been run against a real project, including real `aerender` renders with `render_status` and `render_cancel`, Save As and in-place saves, `import_footage` and `apply_preset`. The 3D camera, light and 3D layer tools were checked live: lens and depth-of-field setup, every move type (directions confirmed from rendered pixels), easing, rig create and remove with the animation preserved, shake, look-at, path, `set_3d` and `set_light` including materials, shadows and keyframes. Linking, the null options and all eleven 3D views were checked live too.
