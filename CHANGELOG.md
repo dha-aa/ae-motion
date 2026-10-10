@@ -2,6 +2,16 @@
 
 All notable changes. Versions follow [semantic versioning](https://semver.org); each release is a git tag `vX.Y.Z`, which is what the update check looks for.
 
+## 2.12.0 — 2026-10-10
+
+### Added
+- `evals/`: ten read-only questions about a fixed test project (built by `evals/build-fixture.ts`) that check a model can find its way around a real After Effects project with ae-motion's tools alone. `node evals/run.ts` runs them through headless Claude Code, so no API key is needed, and reports the score, tool calls per question and each answer's notes on what made it harder.
+- `get_layer` takes `layer_ids` to read several layers in one call. Read-only clients can't use `batch` (it can change things, so it isn't marked read-only), and in the first eval run models fetched layers one by one, up to 8 calls in a row.
+- `get_layer` includes a text layer's `text`, and layer info (`get_layer`, `get_comp` rows) has `source_id` for precomp and footage layers: the comp or footage item it plays. Before, a model had to guess which comp a precomp layer showed from its name.
+
+### Changed
+- `get_keyframes` on a property without keys returns its `value` (before any expression). Before, it returned only an empty key list, so reading an effect setting such as a blur amount needed `list_properties`.
+
 ## 2.11.3 — 2026-10-10
 
 ### Added

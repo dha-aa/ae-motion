@@ -31,9 +31,9 @@ export function registerInspectTools(r: ToolRegistry): void {
 
   r.bridged(
     "get_layer",
-    "Get a layer's transform values, effects, layers with expressions, marker count, masks (mode, inverted), track matte and bounds (content: the layer-space box of its text/shapes/pixels; comp: where that box sits in the comp, null for 3D layers). Values are read at `time` (default 0).",
-    { layer_id: id("Layer"), time: z.number().min(0).optional() },
-    ro,
+    "Get a layer (or several: layer_ids): transform values, text, effects, expressions, marker count, masks, track matte, bounds (content: its layer-space box; comp: its place in the comp, null for 3D). Values at `time` (default 0).",
+    { layer_id: id("Layer").optional(), layer_ids: z.array(z.number().int()).min(1).optional(), time: z.number().min(0).optional() },
+    { ...ro, tooLargeHint: "Pass fewer layer_ids" },
   );
 
   r.bridged(
@@ -45,7 +45,7 @@ export function registerInspectTools(r: ToolRegistry): void {
 
   r.bridged(
     "get_keyframes",
-    "Read all keyframes of one property: time, value, in/out interpolation and temporal ease, plus any active expression. Use list_properties to find the path.",
+    "Read all keyframes of one property: time, value, in/out interpolation and temporal ease, plus any active expression; unanimated, its value. Use list_properties to find the path.",
     { layer_id: id("Layer"), path: PropPath },
     ro,
   );

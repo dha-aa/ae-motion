@@ -80,7 +80,7 @@ function makeWorld() {
   vm.runInContext(SRC, ctx);
   const call = (cmd, args = {}) => JSON.parse(ctx.AEM.dispatch(JSON.stringify({ cmd, args })));
   const tp = (l, m) => l.property("ADBE Transform Group").property(m);
-  return { call, make, tp, comp, TextLayer, ShapeLayer, CameraLayer };
+  return { call, make, tp, comp, TextLayer, ShapeLayer, CameraLayer, CompItem };
 }
 
 const results = [];
@@ -88,6 +88,21 @@ const t = (name, fn) => { try { fn(); results.push([name, true]); } catch (e) { 
 const ok = (r) => { assert.equal(r.ok, true, JSON.stringify(r.error)); return r.result; };
 const fails = (r, code) => { assert.equal(r.ok, false, "should fail"); if (code) assert.equal(r.error.code, code, JSON.stringify(r.error)); return r.error; };
 const bounds = (w, l) => ok(w.call("get_layer", { layer_id: l.id })).bounds.comp;
+
+t("get_layer reads several layers in one call, with a text layer's text and the comp a precomp plays", () => {
+  const w = makeWorld();
+  const txt = w.comp.layers.addText("REACH");
+  const pre = w.make(null, { name: "Scene B" });
+  pre.source = Object.assign(new w.CompItem(), { id: 32, name: "Scene B" });
+  const r = ok(w.call("get_layer", { layer_ids: [txt.id, pre.id] }));
+  assert.equal(r.layers.length, 2);
+  assert.equal(r.layers[0].text, "REACH");
+  assert.equal(r.layers[1].kind, "precomp");
+  assert.equal(r.layers[1].source_id, 32);
+  assert.equal(ok(w.call("get_layer", { layer_id: pre.id })).source_id, 32, "one layer still returns it bare");
+  fails(w.call("get_layer", { layer_id: pre.id, layer_ids: [pre.id] }), "BAD_ARGS");
+  fails(w.call("get_layer", {}), "BAD_ARGS");
+});
 
 t("comp bounds follow position, anchor, scale and rotation", () => {
   const w = makeWorld();

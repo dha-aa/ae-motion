@@ -36,7 +36,11 @@ class Prop {
   removeKey(i) { this.keys.splice(i - 1, 1); this.rove(); }
   // After Effects re-times roving keys between their neighbours whenever keys change
   rove() { for (let i = 1; i < this.keys.length - 1; i++) if (this.keys[i].rov) this.keys[i].t = (this.keys[i - 1].t + this.keys[i + 1].t) / 2; }
-  valueAtTime(t) { const k = this.keys.find((x) => Math.abs(x.t - t) < 1e-9); return k ? k.v : this.value; }
+  // pre (as After Effects' second argument): the value before the expression; exprValue stands in for its result
+  valueAtTime(t, pre) {
+    const k = this.keys.find((x) => Math.abs(x.t - t) < 1e-9), v = k ? k.v : this.value;
+    return this.expression && !pre && this.exprValue !== undefined ? this.exprValue : v;
+  }
   keyTime(i) { return this.keys[i - 1].t; }
   keyValue(i) { return this.keys[i - 1].v; }
   nearestKeyIndex(t) { let b = 1, d = Infinity; this.keys.forEach((k, i) => { if (Math.abs(k.t - t) < d) { d = Math.abs(k.t - t); b = i + 1; } }); return b; }
@@ -152,6 +156,17 @@ t("easing via set switches only that key to bezier", () => {
   assert.deepEqual(r.keys.map((k) => k.interp_out), ["bezier"]);
   const all = ok(w.call("get_keyframes", { layer_id: l.id, path: "position" }));
   assert.deepEqual(all.keys.map((k) => k.interp_out), ["bezier", "linear", "linear"]);
+});
+
+t("get_keyframes gives an unanimated property's value, before any expression", () => {
+  const w = makeWorld(), l = w.layer("A"), op = l.property("ADBE Transform Group").property("ADBE Opacity");
+  op.expression = "wiggle(3, 15)"; op.exprValue = 87;
+  const r = ok(w.call("get_keyframes", { layer_id: l.id, path: "opacity" }));
+  assert.equal(r.num_keys, 0);
+  assert.equal(r.value, 100, "the static value, not the expression's result");
+  assert.equal(r.expression, "wiggle(3, 15)");
+  threeKeys(w, l);
+  assert.ok(!("value" in ok(w.call("get_keyframes", { layer_id: l.id, path: "position" }))), "animated: the keys carry the values");
 });
 
 t("roving: refused on the first and last key, allowed between", () => {

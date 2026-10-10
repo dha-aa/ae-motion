@@ -28,6 +28,7 @@ function blendModeName(v) {
 function layerInfo(l) {
   var o = { id: l.id, index: l.index, name: l.name, kind: layerKind(l), "in": l.inPoint, "out": l.outPoint, start: l.startTime, comp_id: l.containingComp.id, label: l.label },
     bm = safe(function () { return blendModeName(l.blendingMode); }), st = safe(function () { return l.stretch; });
+  if ((o.kind === "precomp" || o.kind === "footage") && l.source) o.source_id = l.source.id; // the comp / footage item it plays
   if (l.parent) o.parent_id = l.parent.id;
   if (l.enabled === false) o.enabled = false;
   if (l.locked) o.locked = true;
@@ -121,13 +122,14 @@ function vt(p) {
 }
 
 // A property's value at time as JSON (paths as shape specs), or undefined for types that do not serialize (markers, custom).
-function safeVal(p, time) {
+// pre: the value before any expression (keyframes or the static value).
+function safeVal(p, time, pre) {
   var t = p.propertyValueType, V = PropertyValueType, v;
   try {
     if (t === V.TEXT_DOCUMENT) return p.value.text;
-    if (t === V.SHAPE) return shapeToJson(p.valueAtTime(time, false));
+    if (t === V.SHAPE) return shapeToJson(p.valueAtTime(time, pre === true));
     if (t === V.OneD || t === V.TwoD || t === V.ThreeD || t === V.COLOR || t === V.TwoD_SPATIAL || t === V.ThreeD_SPATIAL || t === V.LAYER_INDEX || t === V.MASK_INDEX) {
-      v = p.canVaryOverTime ? p.valueAtTime(time, false) : p.value;
+      v = p.canVaryOverTime ? p.valueAtTime(time, pre === true) : p.value;
       return v instanceof Array ? copyArr(v) : v;
     }
   } catch (e) {}

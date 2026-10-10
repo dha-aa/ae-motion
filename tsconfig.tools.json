@@ -12,5 +12,5 @@
     "skipLibCheck": true,
     "types": ["node"]
   },
-  "include": ["scripts", "test", ".claude/skills/run-ae-motion"]
+  "include": ["scripts", "test", "evals", ".claude/skills/run-ae-motion"]
 }
