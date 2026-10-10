@@ -5,8 +5,9 @@
 // Every request needs the x-ae-token header. Port and token are written to the bridge file, which the MCP
 // server reads on every call. See docs/architecture.md ("Wire protocol").
 // Commands run one at a time. A queued command whose caller has gone (the MCP server timed out and closed the request)
-// is dropped instead of run late; one already running can't be stopped and finishes. /health says what is running, so
-// the server's TIMEOUT error can tell the model which of the two happened.
+// is dropped instead of run late; one already running can't be stopped and finishes. The bridge file says so
+// (drops: true), so the server's TIMEOUT error can tell the model which of the two happened. /health reports what is
+// running, but only between commands: while ExtendScript runs, this panel can't answer at all.
 //
 // Updates: the MCP server checks for new releases (at most daily) and caches the answer in update.json next to the
 // bridge file; this panel only reads that file (no network) and shows a line when a newer version exists. Its Update
@@ -41,6 +42,10 @@
     });
   }
 
+  // Let pending socket events run first (setImmediate comes after the I/O poll), so a caller that hung up while the
+  // previous command ran is seen as gone before its command would start.
+  function afterIO() { return new Promise(function (r) { (typeof setImmediate === "function" ? setImmediate : setTimeout)(r, 0); }); }
+
   function enqueue(fn) {
     var p = chain.then(fn);
     chain = p.catch(function () {});
@@ -66,11 +71,13 @@
       try { msg = JSON.parse(body); } catch (e) { return send(400, { ok: false, error: { code: "BAD_ARGS", message: "invalid JSON" } }); }
       queued++;
       enqueue(function () {
-        queued--;
-        if (gone) { stats.dropped++; return null; } // nobody waits for it: don't run it late, out of the model's sight
-        running = { cmd: msg.cmd, since: Date.now() };
-        $("last").textContent = msg.cmd + " (running)";
-        return evalHost(msg.cmd, msg.args).then(function (r) { running = null; return r; });
+        return afterIO().then(function () {
+          queued--;
+          if (gone) { stats.dropped++; return null; } // nobody waits for it: don't run it late, out of the model's sight
+          running = { cmd: msg.cmd, since: Date.now() };
+          $("last").textContent = msg.cmd + " (running)";
+          return evalHost(msg.cmd, msg.args).then(function (r) { running = null; return r; });
+        });
       }).then(function (r) {
         var out;
         if (r === null) { $("err").textContent = "dropped " + stats.dropped + " timed-out command(s) before they ran"; return; }
@@ -87,7 +94,8 @@
   function writeBridge(port) {
     var dir = path.dirname(bridgeFile);
     try { fs.mkdirSync(dir); } catch (e) {}
-    fs.writeFileSync(bridgeFile, JSON.stringify({ port: port, token: token, pid: process.pid }), { mode: 384 });
+    // drops: this panel drops a queued command whose request closed (HttpBridge's TIMEOUT message relies on it)
+    fs.writeFileSync(bridgeFile, JSON.stringify({ port: port, token: token, pid: process.pid, drops: true }), { mode: 384 });
   }
 
   function listen(port, tries) {

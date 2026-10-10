@@ -93,7 +93,7 @@ const window = {
 };
 const intervals: (() => void)[] = [];
 const ctx = vm.createContext({
-  window, document, process, console, Promise, JSON, Math, Date, decodeURIComponent,
+  window, document, process, console, Promise, JSON, Math, Date, decodeURIComponent, setImmediate,
   setTimeout, clearTimeout, setInterval: (fn: () => void) => { intervals.push(fn); return 0; },
   require: (name: string) => (name === "child_process" ? fakeChildProcess : req(name)),
 });
@@ -114,6 +114,7 @@ const raw = (method: string, url: string, token: string, body?: string): Promise
 await t("writes the bridge file (port, token, pid) owner-only and shows the address", () => {
   if (!(info.port >= 47670 && info.port <= 47690)) throw new Error("port " + info.port);
   eq(info.token.length, 48, "token length");
+  eq(info.drops, true, "says it drops timed-out commands");
   if (process.platform !== "win32") eq((fs.statSync(bridgeFile).mode & 0o777).toString(8), "600", "mode");
   eq(els.status.textContent, "127.0.0.1:" + info.port, "status");
   eq(els.status.className, "ok", "status class");
@@ -172,7 +173,8 @@ await t("a queued command whose caller timed out is dropped, not run late; the T
   await until(() => pending.length === 1, "dispatch");
   const late = await bridge.run("add_layer", {}, 150); // times out while queued behind slow_render
   eq(late.error.code, "TIMEOUT", "code");
-  if (!/busy with slow_render .* add_layer had not started and was dropped/.test(late.error.message)) throw new Error("message: " + late.error.message);
+  if (!/add_layer was waiting behind slow_render .* never started and was dropped/.test(late.error.message)) throw new Error("message: " + late.error.message);
+  await sleep(30); // After Effects finishes slow_render a little later (here the panel would be blocked until then)
   finish();
   await slow;
   await sleep(50);
@@ -186,6 +188,32 @@ await t("a running command that times out keeps running; the TIMEOUT says to ins
   finish();
   await sleep(30);
   eq(pending.length, 0, "nothing left running");
+});
+
+/** Point the bridge file at a stand-in panel for one call. */
+async function withPanel(handler: http.RequestListener, extra: Json, fn: () => Promise<void>): Promise<void> {
+  const srv = http.createServer(handler);
+  await new Promise<void>((r) => srv.listen(0, "127.0.0.1", () => r()));
+  const saved = fs.readFileSync(bridgeFile, "utf8");
+  fs.writeFileSync(bridgeFile, JSON.stringify({ port: (srv.address() as { port: number }).port, token: "x", ...extra }));
+  try { await fn(); } finally { fs.writeFileSync(bridgeFile, saved); srv.closeAllConnections(); srv.close(); }
+}
+
+await t("TIMEOUT while After Effects is busy (the real panel can't answer /health then): probably still running", async () => {
+  await withPanel(() => { /* blocked: answers nothing */ }, { drops: true }, async () => {
+    const r = await bridge.run("precompose", {}, 150);
+    if (!/After Effects is busy, probably still running precompose/.test(r.error.message) || !/may run twice/.test(r.error.hint)) throw new Error(JSON.stringify(r.error));
+  });
+});
+
+await t("TIMEOUT behind an older panel's queue says the command will still run", async () => {
+  await withPanel(() => {}, {}, async () => {
+    const first = bridge.run("slow", {}, 2000);
+    await sleep(20);
+    const r = await bridge.run("add_layer", {}, 150);
+    if (!/add_layer is waiting behind slow and will still run/.test(r.error.message)) throw new Error(JSON.stringify(r.error));
+    await first;
+  });
 });
 
 await t("TIMEOUT from an older panel (no queue in /health) keeps the generic message", async () => {
