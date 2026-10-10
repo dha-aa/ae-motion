@@ -1,0 +1,40 @@
+{"tool":"open_project","args":{"new":true,"discard_unsaved":true}}
+{"tool":"create_comp","args":{"name":"Logo Lockup","width":800,"height":800,"fps":25,"duration":4}}
+{"tool":"add_layer","args":{"comp_id":"$1.id","kind":"shape","options":{"name":"Logo","in":0.5,"shape":{"type":"ellipse","size":[300,300],"fill":[0.95,0.55,0.15]}}}}
+{"tool":"set_keyframes","args":{"layer_id":"$2.id","path":"scale","keys":[{"t":0.5,"v":[0,0],"interp":"spring"},{"t":1.1,"v":[100,100]}]}}
+{"tool":"add_layer","args":{"comp_id":"$1.id","kind":"text","options":{"name":"Wordmark","text":"NORTHWIND","text_style":{"size":96},"in":1.2,"position":[400,650]}}}
+{"tool":"create_comp","args":{"name":"Scene A","width":1920,"height":1080,"fps":30,"duration":6}}
+{"tool":"add_layer","args":{"comp_id":"$5.id","kind":"shape","options":{"name":"Card 1","in":2,"position":[320,540],"shape":{"type":"rect","size":[260,360],"roundness":24,"fill":[0.2,0.4,0.8]}}}}
+{"tool":"add_layer","args":{"comp_id":"$5.id","kind":"shape","options":{"name":"Card 2","in":1.5999999999999999,"position":[640,540],"shape":{"type":"rect","size":[260,360],"roundness":24,"fill":[0.2,0.5,0.8]}}}}
+{"tool":"add_layer","args":{"comp_id":"$5.id","kind":"shape","options":{"name":"Card 3","in":1.1999999999999997,"position":[960,540],"shape":{"type":"rect","size":[260,360],"roundness":24,"fill":[0.2,0.6000000000000001,0.8]}}}}
+{"tool":"set_expression","args":{"layer_id":"$8.id","path":"rotation","expression":"wiggle(3, 15)"}}
+{"tool":"add_layer","args":{"comp_id":"$5.id","kind":"shape","options":{"name":"Card 4","in":0.7999999999999998,"position":[1280,540],"shape":{"type":"rect","size":[260,360],"roundness":24,"fill":[0.2,0.7,0.8]}}}}
+{"tool":"apply_effect","args":{"layer_id":"$10.id","match_name":"ADBE Gaussian Blur 2","params":{"ADBE Gaussian Blur 2-0001":12}}}
+{"tool":"add_layer","args":{"comp_id":"$5.id","kind":"shape","options":{"name":"Card 5","in":0.3999999999999999,"position":[1600,540],"shape":{"type":"rect","size":[260,360],"roundness":24,"fill":[0.2,0.8,0.8]}}}}
+{"tool":"create_comp","args":{"name":"Scene B","width":1920,"height":1080,"fps":30,"duration":6}}
+{"tool":"add_layer","args":{"comp_id":"$13.id","kind":"solid","options":{"name":"Plate","color":[0.1,0.1,0.12]}}}
+{"tool":"apply_effect","args":{"layer_id":"$14.id","match_name":"ADBE Gaussian Blur 2","params":{"ADBE Gaussian Blur 2-0001":30}}}
+{"tool":"add_layer","args":{"comp_id":"$13.id","kind":"text","options":{"name":"Line A","text":"BUILD","text_style":{"size":110},"in":0.3,"position":[960,300]}}}
+{"tool":"add_layer","args":{"comp_id":"$13.id","kind":"text","options":{"name":"Line B","text":"SHIP","text_style":{"size":110},"in":1,"position":[960,450]}}}
+{"tool":"add_layer","args":{"comp_id":"$13.id","kind":"text","options":{"name":"Line C","text":"WINS","text_style":{"size":110},"in":2.4,"position":[960,600]}}}
+{"tool":"add_layer","args":{"comp_id":"$13.id","kind":"text","options":{"name":"Line D","text":"DISTRIBUTE","text_style":{"size":110},"in":1.7,"position":[960,750]}}}
+{"tool":"add_layer","args":{"comp_id":"$13.id","kind":"solid","options":{"name":"Fill","color":[0.9,0.2,0.3]}}}
+{"tool":"add_layer","args":{"comp_id":"$13.id","kind":"text","options":{"name":"Cutout","text":"REACH","text_style":{"size":300},"position":[960,560]}}}
+{"tool":"set_track_matte","args":{"layer_id":"$20.id","matte_layer_id":"$21.id","type":"alpha"}}
+{"tool":"create_comp","args":{"name":"Scene C","width":1920,"height":1080,"fps":30,"duration":6}}
+{"tool":"add_layer","args":{"comp_id":"$23.id","kind":"precomp","options":{"name":"Lockup","item_id":"$1.id","start":1.5}}}
+{"tool":"create_comp","args":{"name":"Main","width":1920,"height":1080,"fps":30,"duration":20}}
+{"tool":"add_layer","args":{"comp_id":"$25.id","kind":"solid","options":{"name":"BG","color":[0.05,0.05,0.07]}}}
+{"tool":"add_layer","args":{"comp_id":"$25.id","kind":"text","options":{"name":"Title","text":"THE NEXT MOAT","text_style":{"size":140},"position":[960,480]}}}
+{"tool":"set_keyframes","args":{"layer_id":"$27.id","path":"position","keys":[{"t":0,"v":[960,560],"ease_out":"easy"},{"t":1,"v":[960,480],"ease_in":"easy"}]}}
+{"tool":"add_layer","args":{"comp_id":"$25.id","kind":"text","options":{"name":"Subtitle","text":"Distribution beats features","text_style":{"size":64},"position":[960,600]}}}
+{"tool":"add_layer","args":{"comp_id":"$25.id","kind":"precomp","options":{"name":"Scene A","item_id":"$5.id","start":2}}}
+{"tool":"add_layer","args":{"comp_id":"$25.id","kind":"precomp","options":{"name":"Scene B","item_id":"$13.id","start":8}}}
+{"tool":"add_layer","args":{"comp_id":"$25.id","kind":"precomp","options":{"name":"Scene C","item_id":"$23.id","start":14}}}
+{"tool":"link_layers","args":{"layer_ids":["$27.id","$29.id","$31.id"],"new_null":{"name":"Rig","position":[960,540]}}}
+{"tool":"add_layer","args":{"comp_id":"$25.id","kind":"camera","options":{"name":"Cam"}}}
+{"tool":"set_keyframes","args":{"layer_id":"$34.id","path":"position","keys":[{"t":0,"v":[960,540,-2200]},{"t":4,"v":[900,520,-1900]},{"t":9.5,"v":[960,540,-1500]}]}}
+{"tool":"add_marker","args":{"comp_id":"$25.id","time":0,"comment":"Cold open"}}
+{"tool":"add_marker","args":{"comp_id":"$25.id","time":6.5,"comment":"Problem"}}
+{"tool":"add_marker","args":{"comp_id":"$25.id","time":12,"comment":"Turn"}}
+{"tool":"add_marker","args":{"comp_id":"$25.id","time":18,"comment":"Outro"}}

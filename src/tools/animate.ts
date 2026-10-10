@@ -1,6 +1,6 @@
 /**
  * Animation and styling tools: properties, keyframes, expressions, effects, presets, text and shape modifiers.
- * Host side: host/commands/animate.ts and host/commands/text.ts.
+ * Host side: host/commands/animate.jsx and host/commands/text.jsx.
  */
 import { z } from "zod";
 import type { ToolRegistry } from "./registry.js";

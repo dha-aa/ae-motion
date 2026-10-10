@@ -4,7 +4,6 @@
 //
 //   npm run build && node evals/run.ts [--no-build] [--model <alias>] [--only 1,4] [--jobs N]   questions (read-only)
 //   npm run build && node evals/run.ts --build [--model <alias>] [--only 1,4]                   build tasks
-//   --toolsets core   start the server with AE_MCP_TOOLSETS=core (the rest via load_tools), to compare tool-set sizes
 //
 // Questions (evals/evaluation.xml) get the read-only tools and are graded on the answer. Build tasks
 // (evals/build-tasks.ts) get the tools that change the project too (not run_jsx, rendering, or opening, saving and
@@ -25,14 +24,11 @@ const opt = (name: string): string | undefined => { const i = argv.indexOf(name)
 const MODEL = opt("--model");
 const ONLY = opt("--only")?.split(",").map(Number);
 const BUILD = argv.includes("--build");
-const TOOLSETS = opt("--toolsets");
 const JOBS = BUILD ? 1 : Number(opt("--jobs") ?? 1); // questions only read, so they can run in parallel; the panel serialises AE calls
 const TIMEOUT_MS = 10 * 60_000;
 
 type Qa = { n: number; question: string; answer: string };
-/** What the session sent and received, from Claude Code's result: input is uncached, cache_read the cached prefix (tool definitions and earlier turns). */
-type Tokens = { input: number; cache_write: number; cache_read: number; output: number };
-type Outcome = Qa & { got: string; pass: boolean; tool_calls: number; tools: Record<string, number>; denied: number; turns: number; seconds: number; cost_usd?: number; tokens?: Tokens; summary: string; error?: string };
+type Outcome = Qa & { got: string; pass: boolean; tool_calls: number; tools: Record<string, number>; denied: number; turns: number; seconds: number; cost_usd?: number; summary: string; error?: string };
 
 const xml = fs.readFileSync(path.join(ROOT, "evals", "evaluation.xml"), "utf8");
 const unescape = (s: string): string => s.trim().replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&amp;/g, "&");
@@ -57,13 +53,13 @@ if (!BUILD && !argv.includes("--no-build")) { buildFixture(); console.log("fixtu
 
 // the tools each mode may use, from the server's own annotations
 const client = await startClient();
-const tools = await client.tools(); // every tool (startClient loads all groups), so tools added by load_tools are allowed too
-const NEVER = new Set(["check_for_updates", "run_jsx", "open_project", "save_project", "import_footage", "apply_preset", "render_start", "render_status", "render_cancel", "add_sfx", "delete_item"]);
-const allowed = [...tools, { name: "load_tools", annotations: { readOnlyHint: true } }].filter((t) => !NEVER.has(t.name) && (BUILD || t.annotations?.readOnlyHint === true)).map((t) => `mcp__ae-motion__${t.name}`);
+const tools = await client.tools();
+const NEVER = new Set(["check_for_updates", "run_jsx", "open_project", "save_project", "import_footage", "apply_preset", "render_start", "render_status", "render_cancel", "load_tools", "add_sfx", "delete_item"]);
+const allowed = tools.filter((t) => !NEVER.has(t.name) && (BUILD || t.annotations?.readOnlyHint === true)).map((t) => `mcp__ae-motion__${t.name}`);
 
 const work = fs.mkdtempSync(path.join(os.tmpdir(), "ae-motion-eval-"));
 const mcpConfig = path.join(work, "mcp.json");
-fs.writeFileSync(mcpConfig, JSON.stringify({ mcpServers: { "ae-motion": { command: process.execPath, args: [server], env: { AE_MCP_UPDATE_CHECK: "0", ...(TOOLSETS ? { AE_MCP_TOOLSETS: TOOLSETS } : {}) } } } }));
+fs.writeFileSync(mcpConfig, JSON.stringify({ mcpServers: { "ae-motion": { command: process.execPath, args: [server], env: { AE_MCP_UPDATE_CHECK: "0" } } } }));
 
 const PROMPT = (q: string): string => BUILD
   ? `You are working in the Adobe After Effects project that is open right now, using only the ae-motion tools.
@@ -92,20 +88,16 @@ function ask(qa: Qa): Promise<Outcome> {
     child.on("close", (code) => {
       clearTimeout(timer);
       const used: Record<string, number> = {};
-      let calls = 0, denied = 0, final = "", turns = 0, cost: number | undefined, tokens: Tokens | undefined;
+      let calls = 0, denied = 0, final = "", turns = 0, cost: number | undefined;
       for (const line of out.split("\n")) {
         let ev: any;
         try { ev = JSON.parse(line); } catch { continue; }
         if (ev.type === "assistant") for (const b of ev.message?.content ?? []) if (b.type === "tool_use") { calls++; const n = String(b.name).replace("mcp__ae-motion__", ""); used[n] = (used[n] ?? 0) + 1; }
-        if (ev.type === "result") {
-          final = ev.result ?? ""; turns = ev.num_turns ?? 0; cost = ev.total_cost_usd; denied = ev.permission_denials?.length ?? 0;
-          const u = ev.usage;
-          if (u) tokens = { input: u.input_tokens ?? 0, cache_write: u.cache_creation_input_tokens ?? 0, cache_read: u.cache_read_input_tokens ?? 0, output: u.output_tokens ?? 0 };
-        }
+        if (ev.type === "result") { final = ev.result ?? ""; turns = ev.num_turns ?? 0; cost = ev.total_cost_usd; denied = ev.permission_denials?.length ?? 0; }
       }
       const got = /<response>([\s\S]*?)<\/response>/.exec(final)?.[1]?.trim() ?? "";
       const summary = /<summary>([\s\S]*?)<\/summary>/.exec(final)?.[1]?.trim() ?? "";
-      resolve({ ...qa, got, pass: got !== "" && norm(got) === norm(qa.answer), tool_calls: calls, tools: used, denied, turns, seconds: Math.round((Date.now() - started) / 1000), cost_usd: cost, tokens, summary,
+      resolve({ ...qa, got, pass: got !== "" && norm(got) === norm(qa.answer), tool_calls: calls, tools: used, denied, turns, seconds: Math.round((Date.now() - started) / 1000), cost_usd: cost, summary,
         error: code === 0 && final ? undefined : `claude exited ${code}: ${err.trim().slice(-500) || final.slice(-500)}` });
     });
   });
@@ -150,15 +142,12 @@ if (stopped) console.log(`\nStopped: ${stopped}\nNot run: Q${notRun.join(", Q")}
 const passed = results.filter((r) => r.pass).length;
 const calls = results.reduce((s, r) => s + r.tool_calls, 0);
 const cost = results.reduce((s, r) => s + (r.cost_usd ?? 0), 0);
-const tok = (k: keyof Tokens): number => results.reduce((s, r) => s + (r.tokens?.[k] ?? 0), 0);
-const inputAll = tok("input") + tok("cache_write") + tok("cache_read");
-console.log(`\n${passed}/${results.length} ${BUILD ? "tasks done right" : "correct"} · ${calls} tool calls (${(calls / Math.max(1, results.length)).toFixed(1)} per ${BUILD ? "task" : "question"}) · ${results.filter((r) => r.denied).length} ${BUILD ? "tasks" : "questions"} tried a tool they don't have` + (cost ? ` · API-equivalent cost $${cost.toFixed(2)}` : "")
-  + (inputAll ? `\ntokens per ${BUILD ? "task" : "question"}: ${Math.round(inputAll / Math.max(1, results.length) / 1000)}k input (${Math.round(tok("cache_read") / Math.max(1, inputAll) * 100)}% from cache), ${Math.round(tok("output") / Math.max(1, results.length))} output` : ""));
+console.log(`\n${passed}/${results.length} ${BUILD ? "tasks done right" : "correct"} · ${calls} tool calls (${(calls / Math.max(1, results.length)).toFixed(1)} per ${BUILD ? "task" : "question"}) · ${results.filter((r) => r.denied).length} ${BUILD ? "tasks" : "questions"} tried a tool they don't have` + (cost ? ` · API-equivalent cost $${cost.toFixed(2)}` : ""));
 
 const dir = path.join(ROOT, "evals", "results");
 fs.mkdirSync(dir, { recursive: true });
 const file = path.join(dir, new Date().toISOString().replace(/[:.]/g, "-") + ".json");
-fs.writeFileSync(file, JSON.stringify({ mode: BUILD ? "build" : "questions", toolsets: TOOLSETS ?? "all", model: MODEL ?? "default", passed, total: results.length, not_run: notRun, results }, null, 2));
+fs.writeFileSync(file, JSON.stringify({ mode: BUILD ? "build" : "questions", model: MODEL ?? "default", passed, total: results.length, not_run: notRun, results }, null, 2));
 console.log(`details (each answer's summary of how it got there): ${path.relative(ROOT, file)}`);
 fs.rmSync(work, { recursive: true, force: true });
 client.close();

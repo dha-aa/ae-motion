@@ -17,6 +17,10 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 
 const EXPECTED_TOOLS = 77; // update when adding or removing a tool
+// Tool definitions are sent to the model on every request, so their size is a cost. Raise this only on purpose
+// (raised to 69k for the audio group in 2.6.0: about 66.3k chars for 72 tools; AE_MCP_TOOLSETS=core leaves audio out;
+// 72k for the motion group in 2.8.0: 77 tools; back to 69k in 2.10.0 after slimming nested schemas).
+const TOOLS_LIST_BUDGET = 69_000;
 const SERVER_ONLY_TOOLS = SERVER_ONLY; // implemented in the server, no host command (scripts/host-args.ts)
 const HOST_ONLY_COMMANDS = new Set(["get_selection", "prepare_render"]); // used by a resource / render_start, not tools
 
@@ -71,8 +75,7 @@ console.log("      indexOf uses (must all be on strings):");
 for (const u of indexOfUses) console.log("        " + u);
 
 // 3. tool/command cross-check via a real tools/list
-// every tool: all groups (the default is core) and run_jsx (only registered when enabled)
-const srv = spawn(process.execPath, [path.join(ROOT, "dist", "index.js")], { stdio: ["pipe", "pipe", "pipe"], env: { ...process.env, AE_MCP_UPDATE_CHECK: "0", AE_MCP_ALLOW_JSX: "1", AE_MCP_TOOLSETS: "all" } });
+const srv = spawn(process.execPath, [path.join(ROOT, "dist", "index.js")], { stdio: ["pipe", "pipe", "pipe"], env: { ...process.env, AE_MCP_UPDATE_CHECK: "0" } });
 let out = "";
 srv.stdout.on("data", (d) => (out += d));
 const send = (o: object): boolean => srv.stdin.write(JSON.stringify(o) + "\n");
@@ -103,8 +106,8 @@ report(loose.length === 0, `every input schema rejects unknown keys${loose.lengt
 // the host's argument types (host/args.d.ts) are generated from these schemas: a stale file type-checks the host
 // against arguments the server no longer sends
 report(fs.readFileSync(ARGS_OUT, "utf8") === argsFile(tools as Parameters<typeof argsFile>[0], SERVER_ONLY), "host/args.d.ts matches the tool schemas (run `npm run build`)");
-// no hard limit (removed in 2.15.0); the size is printed so growth stays visible
-console.log(`      tools/list is ${JSON.stringify(tools).length} chars with every tool`);
+const listSize = JSON.stringify(tools).length;
+report(listSize <= TOOLS_LIST_BUDGET, `tools/list is ${listSize} chars, within the ${TOOLS_LIST_BUDGET} budget`);
 // Clients read the schemas as JSON Schema 2020-12 (there is no $schema header), and the Claude API refuses a tool
 // whose schema does not compile: it did for add_layer / set_layer / set_text in 2.1.0-2.4.0 (draft-07 tuple `items`).
 const ajv = new Ajv2020({ strict: true, strictTypes: false, allowUnionTypes: true });

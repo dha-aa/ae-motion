@@ -64,7 +64,7 @@ export const SERVER_ONLY = new Set(["render_start", "render_status", "render_can
 export async function listTools(): Promise<{ name: string; inputSchema: Schema }[]> {
   const server = path.join(ROOT, "dist", "index.js");
   if (!fs.existsSync(server)) throw new Error("dist/index.js missing: run `npm run build:server` first");
-  const p = spawn(process.execPath, [server], { env: { ...process.env, AE_MCP_UPDATE_CHECK: "0", AE_MCP_TOOLSETS: "all", AE_MCP_ALLOW_JSX: "1" }, stdio: ["pipe", "pipe", "ignore"] });
+  const p = spawn(process.execPath, [server], { env: { ...process.env, AE_MCP_UPDATE_CHECK: "0", AE_MCP_TOOLSETS: "" }, stdio: ["pipe", "pipe", "ignore"] });
   let buf = "";
   const tools = await new Promise<{ name: string; inputSchema: Schema }[]>((resolve, reject) => {
     p.on("error", reject);
