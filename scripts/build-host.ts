@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Builds panel/host/host.jsx, the single ExtendScript file the CEP panel loads, from the sources in host/.
-// host/*.jsx are used as they are; host/*.ts are first compiled by `tsc -p tsconfig.host.json` into build/host/*.js
-// (npm run build:host does both), and the compiled file is used in their place.
+// host/*.jsx are used as they are; host/*.ts are first compiled to ES5 in build/host/*.js (tsconfig.host-emit.json,
+// TypeScript 5.9; npm run build:host does both), and the compiled file is used in their place.
 //
 // The sources are fragments of one closure: everything except json.jsx is wrapped in
 //   var AEM = (function () { var C = {}; ... return { dispatch: dispatch, version: "<package.json version>" }; })();

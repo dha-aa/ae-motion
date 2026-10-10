@@ -22,7 +22,7 @@ export function registerAnimateTools(r: ToolRegistry): void {
     "Replace all keys on a property (merge: keep keys at other times; replaced: old keys removed). Path properties (ADBE Mask Shape, ADBE Vector Shape) take a shape spec as v; keep the vertex count the same across keys for clean morphs. interp spring/bounce springs the segment to the next key (works on any property). Fails if another expression is active.",
     {
       layer_id: id("Layer"), path: PropPath,
-      keys: z.array(z.object({ t: z.number().min(0), v: ValueOrShape, interp: Interp.optional(), ease_in: Ease.optional(), ease_out: Ease.optional() })).min(1),
+      keys: z.array(z.strictObject({ t: z.number().min(0), v: ValueOrShape, interp: Interp.optional(), ease_in: Ease.optional(), ease_out: Ease.optional() })).min(1),
       merge: z.boolean().optional(),
     },
     { idempotent: true },
@@ -33,7 +33,7 @@ export function registerAnimateTools(r: ToolRegistry): void {
     "Edit single keys on one property, in order, leaving the others. Address a key by t (within half a frame) or index (1-based). set creates a key at t (v or the current value) or updates one; spatial_in/out are motion-path tangents relative to the key. move keeps every setting. Returns the edited keys (get_keyframes lists all).",
     {
       layer_id: id("Layer"), path: PropPath,
-      edits: z.array(z.object({
+      edits: z.array(z.strictObject({
         action: z.enum(["set", "move", "delete"]),
         t: z.number().min(0).optional().describe("Key time in seconds (set creates a key here if none exists)"),
         index: z.number().int().min(1).optional().describe("1-based key index from get_keyframes (instead of t)"),
@@ -73,7 +73,7 @@ export function registerAnimateTools(r: ToolRegistry): void {
   r.bridged(
     "apply_effect",
     "Add an effect by match name (see find_effects) and set parameters by name, match name or 1-based index. If any parameter fails the effect is removed.",
-    { layer_id: id("Layer"), match_name: z.string(), name: z.string().optional(), params: z.record(Value).optional() },
+    { layer_id: id("Layer"), match_name: z.string(), name: z.string().optional(), params: z.record(z.string(), Value).optional() },
     { destructive: false },
   );
 
@@ -124,7 +124,7 @@ export function registerAnimateTools(r: ToolRegistry): void {
   r.bridged(
     "add_shape_modifier",
     "Add trim_paths, repeater or round_corners to a shape group (group_index, default 1). params maps property names or match names to values. Returns the modifier's path and property names for set_keyframes.",
-    { layer_id: id("Layer"), modifier: z.enum(["trim_paths", "repeater", "round_corners"]), group_index: z.number().int().min(1).optional(), params: z.record(Value).optional() },
+    { layer_id: id("Layer"), modifier: z.enum(["trim_paths", "repeater", "round_corners"]), group_index: z.number().int().min(1).optional(), params: z.record(z.string(), Value).optional() },
     { destructive: false },
   );
 }

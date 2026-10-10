@@ -1,19 +1,20 @@
 {
-  // Compiles host/**/*.ts (ExtendScript for After Effects) to build/host/, which scripts/build-host.ts joins with the
-  // remaining host/**/*.jsx into panel/host/host.jsx. Types: After Effects 22.0 (the manifest minimum) and the ES3
-  // standard library from types-for-adobe, so ES5+ runtime APIs (map, forEach, JSON...) are compile errors.
-  // Modern syntax (const, arrows, template strings) is fine: tsc lowers it; test/static-checks.ts lints the output.
+  // Type-checks host/**/*.ts (ExtendScript for After Effects) with TypeScript 7. Types: After Effects 22.0 (the manifest
+  // minimum) and the ES3 standard library from types-for-adobe, so ES5+ runtime APIs (map, forEach, JSON...) are
+  // compile errors. Modern syntax (const, arrows, template strings) is fine: tsconfig.host-emit.json lowers it to ES5
+  // (TypeScript 5.9, which can still emit ES5); test/static-checks.ts lints the output. scripts/build-host.ts joins it
+  // with the remaining host/**/*.jsx into panel/host/host.jsx.
   "compilerOptions": {
-    "target": "ES5",
-    "module": "none",
+    "target": "ES2015",
+    "module": "preserve",
     "noLib": true,
     "typeRoots": [],
     "types": [],
     "strict": true,
-    "alwaysStrict": false,
     "allowJs": true,
     "checkJs": false,
     "outDir": "build/host",
+    "noEmit": true,
     "rootDir": "host",
     "newLine": "lf",
     "skipLibCheck": true

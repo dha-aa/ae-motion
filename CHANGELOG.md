@@ -4,6 +4,10 @@ All notable changes. Versions follow [semantic versioning](https://semver.org); 
 
 ## Unreleased
 
+### Changed
+- Dependencies at their latest versions: zod 4 (from 3), the MCP SDK 1.32 (from 1.12), TypeScript 7 (from 5.9). Every object schema is now a `z.strictObject`, and a static check rejects a plain `z.object`, so unknown keys keep failing at any depth. TypeScript 7 can't produce ES5 any more, so the host's TypeScript files are compiled by TypeScript 5.9 (installed as `typescript-es5`) while TypeScript 7 type-checks everything; the generated `host.jsx` is byte-for-byte the same. `@types/node` stays on 22, the oldest Node ae-motion supports.
+- Tool definitions are 102 characters smaller (68,893): zod 4 no longer copies the `offset` description of `beat_markers` onto `start` and `end` (a zod 3 bug), and record schemas no longer state that keys are strings.
+
 ### Fixed
 - The panel's Update button installed whatever was on `main`, which can hold merged but unreleased work, while the update notice named the newest release. It now runs `scripts/update.ts`, which checks out the newest release tag and then runs the installer; it stops if you have local changes (a `package-lock.json` rewritten by npm doesn't count). Run it by hand with `node scripts/update.ts`.
 - A command that timed out while waiting behind a slow one still ran later, out of the model's sight. The panel now drops a queued command once its caller has given up, and the `TIMEOUT` error says whether the command is still running in After Effects (inspect before retrying) or was dropped before it started (safe to retry), with what After Effects is busy with.

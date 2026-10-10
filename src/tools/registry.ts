@@ -8,7 +8,8 @@
  *
  * Every tool gets:
  * - strict input validation: unknown keys are rejected (at any depth) instead of silently dropped, so a typo
- *   like `colour` fails loudly rather than "succeeding" without effect;
+ *   like `colour` fails loudly rather than "succeeding" without effect. Every object schema is a z.strictObject
+ *   (test/static-checks.ts fails on a plain z.object in src/);
  * - a title and the four MCP annotations (see {@link ToolOptions});
  * - compact JSON output with numbers rounded to 6 significant digits, capped at {@link CHARACTER_LIMIT} characters;
  * - error handling: anything thrown becomes an MCP error result `{error: {code, message, hint}}`.
@@ -54,7 +55,7 @@ export interface BridgedOptions extends ToolOptions {
   paths?: string[];
 }
 
-type Args<S extends z.ZodRawShape> = z.objectOutputType<S, z.ZodTypeAny>;
+type Args<S extends z.ZodRawShape> = z.infer<z.ZodObject<S>>;
 
 /**
  * Round non-integers to 6 significant digits: After Effects reports float noise (0.21999999880791 for 0.22), and
@@ -85,27 +86,6 @@ export function titleFromName(name: string): string {
     .join(" ");
 }
 
-/**
- * Rebuild a schema so that every object in it rejects unknown keys. Definitions (constraints, descriptions,
- * defaults) are copied, only object strictness changes.
- */
-export function deepStrict(schema: z.ZodTypeAny): z.ZodTypeAny {
-  const def = schema._def as any;
-  if (schema instanceof z.ZodObject) {
-    const shape = Object.fromEntries(Object.entries(schema.shape as z.ZodRawShape).map(([k, v]) => [k, deepStrict(v)]));
-    return new z.ZodObject({ ...def, shape: () => shape, unknownKeys: "strict" });
-  }
-  if (schema instanceof z.ZodOptional) return new z.ZodOptional({ ...def, innerType: deepStrict(def.innerType) });
-  if (schema instanceof z.ZodNullable) return new z.ZodNullable({ ...def, innerType: deepStrict(def.innerType) });
-  if (schema instanceof z.ZodDefault) return new z.ZodDefault({ ...def, innerType: deepStrict(def.innerType) });
-  if (schema instanceof z.ZodArray) return new z.ZodArray({ ...def, type: deepStrict(def.type) });
-  if (schema instanceof z.ZodUnion) return new z.ZodUnion({ ...def, options: def.options.map(deepStrict) });
-  if (schema instanceof z.ZodRecord) return new z.ZodRecord({ ...def, valueType: deepStrict(def.valueType) });
-  if (schema instanceof z.ZodTuple) return new z.ZodTuple({ ...def, items: def.items.map(deepStrict) });
-  if (schema instanceof z.ZodEffects) return new z.ZodEffects({ ...def, schema: deepStrict(def.schema) });
-  return schema;
-}
-
 // The title goes on the tool itself only: repeating it inside the annotations costs tokens for nothing.
 function annotationsFor(o: ToolOptions): ToolAnnotations {
   const readOnly = o.readOnly ?? false;
@@ -130,7 +110,7 @@ function capSize(result: CallToolResult, hint?: string): CallToolResult {
 
 /** What batch needs to run a bridged tool itself: its strict schema and path arguments. */
 export interface BridgedSpec {
-  schema: z.ZodTypeAny;
+  schema: z.ZodType;
   paths: string[];
 }
 
@@ -142,7 +122,7 @@ export interface ToolExtra {
 
 /** What batch needs to run a server-side tool (get_project, render_status ...): its strict schema and handler. */
 export interface ServerSpec {
-  schema: z.ZodTypeAny;
+  schema: z.ZodType;
   run: (args: Record<string, unknown>) => Promise<CallToolResult>;
 }
 
@@ -171,7 +151,7 @@ export class ToolRegistry {
       return out;
     };
     this.names.push(name);
-    const config = { title: opts.title ?? titleFromName(name), description, inputSchema: deepStrict(z.object(shape)), annotations: annotationsFor(opts) };
+    const config = { title: opts.title ?? titleFromName(name), description, inputSchema: z.strictObject(shape), annotations: annotationsFor(opts) };
     if (!this.bridgedTools.has(name)) this.serverTools.set(name, { schema: config.inputSchema, run: run as ServerSpec["run"] });
     // The SDK's generic callback type does not line up with zod's inferred output type; the shape is the same.
     this.server.registerTool(name, config as any, handler as any);
@@ -180,7 +160,7 @@ export class ToolRegistry {
   bridged<S extends z.ZodRawShape>(name: string, description: string, shape: S, opts: BridgedOptions = {}): void {
     const paths = opts.paths ?? [];
     for (const k of paths) if (!(k in shape)) throw new Error(`bridged("${name}"): path argument "${k}" is not in the schema`);
-    this.bridgedTools.set(name, { schema: deepStrict(z.object(shape)), paths });
+    this.bridgedTools.set(name, { schema: z.strictObject(shape), paths });
     this.tool(
       name,
       description,
@@ -203,7 +183,8 @@ const BOUNDS = new Set(["minimum", "maximum", "exclusiveMinimum", "exclusiveMaxi
 
 /**
  * A copy of an input schema with local $refs inlined (a ref path is longer than what it points to), bounds and
- * nested additionalProperties: false dropped (zod enforces both; the top level keeps it).
+ * nested additionalProperties: false dropped (zod enforces both; the top level keeps it), and string propertyNames
+ * dropped (JSON keys are strings anyway).
  * Tuples (zod's draft-07 `items: [a, b]`) become one `items` schema when the members are alike, else `prefixItems`:
  * without the $schema header clients read the schema as draft 2020-12, where an `items` array is invalid (the Claude
  * API refused add_layer, set_layer and set_text over box_size / solid_size).
@@ -222,6 +203,8 @@ export function slimSchema(root: Record<string, unknown>): Record<string, unknow
     for (const [k, x] of Object.entries(o)) if (k !== "$schema" && !BOUNDS.has(k)) out[k] = walk(x);
     // nested objects: strictness is enforced by zod and stated in the server instructions (the top level keeps it)
     if (out.additionalProperties === false && o !== root) delete out.additionalProperties;
+    // zod 4 states that a record's keys are strings, which JSON object keys always are
+    if (JSON.stringify(out.propertyNames) === '{"type":"string"}') delete out.propertyNames;
     if (Array.isArray(out.items)) {
       const members = out.items as unknown[], first = JSON.stringify(members[0]);
       if (members.every((m) => JSON.stringify(m) === first)) out.items = members[0];

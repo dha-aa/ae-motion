@@ -16,7 +16,7 @@ export function registerLayerTools(r: ToolRegistry): void {
           text: z.string().optional(), item_id: z.number().int().optional(), center: z.array(z.number()).min(2).max(3).optional(), light_type: LightType.optional(),
           start: z.number().optional(), in: z.number().optional(), out: z.number().optional(), position: V3.optional(), three_d: z.boolean().optional(),
           box_size: Size.optional(), text_style: TextStyleRef.optional(), anchor: Anchor.optional(), shape: ShapeLayerSpec.optional(),
-          fit_to: z.object({ layer_id: z.number().int(), padding: z.union([z.number(), z.array(z.number()).length(2)]).optional() }).optional(),
+          fit_to: z.strictObject({ layer_id: z.number().int(), padding: z.union([z.number(), z.array(z.number()).length(2)]).optional() }).optional(),
         })
         .default({}),
     },
@@ -44,7 +44,7 @@ export function registerLayerTools(r: ToolRegistry): void {
     "Parent layer_ids to parent_id (null unlinks), or to a new_null created at their average position (3D if any of them is), stacked above them. jump true keeps each child's own transform values (it can visibly move). Self-links, cycles, locked layers or mixed comps are refused before anything changes.",
     {
       layer_ids: LayerIds, parent_id: z.number().int().nullable().optional(),
-      new_null: z.object({ name: z.string().optional(), position: V3.optional(), three_d: z.boolean().optional() }).optional(), jump: z.boolean().optional(),
+      new_null: z.strictObject({ name: z.string().optional(), position: V3.optional(), three_d: z.boolean().optional() }).optional(), jump: z.boolean().optional(),
     },
   );
 

@@ -34,6 +34,14 @@ fs.writeFileSync(checkFile, host);
 try { execFileSync(process.execPath, ["--check", checkFile]); report(true, "host.jsx parses"); } catch (e) { report(false, "host.jsx syntax: " + (e instanceof Error ? e.message : String(e))); }
 fs.rmSync(TMP, { recursive: true, force: true });
 
+// 1a. every object schema in src/ rejects unknown keys (a typo like `colour` must fail, not be dropped silently)
+const plainObjects: string[] = [];
+for (const f of fs.readdirSync(path.join(ROOT, "src"), { recursive: true }) as string[]) {
+  if (!f.endsWith(".ts")) continue;
+  fs.readFileSync(path.join(ROOT, "src", f), "utf8").split("\n").forEach((line, i) => { if (/\bz\.(object|looseObject)\(/.test(line)) plainObjects.push(`src/${f}:${i + 1}`); });
+}
+report(!plainObjects.length, "schemas use z.strictObject, never z.object" + (plainObjects.length ? ": " + plainObjects.join(", ") : ""));
+
 // 1b. one version everywhere: package.json, the panel manifest and the host stamp
 const pkgVersion: string = JSON.parse(fs.readFileSync(path.join(ROOT, "package.json"), "utf8")).version;
 const manifest = fs.readFileSync(path.join(ROOT, "panel", "CSXS", "manifest.xml"), "utf8");

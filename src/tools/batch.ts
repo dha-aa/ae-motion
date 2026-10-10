@@ -117,7 +117,7 @@ export function precheck(steps: Step[], r: Pick<ToolRegistry, "bridgedTools" | "
     const parsed = schema.safeParse(args);
     if (parsed.success) return;
     for (const x of parsed.error.issues) {
-      if (refs.some((rp) => startsWith(x.path, rp) || (x.code === "invalid_union" && startsWith(rp, x.path)))) continue;
+      if (refs.some((rp) => startsWith(x.path.map(String), rp) || (x.code === "invalid_union" && startsWith(rp, x.path.map(String))))) continue;
       add(`${x.path.join(".") || "args"}: ${x.message}`);
     }
   });
@@ -159,9 +159,9 @@ export function registerBatchTool(r: ToolRegistry): void {
     "batch",
     'Run up to 50 tool calls in order in one call (prefer it for multi-step builds). "$N.path" in args is that value from step N\'s result (from 1), e.g. "$1.id", "$2.layers.0.id"; "$$" is a literal $ ("$$99"). All steps are checked before any runs; a step that fails in After Effects stops the batch with the results so far and a batch_id for resume. Each step is its own undo step. Not preview_frame, run_jsx or open_project.',
     {
-      steps: z.preprocess(normalizeSteps, z.array(z.object({ tool: z.string(), args: z.record(z.unknown()).default({}) })).min(1).max(MAX_STEPS)),
+      steps: z.preprocess(normalizeSteps, z.array(z.strictObject({ tool: z.string(), args: z.record(z.string(), z.unknown()).default({}) })).min(1).max(MAX_STEPS)),
       results: z.enum(["all", "last", "none"]).default("all").describe("Which results to return (default all; none returns only the step count)"),
-      resume: z.object({ batch_id: z.string(), from: z.number().int().min(2) }).optional().describe("After a failure: the same steps, fixed, run from step `from` with the earlier results"),
+      resume: z.strictObject({ batch_id: z.string(), from: z.number().int().min(2) }).optional().describe("After a failure: the same steps, fixed, run from step `from` with the earlier results"),
     },
     async (a, extra?: ToolExtra) => {
       const steps = a.steps as Step[];
