@@ -1,14 +1,17 @@
 // AE Motion MCP panel (CEP, Node enabled): localhost HTTP bridge (token-protected) -> serial queue -> ExtendScript.
 //
 //   POST /cmd   {cmd, args}  -> AEM.dispatch(...) in panel/host/host.jsx -> {ok, result} | {ok:false, error}
-//   GET /health              -> {ok:true}
+//   GET /health              -> {ok:true, result:{panel, busy?:{cmd, seconds}, queued}}
 // Every request needs the x-ae-token header. Port and token are written to the bridge file, which the MCP
 // server reads on every call. See docs/architecture.md ("Wire protocol").
+// Commands run one at a time. A queued command whose caller has gone (the MCP server timed out and closed the request)
+// is dropped instead of run late; one already running can't be stopped and finishes. /health says what is running, so
+// the server's TIMEOUT error can tell the model which of the two happened.
 //
 // Updates: the MCP server checks for new releases (at most daily) and caches the answer in update.json next to the
 // bridge file; this panel only reads that file (no network) and shows a line when a newer version exists. Its Update
-// button runs `git pull` and the installer in the repo named by install.json (written by the installer), then loads
-// the new host script and restarts the panel.
+// button runs scripts/update.ts (checks out the newest release tag, then runs the installer) in the repo named by
+// install.json (written by the installer), then loads the new host script and restarts the panel.
 //
 // Tokens: the MCP server estimates what it adds to the model's context (tool results, images, tool definitions) and
 // writes usage/<pid>.json next to the bridge file (src/usage.ts); this panel reads those files every 2 s.
@@ -23,8 +26,9 @@
   var cep = window.__adobe_cep__;
   var token = crypto.randomBytes(24).toString("hex");
   var bridgeFile = process.env.AE_MCP_BRIDGE_FILE || path.join(os.homedir(), ".ae-motion-mcp", "bridge.json");
-  var stats = { count: 0 };
+  var stats = { count: 0, dropped: 0 };
   var chain = Promise.resolve();
+  var running = null, queued = 0; // running: {cmd, since} while After Effects runs a command
 
   function $(id) { return document.getElementById(id); }
   function setStatus(text, ok) { var s = $("status"); s.textContent = text; s.className = ok ? "ok" : "bad"; }
@@ -49,16 +53,27 @@
       res.end(JSON.stringify(obj));
     }
     if (req.headers["x-ae-token"] !== token) return send(401, { ok: false, error: { code: "FORBIDDEN", message: "bad token" } });
-    if (req.method === "GET" && req.url === "/health") return send(200, { ok: true, result: { panel: "ae-motion-mcp" } });
+    if (req.method === "GET" && req.url === "/health") {
+      return send(200, { ok: true, result: { panel: "ae-motion-mcp", busy: running ? { cmd: running.cmd, seconds: Math.round((Date.now() - running.since) / 1000) } : undefined, queued: queued } });
+    }
     if (req.method !== "POST" || req.url !== "/cmd") return send(404, { ok: false, error: { code: "BAD_ARGS", message: "not found" } });
 
-    var body = "";
+    var body = "", gone = false;
+    res.on("close", function () { if (!res.finished) gone = true; }); // the caller gave up (timed out)
     req.on("data", function (c) { body += c; if (body.length > 5e6) req.destroy(); });
     req.on("end", function () {
       var msg;
       try { msg = JSON.parse(body); } catch (e) { return send(400, { ok: false, error: { code: "BAD_ARGS", message: "invalid JSON" } }); }
-      enqueue(function () { return evalHost(msg.cmd, msg.args); }).then(function (r) {
+      queued++;
+      enqueue(function () {
+        queued--;
+        if (gone) { stats.dropped++; return null; } // nobody waits for it: don't run it late, out of the model's sight
+        running = { cmd: msg.cmd, since: Date.now() };
+        $("last").textContent = msg.cmd + " (running)";
+        return evalHost(msg.cmd, msg.args).then(function (r) { running = null; return r; });
+      }).then(function (r) {
         var out;
+        if (r === null) { $("err").textContent = "dropped " + stats.dropped + " timed-out command(s) before they ran"; return; }
         try { out = JSON.parse(r); } catch (e) { out = { ok: false, error: { code: "AE_ERROR", message: "Host returned: " + String(r) } }; }
         stats.count++;
         $("count").textContent = stats.count;
@@ -121,18 +136,15 @@
     if (!inst || !inst.repo || !fs.existsSync(inst.repo)) {
       return showLog("Cannot find the ae-motion folder: re-run the installer once from it (scripts/install.sh or install.ps1) to enable this button.", false);
     }
-    var git = fs.existsSync(path.join(inst.repo, ".git"));
-    if (win) {
-      cmd = "powershell.exe";
-      args = ["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command",
-        (git ? "git pull --ff-only; if ($LASTEXITCODE -ne 0) { exit 1 }; " : "") + "& ./scripts/install.ps1"];
-    } else {
-      cmd = "/bin/bash";
-      args = ["-c", (git ? "git pull --ff-only && " : "") + "bash scripts/install.sh"];
+    if (!fs.existsSync(path.join(inst.repo, "scripts", "update.ts"))) {
+      return showLog("This ae-motion folder has no scripts/update.ts: update by hand (README, Updating).", false);
     }
+    // the newest release tag, never unreleased work on main; then the installer (scripts/update.ts)
+    cmd = "node";
+    args = [path.join("scripts", "update.ts")];
     updating = true;
     $("update-btn").disabled = true;
-    showLog((git ? "git pull, then " : "") + "installing... (about a minute)");
+    showLog("Updating to the newest release, then installing... (about a minute)");
     var env = {}, k;
     for (k in process.env) env[k] = process.env[k];
     if (inst.path) env.PATH = inst.path + (win ? ";" : ":") + (env.PATH || "");

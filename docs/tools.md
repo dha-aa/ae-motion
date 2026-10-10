@@ -157,7 +157,7 @@ The camera tools use After Effects' coordinates: x to the right, y **down**, z i
 
 ## Behavior notes
 
-- Commands run one at a time in After Effects. A call that takes longer than 30 seconds (60 for `preview_frame`) returns `TIMEOUT` but may still finish in AE, so inspect the project before retrying.
+- Commands run one at a time in After Effects. A call that takes longer than 30 seconds (60 for `preview_frame`) returns `TIMEOUT`. If it was already running it still finishes in AE, so inspect the project before retrying; if it was still waiting behind another command, it is dropped and never runs. The error message says which.
 - `render_start` saves the project and runs `aerender` in the background. The project must have been saved at least once. If the output file already exists you must pass `overwrite: true`; the old file is only removed once the render is about to start, so a failed start keeps it. After Effects takes the file extension from the output module, so the file can differ from `output_path` (on After Effects 26.3 the default output module turned a `.mov` request into `.mp4`); `render_status` reports the file that was actually written. For a specific format, name an output-module template in `om_template`. Canceling a render can leave a partial temp file next to the output.
 - Running renders are stopped when the MCP client disconnects or the server is terminated. Job state is kept in memory, so restarting the server forgets old job ids.
 - `preview_frame` uses `comp.saveFrameToPng`; on versions without it you get `UNSUPPORTED`. After Effects can keep writing the PNG for a moment after it returns (heavy 3D frames), so the server waits up to 10 seconds for the file. PNGs are written to `<temp>/ae-motion-mcp/`.
@@ -181,7 +181,7 @@ Every error is returned as `{"error": {"code", "message", "hint"}}` with `isErro
 | `BAD_ARGS` | The arguments are invalid for the current project state |
 | `AE_ERROR` | After Effects threw, or something unexpected failed (the hint names the ExtendScript line) |
 | `BRIDGE_DOWN` | The panel is not reachable: closed, stale token, or After Effects not running |
-| `TIMEOUT` | No reply in time; the command may still finish in After Effects |
+| `TIMEOUT` | No reply in time; the message says whether the command is still running in After Effects or was dropped before it started |
 | `FORBIDDEN` | A path outside `AE_MCP_ALLOWED_DIRS`, or `run_jsx` while disabled |
 | `UNSUPPORTED` | This After Effects version lacks the feature |
 | `EXISTS` | Refusing to overwrite an existing file without `overwrite: true` |

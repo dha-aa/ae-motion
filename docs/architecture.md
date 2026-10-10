@@ -90,7 +90,7 @@ The panel writes it when its HTTP server starts (port 47670, or the next free po
 | Method and path | Body | Reply |
 |---|---|---|
 | `POST /cmd` | `{"cmd": "<command>", "args": {...}}` (max 5 MB) | `{"ok": true, "result": ...}` or `{"ok": false, "error": {"code", "message", "hint"}}` |
-| `GET /health` | | `{"ok": true, "result": {"panel": "ae-motion-mcp"}}`; handy for checking the panel by hand with curl |
+| `GET /health` | | `{"ok": true, "result": {"panel": "ae-motion-mcp", "busy": {"cmd", "seconds"}, "queued": n}}` (`busy` only while a command runs); handy for checking the panel by hand with curl |
 
 **Host commands** are every `C.<name>` in `host/commands/`. All bridged tools map 1:1 to a command of the same name. Two commands are not tools: `get_selection` (backs the `ae://selection` resource) and `prepare_render` (saves the project and returns `project_path`, `comp_name`, `total_frames`, `aerender_dir` for `render_start`).
 
@@ -99,7 +99,7 @@ The panel writes it when its HTTP server starts (port 47670, or the next free po
 - Each mutating command is wrapped in `app.beginUndoGroup("MCP: <cmd>")` / `endUndoGroup()`, so one tool call is one undo step. The read-only list is `READONLY` in `host/dispatch.jsx`.
 - Commands validate what they can before changing anything; a command that fails partway leaves its partial state inside its undo group.
 - Errors raised with `fail(code, message, hint)` in ExtendScript keep their code. Anything else becomes `AE_ERROR`, with the ExtendScript line number in the hint (a line of `panel/host/host.jsx`; the `// ---- host/<file> ----` banners map it back to a source file).
-- Transport problems never throw in the server: `HttpBridge` returns `BRIDGE_DOWN` (no bridge file, refused connection, stale token) or `TIMEOUT` (default 30 s). A timed-out command may still complete in After Effects.
+- Transport problems never throw in the server: `HttpBridge` returns `BRIDGE_DOWN` (no bridge file, refused connection, stale token) or `TIMEOUT` (default 30 s). The panel drops a queued command once its request is closed, so a command that timed out while waiting never runs late; one already running can't be stopped and finishes. On a timeout `HttpBridge` asks `/health` which of the two happened and says so in the error (an older panel without `queued` gets the generic message).
 
 ## Security model
 

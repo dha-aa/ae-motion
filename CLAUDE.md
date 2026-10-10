@@ -36,6 +36,8 @@ Tests, `scripts/` and the skill driver are TypeScript that Node (22.18+) runs di
 10. `preview-image.test.ts` — preview PNG shrinking and contact sheets (`src/render/image.ts`).
 11. `render-check.test.ts` — the after-render check and delivery (`src/render/check.ts`) against real ffmpeg on synthetic clips; skipped when ffmpeg is missing.
 12. `server.test.ts` — the built server over stdio with a fake bridge and fake `aerender`: render lifecycle, preview wait, path sandboxing, run_jsx gate.
+13. `panel.test.ts` — the real `panel/main.js` in a vm with a fake CEP/DOM, driven by the real `HttpBridge`: token, serial queue, dropping timed-out commands, TIMEOUT messages, Update button, bridge file lifecycle.
+14. `update-script.test.ts` — `scripts/update.ts` against throwaway git repos: newest release tag (not `main`), refusing over local changes.
 
 ## Layout
 
@@ -46,7 +48,7 @@ Tests, `scripts/` and the skill driver are TypeScript that Node (22.18+) runs di
 - `host/*.ts` (pilot: `core/layout.ts`, `commands/design.ts`) are TypeScript compiled by `tsc -p tsconfig.host.json` to `build/host/` against AE 22.0 + ES3 lib types (`types-for-adobe`); the rest of `host/` is `.jsx`. Script mode: all top-level names are global and shared (type names merge with AE/ScriptUI globals, so prefix them); `.jsx` helpers used from `.ts` get JSDoc types (`fail` returns never). Details in `docs/development.md`.
 - `host/` — ExtendScript sources: `json.jsx` polyfill, `core/` helpers, `commands/`, `dispatch.jsx`. `scripts/build-host.ts` wraps them in one closure (`var AEM = (function () { var C = {}; ... })()`) and writes `panel/host/host.jsx`, which is **generated and gitignored — never edit it**. New host files go in `MODULES` in the build script; top-level names must be unique across `host/` (the build checks).
 - `evals/` — read-only questions about a fixed project (`build-fixture.ts` → `fixture.jsonl`), run with `node evals/run.ts` through `claude -p` against live AE (no API key); see `evals/README.md`.
-- `panel/` — the CEP extension as installed (manifest, `main.js` HTTP bridge with serial queue and the Update button, `index.html`). The installers add `install.json` (repo path + `PATH`, since AE started from the Dock cannot find Homebrew/nvm `node`); the button runs `git pull --ff-only` + the installer from there, `$.evalFile`s the new host.jsx and reloads the panel.
+- `panel/` — the CEP extension as installed (manifest, `main.js` HTTP bridge with serial queue and the Update button, `index.html`). The installers add `install.json` (repo path + `PATH`, since AE started from the Dock cannot find Homebrew/nvm `node`); the button runs `scripts/update.ts` there (checks out the newest `vX.Y.Z` tag, never `main`; refuses over local changes) + the installer, `$.evalFile`s the new host.jsx and reloads the panel. The queue drops a command whose request closed before it started (the server timed out); `/health` reports `busy` / `queued`, which `HttpBridge` uses to explain a `TIMEOUT`.
 
 ## Versions and updates
 

@@ -4,7 +4,12 @@ All notable changes. Versions follow [semantic versioning](https://semver.org); 
 
 ## Unreleased
 
+### Fixed
+- The panel's Update button installed whatever was on `main`, which can hold merged but unreleased work, while the update notice named the newest release. It now runs `scripts/update.ts`, which checks out the newest release tag and then runs the installer; it stops if you have local changes (a `package-lock.json` rewritten by npm doesn't count). Run it by hand with `node scripts/update.ts`.
+- A command that timed out while waiting behind a slow one still ran later, out of the model's sight. The panel now drops a queued command once its caller has given up, and the `TIMEOUT` error says whether the command is still running in After Effects (inspect before retrying) or was dropped before it started (safe to retry), with what After Effects is busy with.
+
 ### Added
+- Tests for the panel (`test/panel.test.ts`: the real `panel/main.js` with a fake CEP, driven by the server's bridge) and the update script (`test/update-script.test.ts`).
 - `docs/future.md`: Adobe's move from CEP to UXP in After Effects (public beta targeted for November 2026, CEP off by default from December 2028 and removed in December 2029) and what it would mean for ae-motion's panel, host and bridge.
 
 ## 2.12.0 — 2026-10-10
