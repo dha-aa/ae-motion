@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<ExtensionManifest Version="7.0" ExtensionBundleId="com.aemotion.mcp" ExtensionBundleVersion="2.11.0" ExtensionBundleName="AE Motion MCP"
+<ExtensionManifest Version="7.0" ExtensionBundleId="com.aemotion.mcp" ExtensionBundleVersion="2.11.1" ExtensionBundleName="AE Motion MCP"
   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
   <ExtensionList>
-    <Extension Id="com.aemotion.mcp.panel" Version="2.11.0"/>
+    <Extension Id="com.aemotion.mcp.panel" Version="2.11.1"/>
   </ExtensionList>
   <ExecutionEnvironment>
     <HostList>

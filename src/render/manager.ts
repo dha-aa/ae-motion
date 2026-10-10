@@ -58,6 +58,22 @@ export function timing(j: Pick<Job, "state" | "frames" | "totalFrames" | "sample
   return out;
 }
 
+/** The file found() returns once it exists and its size has stopped changing, or null after timeoutMs. */
+async function settled(found: () => string | null | undefined, timeoutMs: number): Promise<string | null> {
+  const end = Date.now() + timeoutMs;
+  let last = -1;
+  while (Date.now() < end) {
+    const f = found();
+    if (f) {
+      const size = fs.statSync(f).size;
+      if (size > 0 && size === last) return f;
+      last = size;
+    }
+    await new Promise((r) => setTimeout(r, 250));
+  }
+  return found() ?? null;
+}
+
 export type JobState = "running" | "done" | "failed" | "canceled";
 
 interface Job {
@@ -249,7 +265,8 @@ export class RenderManager {
   /** After aerender: encode the delivery MP4, then check the file; the job is done only after both. */
   private async finish(job: Job): Promise<void> {
     const fail = (e: string) => { job.errors.push(e); job.state = "failed"; job.finishedAt = Date.now(); };
-    let file = fs.existsSync(job.renderPath) ? job.renderPath : findWrittenOutput(job.renderPath, job.startedAt) ?? job.renderPath;
+    // aerender can exit a moment before its file is on disk (seen with a delivery master): wait for it to settle
+    let file = await settled(() => (fs.existsSync(job.renderPath) ? job.renderPath : findWrittenOutput(job.renderPath, job.startedAt)), 30_000) ?? job.renderPath;
     const ff = this.ffmpeg();
     if (job.deliverTo && ff) {
       job.phase = "encoding";

@@ -94,6 +94,7 @@ Tests, `scripts/` and the skill driver are TypeScript that Node (22.18+) runs di
 - Layer ids / `project.layerByID` exist from AE 22.0 (manifest minimum); `getLayer` uses `layerByID` only, so mocks must define it.
 - `saveFrameToPng` renders at the comp's viewer resolution (`resolutionFactor`), which After Effects lowers on heavy comps; `preview_frame` sets [1,1] and restores it.
 - Read-only commands must not add layers or expressions: an earlier `review_motion` scene check put a probe null with `toComp` expressions on a 211-layer 3D comp and After Effects crashed. The scene checks now do the projection maths in ExtendScript (`worldMatrix`, `viewAt`, `screenBox` in `host/commands/motion.jsx`).
+- ExtendScript objects inherit `watch` / `unwatch` / `toSource` from `Object.prototype` (old Mozilla JavaScript), so a JSON argument named `watch` is always truthy: test flags with `=== true`. ES3 also reserves Java's words (`long`, `int`, `char`, `final` and so on): one as a variable name stops `host.jsx` loading at all (the static check's lint catches declarations).
 - The mock in `test/mock-host.test.ts` models the first two quirks; keep mocks in sync when you find another.
 
 ## Verification status
