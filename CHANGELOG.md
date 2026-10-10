@@ -9,6 +9,9 @@ All notable changes. Versions follow [semantic versioning](https://semver.org); 
 - Smaller tool schemas for every tool set: plain-type unions are written as one type list, add_shape's shape and the easing options are advertised by reference (still validated strictly), and layer_ids' "same comp" is said once in the server instructions. About 4% smaller with all tools loaded.
 - `run_jsx` is only listed when `AE_MCP_ALLOW_JSX=1`; before, every request carried the definition of a tool that could only refuse.
 
+- The panel compares the bridge token in constant time.
+- The largest host files are split: `review_motion` moved to `host/commands/review.ts`, sound effects and sound cues to `host/commands/sound.ts` (a pure move: host.jsx has the same code lines).
+
 ### Added
 - Six more build evaluations (a camera push-in, a word-by-word text reveal, a wipe transition at a cut, beat markers from a music track, spring pop-ins, a 3D layer), each check confirmed to fail on the untouched project and pass on a correct solution, and the input tokens per question in every eval run. The fixture gains a synthesized 120 BPM music track.
 
