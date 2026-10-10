@@ -1,6 +1,6 @@
 /**
  * Audio: beats as markers, audio-reactive expressions, sound-effect cues and placement. Host side:
- * host/commands/audio.ts (After Effects' Convert Audio to Keyframes does the loudness analysis).
+ * host/commands/audio.jsx (After Effects' Convert Audio to Keyframes does the loudness analysis).
  */
 import { z } from "zod";
 import type { ToolRegistry } from "./registry.js";

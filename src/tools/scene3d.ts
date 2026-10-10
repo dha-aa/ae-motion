@@ -1,6 +1,6 @@
 /**
  * 3D tools: cameras (setup, moves, shake, rigs), 3D layers, lights and the viewer's 3D view.
- * Host side: host/commands/scene3d.ts (helpers in host/core/scene3d.ts and host/core/vector.ts).
+ * Host side: host/commands/scene3d.jsx (helpers in host/core/scene3d.jsx and host/core/vector.jsx).
  */
 import { z } from "zod";
 import type { ToolRegistry } from "./registry.js";

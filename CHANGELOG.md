@@ -2,6 +2,11 @@
 
 All notable changes. Versions follow [semantic versioning](https://semver.org); each release is a git tag `vX.Y.Z`, which is what the update check looks for.
 
+## 2.16.0 — 2026-10-11
+
+### Changed
+- Back to the 2.13.0 code: everything from 2.14.0 and 2.15.0 is undone (the compact schemas, `run_jsx` hidden when disabled, the core-toolset default and its reversal, the six extra build evaluations, the split `review.ts` / `sound.ts` host files, the constant-time token check, and the removed tool-list budget). Reopen the panel after updating. The undone work is kept in the git history and on the `backup-speed-quality` branch.
+
 ## 2.15.0 — 2026-10-11
 
 ### Changed

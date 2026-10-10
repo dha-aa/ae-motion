@@ -1,4 +1,4 @@
-/** Read-only inspection tools. Host side: host/commands/inspect.ts. */
+/** Read-only inspection tools. Host side: host/commands/inspect.jsx. */
 import { z } from "zod";
 import { knownUpdate } from "../update.js";
 import { fromBridge, json, type ToolRegistry } from "./registry.js";

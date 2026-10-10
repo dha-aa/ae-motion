@@ -59,7 +59,7 @@ fs.writeFileSync(fakeFf, `#!/bin/bash\necho "$@" >> ${DIR}/ffmpeg.calls\nlast="\
 function startServer(extraEnv: Record<string, string> = {}) {
   const p = spawn("node", [SERVER], {
     // update checks stay off unless a test turns them on (no real network calls from tests)
-    env: { ...process.env, AE_MCP_BRIDGE_FILE: path.join(DIR, "bridge.json"), AE_AERENDER: fake, AE_MCP_ALLOWED_DIRS: DIR, AE_MCP_UPDATE_CHECK: "0", AE_MCP_FFMPEG: fakeFf, AE_MCP_TOOLSETS: "all", ...extraEnv },
+    env: { ...process.env, AE_MCP_BRIDGE_FILE: path.join(DIR, "bridge.json"), AE_AERENDER: fake, AE_MCP_ALLOWED_DIRS: DIR, AE_MCP_UPDATE_CHECK: "0", AE_MCP_FFMPEG: fakeFf, ...extraEnv },
     stdio: ["pipe", "pipe", "pipe"],
   });
   let buf = "";
@@ -275,8 +275,7 @@ const results: [name: string, pass: boolean, detail?: string][] = [];
   results.push(["E: path arguments outside the allowed folders are refused before reaching the host", errCode(outside) === "FORBIDDEN" && !received.import_footage]);
 
   const jsx = await callTool("run_jsx", { code: "1+1" });
-  const listed = ((await s.call("tools/list", {})).result as unknown as { tools: { name: string }[] }).tools.map((t) => t.name);
-  results.push(["E: run_jsx is not offered unless AE_MCP_ALLOW_JSX=1", !listed.includes("run_jsx") && !received.run_jsx && (jsx.error !== undefined || jsx.result?.isError === true)]);
+  results.push(["E: run_jsx is refused unless AE_MCP_ALLOW_JSX=1", errCode(jsx) === "FORBIDDEN" && !received.run_jsx]);
 
   s.p.stdin.end();
   await Promise.race([s.exited, sleep(3000)]);

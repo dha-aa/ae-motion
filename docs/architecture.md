@@ -62,7 +62,7 @@ test/                       runs without After Effects (see docs/development.md)
 docs/                       this documentation
 ```
 
-Each tool group has a matching pair: `src/tools/<group>.ts` declares the tools, `host/commands/<group>.ts` implements the commands with the same names. Two groups are split on the host side to keep files small: motion (`commands/motion.ts` and `commands/review.ts`) and audio (`commands/audio.ts` and `commands/sound.ts`).
+Each tool group has a matching pair: `src/tools/<group>.ts` declares the tools, `host/commands/<group>.ts` implements the commands with the same names.
 
 ## Request lifecycle
 

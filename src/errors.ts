@@ -2,7 +2,7 @@
  * Error model shared by every tool.
  *
  * Every failure reaches the client as `{error: {code, message, hint}}`. Errors raised inside After Effects
- * (host/core/util.ts `fail`) and by the bridge already arrive in that shape; TypeScript-side logic throws
+ * (host/core/util.jsx `fail`) and by the bridge already arrive in that shape; TypeScript-side logic throws
  * {@link AeToolError}, which the tool registry converts.
  */
 

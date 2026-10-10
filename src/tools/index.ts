@@ -1,21 +1,21 @@
 /**
  * Registers every tool. Each module covers one group and has a matching host file:
  *
- *   src/tools/inspect.ts   <-> host/commands/inspect.ts
- *   src/tools/project.ts   <-> host/commands/project.ts
- *   src/tools/layers.ts    <-> host/commands/layers.ts
- *   src/tools/timeline.ts  <-> host/commands/timeline.ts   (incl. markers)
- *   src/tools/audio.ts     <-> host/commands/audio.ts      (beats, audio_react, sound effects)
- *   src/tools/masks.ts     <-> host/commands/masks.ts
- *   src/tools/animate.ts   <-> host/commands/animate.ts, host/commands/text.ts
- *   src/tools/motion.ts    <-> host/commands/motion.ts     (moves, springs, text reveals, transitions, review)
- *   src/tools/scene3d.ts   <-> host/commands/scene3d.ts
- *   src/tools/design.ts    <-> host/commands/design.ts    (layout, shapes, layer styles)
- *   src/tools/output.ts    <-> host/commands/output.ts    (preview, render)
- *   src/tools/scripting.ts <-> host/commands/output.ts    (run_jsx)
+ *   src/tools/inspect.ts   <-> host/commands/inspect.jsx
+ *   src/tools/project.ts   <-> host/commands/project.jsx
+ *   src/tools/layers.ts    <-> host/commands/layers.jsx
+ *   src/tools/timeline.ts  <-> host/commands/timeline.jsx   (incl. markers)
+ *   src/tools/audio.ts     <-> host/commands/audio.jsx      (beats, audio_react, sound effects)
+ *   src/tools/masks.ts     <-> host/commands/masks.jsx
+ *   src/tools/animate.ts   <-> host/commands/animate.jsx, host/commands/text.jsx
+ *   src/tools/motion.ts    <-> host/commands/motion.jsx     (moves, springs, text reveals, transitions, review)
+ *   src/tools/scene3d.ts   <-> host/commands/scene3d.jsx
+ *   src/tools/design.ts    <-> host/commands/design.jsx    (layout, shapes, layer styles)
+ *   src/tools/output.ts    <-> host/commands/output.jsx    (preview, render)
+ *   src/tools/scripting.ts <-> host/commands/output.jsx    (run_jsx)
  *   src/tools/meta.ts      (server only: check_for_updates)
  *   src/tools/batch.ts     (server only: batch, always on)
- *   load_tools (below)     (server only: present when AE_MCP_TOOLSETS leaves groups out, e.g. core)
+ *   load_tools (below)     (server only: present when AE_MCP_TOOLSETS leaves groups out)
  */
 import { z } from "zod";
 import { enabledToolsets, TOOLSETS, type Toolset } from "../config.js";
@@ -41,24 +41,23 @@ const GROUPS: Record<Toolset, (r: ToolRegistry) => void> = {
   output: registerOutputTools, audio: registerAudioTools, scripting: registerScriptingTools, meta: registerMetaTools,
 };
 
-/** What each group that can be loaded later holds, for load_tools' description: the tool names, so the model knows a
- * ready-made tool exists before it rebuilds one from keyframes. */
+/** What each group that can be loaded later holds, for load_tools' description. */
 const GROUP_SUMMARY: Partial<Record<Toolset, string>> = {
-  project: "create_comp, set_comp, open/save_project, import_footage, delete_item",
-  layers: "add_layer, set_layer, link_layers, duplicate/delete/reorder_layer, precompose, replace_source",
-  timeline: "markers (add/update/list/delete_marker), align_to_markers, split_layer, shift/sequence_layers, insert_time, delete_range, trim_comp, set_playhead",
-  masks: "add_mask, set_track_matte",
-  animate: "set_property, set_keyframes, edit_keyframes, set_expression, effects, set_text, stagger, copy_animation, shape modifiers",
-  motion: "animate (moves with springs), text_reveal, transition, review_motion",
-  scene3d: "camera_move (dolly, truck, pedestal, orbit, pan, zoom, rack focus, path), camera_shake, camera_rig, set_camera, get_camera, set_3d, set_light, set_3d_view",
-  design: "align_layers (align, distribute), set_anchor, add_shape, add_layer_style, text_to_shapes",
-  output: "preview_frame, render_start / status / cancel",
-  audio: "beat_markers, audio_react, find_sound_cues, add_sfx, duck_music",
+  project: "comps, import, open/save, delete items",
+  layers: "add/set/duplicate/delete/reorder/link layers, precompose, replace source",
+  timeline: "split, shift, sequence, trim, insert/delete time, markers",
+  masks: "masks, track mattes",
+  animate: "properties, keyframes, expressions, effects, presets, text, stagger, shape modifiers",
+  motion: "animate (named moves with springs), text_reveal, transition, review_motion",
+  scene3d: "3D layers, cameras, lights, camera moves/rigs/shake, 3D views",
+  design: "align, anchors, add shapes, layer styles, text to shapes",
+  output: "preview_frame, renders",
+  audio: "beat markers, audio-reactive expressions, sound-effect cues and placement",
   scripting: "run_jsx (also needs AE_MCP_ALLOW_JSX=1)",
 };
 
 /**
- * Register the tool groups in `on` (default: those AE_MCP_TOOLSETS enables, all when unset), then batch, and, when some
+ * Register the tool groups in `on` (default: those AE_MCP_TOOLSETS enables, else all), then batch, and, when some
  * groups are left out, load_tools to add them later (the SDK tells the client with tools/list_changed).
  */
 export function registerAllTools(r: ToolRegistry, on: Set<Toolset> = enabledToolsets()): void {
@@ -71,7 +70,7 @@ export function registerAllTools(r: ToolRegistry, on: Set<Toolset> = enabledTool
 function registerLoadTools(r: ToolRegistry, loaded: Set<Toolset>, later: Toolset[]): void {
   r.tool(
     "load_tools",
-    "Load tool groups not loaded yet: " + later.map((g) => `${g}: ${GROUP_SUMMARY[g]}`).join("; ") + ". Load the group when a task needs one of these instead of rebuilding it from keyframes; the new tools can also run through batch.",
+    "Add tool groups that are not loaded yet: " + later.map((g) => `${g} (${GROUP_SUMMARY[g]})`).join("; ") + ". Call it when you need one of them; the new tools can also be run through batch.",
     { groups: z.array(z.enum(later as [Toolset, ...Toolset[]])).min(1) },
     async (a) => {
       const before = r.names.length, added: Toolset[] = [];

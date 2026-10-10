@@ -1,4 +1,4 @@
-/** Mask and track matte tools. Host side: host/commands/masks.ts. */
+/** Mask and track matte tools. Host side: host/commands/masks.jsx. */
 import { z } from "zod";
 import type { ToolRegistry } from "./registry.js";
 import { id, Pt, ShapeSpec } from "./schemas.js";

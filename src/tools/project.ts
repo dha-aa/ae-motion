@@ -1,4 +1,4 @@
-/** Project and composition tools. Host side: host/commands/project.ts. */
+/** Project and composition tools. Host side: host/commands/project.jsx. */
 import { z } from "zod";
 import type { ToolRegistry } from "./registry.js";
 import { Color, id } from "./schemas.js";

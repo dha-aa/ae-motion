@@ -1,5 +1,5 @@
 // @ts-nocheck -- the fake After Effects DOM here is deliberately loose (untyped fakes); these tests are checked by running them.
-// beat_markers and audio_react (host/commands/audio.ts) against a fake After Effects whose "Convert Audio to
+// beat_markers and audio_react (host/commands/audio.jsx) against a fake After Effects whose "Convert Audio to
 // Keyframes" builds the amplitude null from synthesized drum tracks with known beat times, so beat detection
 // accuracy, the muting / work-area handling around the menu command, and the audio_react wiring can be checked.
 import fs from "node:fs";
