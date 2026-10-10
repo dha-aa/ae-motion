@@ -2,6 +2,14 @@
 
 All notable changes. Versions follow [semantic versioning](https://semver.org); each release is a git tag `vX.Y.Z`, which is what the update check looks for.
 
+## 2.11.3 — 2026-10-10
+
+### Added
+- `CONTRIBUTING.md`: strict rules for changing ae-motion (design, ExtendScript, server code, tests, live verification, docs, shipping) and a pre-merge checklist, each rule backed by the incident that made it necessary. Linked from `CLAUDE.md`, the README and `docs/development.md`.
+
+### Changed
+- Bad arguments (a schema failure, caught before any tool runs) now come back in ae-motion's error format, `{error: {code: "BAD_ARGS", message, hint}}`, like every other error, in place of the SDK's raw "MCP error -32602: Input validation error: ..." text; they are still `isError` tool results (as the MCP spec asks, so the model can correct and retry) and now count in the token meter.
+
 ## 2.11.2 — 2026-10-10
 
 ### Fixed

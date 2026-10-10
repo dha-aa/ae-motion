@@ -229,6 +229,7 @@ How the check works: the MCP server asks GitHub for the repository's version tag
 
 - [docs/tools.md](docs/tools.md): every tool, the timeline and camera models, and behavior notes
 - [docs/architecture.md](docs/architecture.md): how the pieces fit, the wire protocol, the repository layout
+- [CONTRIBUTING.md](CONTRIBUTING.md): the rules for changing ae-motion and the pre-merge checklist
 - [docs/development.md](docs/development.md): building, testing, adding a tool, After Effects quirks, verification status
 
 ## License

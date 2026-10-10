@@ -238,6 +238,29 @@ export function slimSchema(root: Record<string, unknown>): Record<string, unknow
  * schema, and no "execution" block (task support, unused here). The SDK builds tools/list itself, so this wraps its
  * handler; if the SDK's internals change, it does nothing (test/static-checks.ts fails if "$schema" comes back).
  */
+type CallHandler = (request: { params: { name: string } }, extra: unknown) => Promise<CallToolResult>;
+const INPUT_ERROR = /^MCP error -32602: Input validation error: Invalid arguments for tool \S+: /;
+
+/**
+ * Bad arguments as ae-motion errors. The SDK reports a schema failure as an isError result (as the spec asks) but in
+ * its own words ("MCP error -32602: Input validation error: ..."), without a hint, before any tool handler runs. This
+ * rewrites it as {error: {code: BAD_ARGS, message, hint}} like every other error, and counts it in the token meter.
+ */
+export function toolInputErrors(server: McpServer): void {
+  const handlers = (server.server as unknown as { _requestHandlers?: Map<string, CallHandler> })._requestHandlers;
+  const original = handlers?.get("tools/call");
+  if (!handlers || !original) return;
+  handlers.set("tools/call", async (request, extra) => {
+    const res = await original(request, extra);
+    const text = res.isError && res.content?.[0]?.type === "text" ? res.content[0].text : "";
+    if (!INPUT_ERROR.test(text)) return res;
+    const issues = text.replace(INPUT_ERROR, "").split("\n").map((x) => x.trim()).filter(Boolean).join("; ");
+    const out = errorResult({ code: "BAD_ARGS", message: `Invalid arguments for ${request.params.name}: ${issues}`, hint: "Fix the listed arguments (unknown keys are rejected; the tool's input schema lists the valid ones)" });
+    usage.record(request.params.name, out);
+    return out;
+  });
+}
+
 export function slimToolList(server: McpServer): void {
   const handlers = (server.server as unknown as { _requestHandlers?: Map<string, ListHandler> })._requestHandlers;
   const original = handlers?.get("tools/list");
