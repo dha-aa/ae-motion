@@ -40,11 +40,13 @@ src/                        MCP server (TypeScript)
     aerender.ts             find aerender; find the file it actually wrote
     manager.ts              RenderManager: background aerender jobs
 
-host/                       ExtendScript sources (ES3), one closure once built
+host/                       TypeScript compiled to ES5 for ExtendScript, one closure once built
   json.jsx                  JSON polyfill (ExtendScript has none)
+  args.d.ts                 GENERATED: each command's argument types, from the server's tool schemas
+  env.d.ts                  declarations: the command table, newer AE APIs, HostArgs
   core/                     shared helpers: util, lookup, describe, keys, shapes, timing, vector, scene3d, layout
   commands/                 C.<command> implementations, one file per tool group (mirrors src/tools/)
-  dispatch.jsx              AEM.dispatch(): parse, undo group, run, serialise errors
+  dispatch.ts               AEM.dispatch(): parse, undo group, run, serialise errors
 
 panel/                      the CEP extension that gets installed into After Effects
   CSXS/manifest.xml         extension manifest (AE 22.0+, CSXS 9)
@@ -53,13 +55,14 @@ panel/                      the CEP extension that gets installed into After Eff
 
 scripts/
   build-host.ts             concatenates host/ into panel/host/host.jsx (run by Node directly)
+  host-args.ts              writes host/args.d.ts from tools/list
   install.sh, install.ps1   build, copy panel/ into the CEP folder, enable unsigned panels
 
 test/                       runs without After Effects (see docs/development.md)
 docs/                       this documentation
 ```
 
-Each tool group has a matching pair: `src/tools/<group>.ts` declares the tools, `host/commands/<group>.jsx` implements the commands with the same names.
+Each tool group has a matching pair: `src/tools/<group>.ts` declares the tools, `host/commands/<group>.ts` implements the commands with the same names.
 
 ## Request lifecycle
 
@@ -70,7 +73,7 @@ Take `set_keyframes`:
 3. `HttpBridge` reads `~/.ae-motion-mcp/bridge.json` for the port and token and POSTs `{cmd, args}` to `http://127.0.0.1:<port>/cmd`.
 4. `panel/main.js` checks the `x-ae-token` header and queues the command behind any in-flight one, so After Effects runs exactly one command at a time.
 5. The panel calls `cep.evalScript('AEM.dispatch("<json>")')`.
-6. `dispatch` (in `host/dispatch.jsx`) parses the JSON, opens an undo group unless the command is read-only, runs `C.set_keyframes(args)`, closes the undo group, and returns `{"ok":true,"result":...}` or `{"ok":false,"error":{...}}` as a string.
+6. `dispatch` (in `host/dispatch.ts`) parses the JSON, opens an undo group unless the command is read-only, runs `C.set_keyframes(args)`, closes the undo group, and returns `{"ok":true,"result":...}` or `{"ok":false,"error":{...}}` as a string.
 7. The panel parses the string and replies over HTTP; the server returns it to the client as compact JSON text, with `isError` set on failure. Results over `CHARACTER_LIMIT` (25,000 characters, `src/config.ts`) are replaced by an error carrying the tool's `tooLargeHint`.
 
 Tools with server-side logic use `ToolRegistry.tool` instead: `preview_frame` (bridge call, then waits for the PNG to finish writing), `render_start` / `render_status` / `render_cancel` (`src/render/`), and `run_jsx` (gated by `AE_MCP_ALLOW_JSX`).
@@ -96,7 +99,7 @@ The panel writes it when its HTTP server starts (port 47670, or the next free po
 
 ## Undo and failure semantics
 
-- Each mutating command is wrapped in `app.beginUndoGroup("MCP: <cmd>")` / `endUndoGroup()`, so one tool call is one undo step. The read-only list is `READONLY` in `host/dispatch.jsx`.
+- Each mutating command is wrapped in `app.beginUndoGroup("MCP: <cmd>")` / `endUndoGroup()`, so one tool call is one undo step. The read-only list is `READONLY` in `host/dispatch.ts`.
 - Commands validate what they can before changing anything; a command that fails partway leaves its partial state inside its undo group.
 - Errors raised with `fail(code, message, hint)` in ExtendScript keep their code. Anything else becomes `AE_ERROR`, with the ExtendScript line number in the hint (a line of `panel/host/host.jsx`; the `// ---- host/<file> ----` banners map it back to a source file).
 - Transport problems never throw in the server: `HttpBridge` returns `BRIDGE_DOWN` (no bridge file, refused connection, stale token) or `TIMEOUT` (default 30 s). The panel drops a queued command once its request is closed, so a command that timed out while waiting never runs late; one already running can't be stopped and finishes. The panel says it does this with `drops: true` in the bridge file. On a timeout `HttpBridge` works out which of the two happened and says so in the error: if a command it sent earlier is still unanswered, this one was waiting behind it (dropped); otherwise it asks `/health`, and no answer within 2 s means After Effects is still busy, probably with this command (the panel can't answer anything while ExtendScript runs).

@@ -1,7 +1,7 @@
 // Layer timing helpers that work around After Effects' in/out point behavior (see CLAUDE.md "After Effects quirks").
 
 // Move a layer in time. Changing startTime moves in and out with it; check anyway and put them right if not.
-function shiftLayer(l, dt) {
+function shiftLayer(l: Layer, dt: number): void {
   var i0 = l.inPoint, o0 = l.outPoint;
   l.startTime = l.startTime + dt;
   if (Math.abs(l.inPoint - (i0 + dt)) > 1e-5 || Math.abs(l.outPoint - (o0 + dt)) > 1e-5) {
@@ -10,7 +10,7 @@ function shiftLayer(l, dt) {
 }
 
 // Setting inPoint also moves outPoint (the layer keeps its length), so put outPoint back. Never assign inPoint directly.
-function setIn(l, t) {
+function setIn(l: Layer, t: number): void {
   var o = l.outPoint;
   l.inPoint = t;
   if (Math.abs(l.outPoint - o) > 1e-6) l.outPoint = o;
@@ -19,7 +19,7 @@ function setIn(l, t) {
 // Set a comp's work area. Setting workAreaStart keeps the end where it is (in After Effects 26.3; a start past the
 // end moves the end instead and leaves the start), so open it to the whole comp first, then set start and duration,
 // and check: a work area set wrong silently analyses the wrong audio (Convert Audio to Keyframes).
-function setWorkArea(c, s, d) {
+function setWorkArea(c: CompItem, s: number, d: number): void {
   var fd = c.frameDuration;
   c.workAreaStart = 0;
   c.workAreaDuration = c.duration;
@@ -31,7 +31,7 @@ function setWorkArea(c, s, d) {
 }
 
 // Split l at t: l keeps the first part and the returned duplicate (above it) holds the second.
-function splitAt(l, t) {
+function splitAt(l: Layer, t: number): Layer {
   var d = l.duplicate();
   l.outPoint = t;
   setIn(d, t);
@@ -39,8 +39,8 @@ function splitAt(l, t) {
 }
 
 // Set a layer's position; a three-value position turns 3D on (cameras and lights are always 3D).
-function setLayerPosition(l, v) {
-  var is3 = (l instanceof CameraLayer || l instanceof LightLayer || l.threeDLayer === true);
-  if (v.length > 2 && !is3) { l.threeDLayer = true; is3 = true; }
+function setLayerPosition(l: Layer, v: number[]): void {
+  var is3 = (l instanceof CameraLayer || l instanceof LightLayer || (l as AVLayer).threeDLayer === true);
+  if (v.length > 2 && !is3) { (l as AVLayer).threeDLayer = true; is3 = true; }
   tp(l, "ADBE Position").setValue(is3 ? v3(v) : [v[0], v[1]]);
 }

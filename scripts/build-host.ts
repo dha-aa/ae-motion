@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Builds panel/host/host.jsx, the single ExtendScript file the CEP panel loads, from the sources in host/.
-// host/*.jsx are used as they are; host/*.ts are first compiled to ES5 in build/host/*.js (tsconfig.host-emit.json,
-// TypeScript 5.9; npm run build:host does both), and the compiled file is used in their place.
+// host/**/*.ts are first compiled to ES5 in build/host/*.js (tsconfig.host-emit.json, TypeScript 5.9; npm run build:host
+// does both) and the compiled file is used in their place; json.jsx (the JSON polyfill) is used as it is.
 //
 // The sources are fragments of one closure: everything except json.jsx is wrapped in
 //   var AEM = (function () { var C = {}; ... return { dispatch: dispatch, version: "<package.json version>" }; })();
@@ -18,35 +18,35 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 export const VERSION: string = JSON.parse(fs.readFileSync(path.join(ROOT, "package.json"), "utf8")).version;
 export const HOST_DIR = path.join(ROOT, "host");
 export const HOST_OUT = path.join(ROOT, "panel", "host", "host.jsx");
-/** Where tsc puts the compiled host/*.ts (tsconfig.host.json outDir). */
+/** Where tsc puts the compiled host TypeScript (tsconfig.host-emit.json outDir). */
 export const HOST_BUILD_DIR = path.join(ROOT, "build", "host");
 
 /** Emitted before the AEM closure. */
 export const PRELUDE = ["json.jsx"];
 /** Emitted inside the AEM closure, in this order. Add new files here. */
 export const MODULES = [
-  "core/util.jsx",
-  "core/lookup.jsx",
-  "core/describe.jsx",
-  "core/keys.jsx",
-  "core/shapes.jsx",
-  "core/timing.jsx",
-  "core/vector.jsx",
-  "core/scene3d.jsx",
+  "core/util.ts",
+  "core/lookup.ts",
+  "core/describe.ts",
+  "core/keys.ts",
+  "core/shapes.ts",
+  "core/timing.ts",
+  "core/vector.ts",
+  "core/scene3d.ts",
   "core/layout.ts",
-  "commands/inspect.jsx",
-  "commands/project.jsx",
-  "commands/layers.jsx",
-  "commands/timeline.jsx",
-  "commands/audio.jsx",
-  "commands/masks.jsx",
-  "commands/animate.jsx",
-  "commands/text.jsx",
-  "commands/motion.jsx",
-  "commands/scene3d.jsx",
+  "commands/inspect.ts",
+  "commands/project.ts",
+  "commands/layers.ts",
+  "commands/timeline.ts",
+  "commands/audio.ts",
+  "commands/masks.ts",
+  "commands/animate.ts",
+  "commands/text.ts",
+  "commands/motion.ts",
+  "commands/scene3d.ts",
   "commands/design.ts",
-  "commands/output.jsx",
-  "dispatch.jsx",
+  "commands/output.ts",
+  "dispatch.ts",
 ];
 export const HOST_SOURCES = [...PRELUDE, ...MODULES];
 

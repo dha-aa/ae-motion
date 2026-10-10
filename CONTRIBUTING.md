@@ -32,8 +32,12 @@ that incident. How-to material (setup, adding a tool step by step, the quirk lis
 
 ## 2. Host code (ExtendScript, `host/`)
 
-1. **ES3 only.** The lint in `npm test` catches most of it: no `let` / `const` / arrows / template literals / spread,
-   no ES5 array methods, no `Array.prototype.indexOf`, no `...` or backticks even in comments.
+1. **ES3 output.** `host/` is TypeScript compiled to ES5 syntax for an ES3 engine. `const` / `let` / arrows /
+   template strings are lowered and fine; spread, destructuring, `for...of`, classes and async need helpers and are
+   not. ES5+ library methods are type errors (the ES3 library types). The lint in `npm test` checks the compiled
+   output: no `Array.prototype.indexOf`, no `...` or backticks even in comments (comments are copied into host.jsx).
+   Commands take `a: Args["<tool>"]` (generated, never edit `host/args.d.ts`); type parameters, don't reach for `any`
+   except for property trees (`property()` results).
 2. **No Java reserved words as names**: `long`, `int`, `char`, `byte`, `short`, `float`, `double`, `final`, `native`,
    `goto`, `boolean`, `abstract`, `volatile`, `transient`, `synchronized`, `throws`. *Incident: a variable named
    `long` made After Effects refuse the whole `host.jsx`; the old code kept running and every test of the new code
@@ -43,7 +47,7 @@ that incident. How-to material (setup, adding a tool step by step, the quirk lis
 4. **Read-only commands never add layers, effects or expressions**, not even temporarily. Compute in ExtendScript.
    *Incident: a "read-only" review check added a probe layer with expressions to a 211-layer 3D comp and crashed
    After Effects.*
-5. **Every mutating command is one undo group** (`host/dispatch.jsx`); read-only commands are listed in `READONLY`.
+5. **Every mutating command is one undo group** (`host/dispatch.ts`); read-only commands are listed in `READONLY`.
 6. **Errors are `fail(code, message, hint)`** with a code from the list in `CLAUDE.md` and a hint that says what to do
    next. TypeScript throws `AeToolError` the same way. Schema failures are rewritten into the same format by
    `toolInputErrors`; do not let any other error format reach the model.

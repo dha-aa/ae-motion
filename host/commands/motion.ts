@@ -5,18 +5,28 @@
 // key interval), so they scrub, render and preview the same everywhere. Line 1 marks them: // ae-motion spring,
 // // ae-motion reveal.
 
+/** One part of a move: [property, axis, rest value -> off-state value, fraction of the duration, springs?]. */
+type MovePart = [string, string, (v: any) => any, number, boolean];
+/** A keyframe segment review_motion looks at (or a text reveal's span). */
+type Seg = { p: Prop; k: number; t0: number; t1: number; linear: boolean; sampled: boolean; spring: boolean; reveal?: boolean };
+/** A camera's view: position, forward / right / down axes and zoom. */
+type CamView = { P: Vec; f: Vec; r: Vec; d: Vec; zoom: number };
+/** A layer's box on screen, and whether it is 3D and how far along the view. */
+type ScreenBox = { x0: number; y0: number; x1: number; y1: number; three: boolean; z: number };
+type SceneItem = { l: AVLayer; kind: string; t: number };
+
 var REVEAL_TAG = "// ae-motion reveal";
-var MOVES = { fade: 1, pop: 1, grow: 1, slide: 1, drop: 1, spin: 1 };
-var MOVE_STYLES = { snappy: 1, smooth: 1, spring: 1, bounce: 1, linear: 1 };
+var MOVES: { [move: string]: number } = { fade: 1, pop: 1, grow: 1, slide: 1, drop: 1, spin: 1 };
+var MOVE_STYLES: { [style: string]: number } = { snappy: 1, smooth: 1, spring: 1, bounce: 1, linear: 1 };
 
 // One side of a key: "linear", or bezier with speed 0 and the given influence.
-function keySide(p, idx, side, influence) {
-  var dims = p.isSpatial ? 1 : (p.value instanceof Array ? p.value.length : 1), inE = p.keyInTemporalEase(idx), outE = p.keyOutTemporalEase(idx),
-    inT = p.keyInInterpolationType(idx), outT = p.keyOutInterpolationType(idx), e = [], d, B = KeyframeInterpolationType.BEZIER, L = KeyframeInterpolationType.LINEAR;
+function keySide(p: Prop, idx: number, side: string, influence: number | null): void {
+  var dims = p.isSpatial ? 1 : (p.value instanceof Array ? p.value.length : 1), inE: KeyframeEase[] = p.keyInTemporalEase(idx), outE: KeyframeEase[] = p.keyOutTemporalEase(idx),
+    inT = p.keyInInterpolationType(idx), outT = p.keyOutInterpolationType(idx), e: KeyframeEase[] = [], d, B = KeyframeInterpolationType.BEZIER, L = KeyframeInterpolationType.LINEAR;
   if (influence !== null) {
     for (d = 0; d < dims; d++) e.push(new KeyframeEase(0, influence));
     if (side === "in") inE = e; else outE = e;
-    p.setTemporalEaseAtKey(idx, inE, outE); // switches the key to bezier: set the interpolation types after
+    p.setTemporalEaseAtKey(idx, inE as [KeyframeEase], outE as [KeyframeEase]); // switches the key to bezier: set the interpolation types after
   }
   if (side === "in") inT = influence === null ? L : B; else outT = influence === null ? L : B;
   p.setInterpolationTypeAtKey(idx, inT, outT);
@@ -24,28 +34,28 @@ function keySide(p, idx, side, influence) {
 
 // Curve of the segment from key i0 to key i1. Entrances decelerate (snappy: fast start, long settle), exits
 // accelerate, smooth eases both ends. Springs keep linear keys: the expression shapes the motion.
-function shapeSegment(p, i0, i1, curve) {
-  var c = { snappy: [null, 85], smooth: [70, 70], accelerate: [85, null], linear: [null, null] }[curve] || [70, 70];
+function shapeSegment(p: Prop, i0: number, i1: number, curve: string): void {
+  var c = ({ snappy: [null, 85], smooth: [70, 70], accelerate: [85, null], linear: [null, null] } as { [curve: string]: (number | null)[] })[curve] || [70, 70];
   keySide(p, i0, "out", c[0]);
   keySide(p, i1, "in", c[1]);
 }
 
 // The property a move animates; position is split into x / y when its dimensions are separated.
-function moveProp(l, what, axis) {
+function moveProp(l: AVLayer, what: string, axis: string): Prop {
   var pos;
-  if (what !== "position") return tp(l, { scale: "ADBE Scale", rotation: "ADBE Rotate Z", opacity: "ADBE Opacity" }[what]);
+  if (what !== "position") return tp(l, ({ scale: "ADBE Scale", rotation: "ADBE Rotate Z", opacity: "ADBE Opacity" } as { [what: string]: string })[what]);
   pos = tp(l, "ADBE Position");
   if (pos.dimensionsSeparated) return tp(l, axis === "y" ? "ADBE Position_1" : "ADBE Position_0");
   return pos;
 }
 
 // What a move changes: [property, axis, function(rest value) -> off-state value, fraction of the duration, springs?]
-function movePlan(l, move, dir, dist) {
-  var dx = dir === "left" ? -dist : (dir === "right" ? dist : 0), dy = dir === "up" ? -dist : (dir === "down" ? dist : 0), sep, out = [];
-  function scaled(f) { return function (v) { var o = [], i; for (i = 0; i < v.length; i++) o.push(v[i] * f); return o; }; }
+function movePlan(l: AVLayer, move: string, dir: string, dist: number): MovePart[] {
+  var dx = dir === "left" ? -dist : (dir === "right" ? dist : 0), dy = dir === "up" ? -dist : (dir === "down" ? dist : 0), sep, out: MovePart[] = [];
+  function scaled(f: number) { return function (v: number[]) { var o: number[] = [], i; for (i = 0; i < v.length; i++) o.push(v[i] * f); return o; }; }
   function zero() { return 0; }
   // the off-state sits behind the direction of travel: moving up, the layer comes from below
-  function offset(v) { var o = copyArr(v); o[0] -= dx; o[1] -= dy; return o; }
+  function offset(v: number[]) { var o = copyArr(v); o[0] -= dx; o[1] -= dy; return o; }
   if (move === "fade") out.push(["opacity", "", zero, 1, false]);
   if (move === "pop" || move === "spin") { out.push(["scale", "", scaled(0), 1, true]); out.push(["opacity", "", zero, 0.35, false]); }
   if (move === "spin") out.push(["rotation", "", function (v) { return v - 90; }, 1, true]);
@@ -63,7 +73,7 @@ function movePlan(l, move, dir, dist) {
 
 // Key one part of a move between t0 and t1 (rest -> off for exits, off -> rest for entrances), replacing keys
 // inside that span.
-function keyMove(p, part, t0, t1, phase, curve) {
+function keyMove(p: Prop, part: MovePart, t0: number, t1: number, phase: string, curve: string): void {
   var tRest = phase === "in" ? t1 : t0, rest = p.valueAtTime(tRest, true), off = part[2](rest), ta = t0, tb, a, b, i0, i1;
   tb = phase === "in" ? t0 + (t1 - t0) * part[3] : t1;
   if (phase === "out") ta = t1 - (t1 - t0) * part[3];
@@ -75,9 +85,9 @@ function keyMove(p, part, t0, t1, phase, curve) {
   else shapeSegment(p, i0, i1, SPRINGS[curve] ? (phase === "in" ? "snappy" : "accelerate") : curve);
 }
 
-C.animate = function (a) {
+C.animate = function (a: Args["animate"]) {
   need(a, ["layer_ids", "move"]);
-  var ls = pickLayers(a.layer_ids), c = sameComp(ls), phase = a.phase || "in", move = a.move, i, j, l, plan, t0, dur, curve, list = [], p, out = [], order;
+  var ls = pickLayers(a.layer_ids), c = sameComp(ls), phase = a.phase || "in", move = a.move, i, j, l, plan, t0, dur, curve, list: { l: AVLayer; plan: MovePart[]; t0: number }[] = [], p, out: Obj[] = [], order;
   if (!MOVES[move]) fail("BAD_ARGS", "move must be fade, pop, grow, slide, drop or spin");
   if (phase !== "in" && phase !== "out") fail("BAD_ARGS", "phase must be in or out");
   curve = a.style || (move === "pop" || move === "spin" ? "spring" : (move === "drop" ? "bounce" : (phase === "in" ? "snappy" : "accelerate")));
@@ -109,9 +119,9 @@ C.animate = function (a) {
 
 // ---------- text reveals ----------
 
-var REVEAL_BASED = { chars: 1, words: 3, lines: 4 };
+var REVEAL_BASED: { [by: string]: number } = { chars: 1, words: 3, lines: 4 };
 // The curve u (0-1) -> e (0-1) as expression code.
-var REVEAL_CURVES = {
+var REVEAL_CURVES: { [curve: string]: string } = {
   linear: "u",
   smooth: "u<.5?4*u*u*u:1-Math.pow(-2*u+2,3)/2",
   snappy: "(1-Math.pow(2,-10*u))/(1-Math.pow(2,-10))",
@@ -119,10 +129,10 @@ var REVEAL_CURVES = {
   spring: "(1-Math.exp(-6*u)*Math.cos(9.42*u))/(1-Math.exp(-6)*Math.cos(9.42))",
   bounce: "1-Math.abs(Math.exp(-5*u)*Math.cos(14.137*u))"
 };
-var REVEAL_ORDERS = { forward: 0, reverse: 1, center: 2, random: 3 };
+var REVEAL_ORDERS: { [order: string]: number } = { forward: 0, reverse: 1, center: 2, random: 3 };
 
 // The Amount expression of a reveal's expression selector: 100 = the animator's off state, 0 = at rest.
-function revealExpr(t0, d, st, out, ord, curve, k) {
+function revealExpr(t0: number, d: number, st: number, out: boolean, ord: number, curve: string, k: number): string {
   return REVEAL_TAG + "\nvar t0=" + t0 + ",d=" + d + ",st=" + st + ",o=" + ord + ",k=" + k + ";\n" +
     "var i=textIndex-1,n=textTotal;\n" +
     "if(o==1)i=n-1-i;else if(o==2)i=Math.abs(i-(n-1)/2);else if(o==3){var r=Math.sin((i+1)*12.9898)*43758.5453;i=Math.floor((r-Math.floor(r))*n);}\n" +
@@ -131,7 +141,7 @@ function revealExpr(t0, d, st, out, ord, curve, k) {
 }
 
 // How many units a reveal staggers over (textTotal's count for the chosen basis).
-function unitCount(txt, by) {
+function unitCount(txt: string, by: string): number {
   var parts, n = 0, i;
   if (by === "chars") return txt.length;
   parts = txt.split(by === "lines" ? /[\r\n]+/ : /\s+/);
@@ -139,10 +149,10 @@ function unitCount(txt, by) {
   return n;
 }
 
-C.text_reveal = function (a) {
+C.text_reveal = function (a: Args["text_reveal"]) {
   need(a, ["layer_id"]);
   var l = getLayer(a.layer_id), c = l.containingComp, style = a.style || "rise", by = a.by || "chars", phase = a.phase || "in",
-    curve = a.ease || (style === "pop" ? "spring" : (phase === "in" ? "snappy" : "accelerate")), d, st, t0, n, an, props, sel, dist, r, m, pad, ms, amount, end;
+    curve = a.ease || (style === "pop" ? "spring" : (phase === "in" ? "snappy" : "accelerate")), d, st, t0, n, an, props, sel: any, dist, r, m, pad, ms, amount, end;
   if (!(l instanceof TextLayer)) fail("BAD_ARGS", "Layer " + l.id + " is not a text layer");
   if (!REVEAL_BASED[by]) fail("BAD_ARGS", "by must be chars, words or lines");
   if (!REVEAL_CURVES[curve]) fail("BAD_ARGS", "ease must be snappy, smooth, spring, bounce or linear");
@@ -179,15 +189,15 @@ C.text_reveal = function (a) {
 
 // ---------- transitions ----------
 
-function fdHalf(c) { return c.frameDuration / 2; }
+function fdHalf(c: CompItem): number { return c.frameDuration / 2; }
 
 // A full-frame color move that covers the frame at time (cut the scenes there) and clears it again by
 // time + duration/2: a wipe or staggered bars travelling across, or an iris circle that grows to a disc and then
 // opens from its centre (a ring whose stroke shrinks).
-C.transition = function (a) {
+C.transition = function (a: Args["transition"]) {
   need(a, ["comp_id", "time"]);
   var c = getComp(a.comp_id), type = a.type || "wipe", d = has(a, "duration") ? a.duration : 0.8, col = a.color || [0.05, 0.05, 0.06], dir = a.direction || "right",
-    W = c.width, H = c.height, ts = snapT(c, a.time - d / 2), tm = snapT(c, a.time), te = snapT(c, a.time + d / 2), l, n, i, horiz, grp, pos, st, R, cx, cy, sz, sw, g, k;
+    W = c.width, H = c.height, ts = snapT(c, a.time - d / 2), tm = snapT(c, a.time), te = snapT(c, a.time + d / 2), l, n, i, horiz, grp: any, pos, st, R, cx, cy, sz: any, sw, g, k;
   if (" wipe bars iris ".indexOf(" " + type + " ") === -1) fail("BAD_ARGS", "type must be wipe, bars or iris");
   if (" left right up down ".indexOf(" " + dir + " ") === -1) fail("BAD_ARGS", "direction must be left, right, up or down");
   if (ts < 0) fail("BAD_ARGS", "The transition would start before 0 s", "Use a later time or a shorter duration");
@@ -229,12 +239,12 @@ C.transition = function (a) {
 
 // ---------- review ----------
 
-var REVIEW_SKIP = { "ADBE Marker": 1, "ADBE Audio Group": 1 };
+var REVIEW_SKIP: { [matchName: string]: number } = { "ADBE Marker": 1, "ADBE Audio Group": 1 };
 // expressions that keep moving all the time (springs only reshape their keys; reveals are timed: revealSpan)
 var REVIEW_LIVE = /wiggle|loopOut|loopIn|time\s*\*|ae-motion (rig|shake)/;
 
 // The time a text_reveal expression moves over: [t0, t0 + d + (units - 1) * st].
-function revealSpan(p, l) {
+function revealSpan(p: Prop, l: Layer): number[] | null {
   var m = /var t0=([\d.]+),d=([\d.]+),st=([\d.]+)(?:,o=\d+)?(?:,k=(\d+))?/.exec(p.expression), n;
   if (!m) return null;
   // k: the unit count text_reveal wrote; older reveals fall back to the text's length (an upper bound)
@@ -243,8 +253,8 @@ function revealSpan(p, l) {
 }
 
 // Motion segments of a layer: every pair of neighbouring keys whose values differ, on any property.
-function motionSegments(g, out, live, l) {
-  var i, p, k, v0, v1, rs;
+function motionSegments(g: any, out: Seg[], live: { on: boolean }, l: Layer): Seg[] {
+  var i, p: any, k: number, v0, v1, rs;
   for (i = 1; i <= g.numProperties; i++) {
     p = g.property(i);
     if (!p || REVIEW_SKIP[p.matchName]) continue;
@@ -270,8 +280,8 @@ function motionSegments(g, out, live, l) {
 
 // Merge issues of one type (and property) across layers into one entry with layer_ids and times; info-level issues
 // become counts in stats.info unless all.
-function groupIssues(list, all, stats) {
-  var out = [], by = {}, i, x, k, g;
+function groupIssues(list: Obj[], all: boolean, stats: Obj): Obj[] {
+  var out: Obj[] = [], by: { [key: string]: Obj } = {}, i, x, k, g: Obj;
   for (i = 0; i < list.length; i++) {
     x = list[i];
     if (x.severity === "info" && !all) { stats.info = stats.info || {}; stats.info[x.type] = (stats.info[x.type] || 0) + 1; continue; }
@@ -300,33 +310,33 @@ function groupIssues(list, all, stats) {
 // (2D matrices, or 4x4 for 3D) and, for 3D, projected through the active camera (or After Effects' default camera).
 
 // 4x4 matrices as 16 numbers, row-major; points are columns [x, y, z, 1].
-function m4mul(a, b) {
-  var o = [], i, j, k, s;
+function m4mul(a: number[], b: number[]): number[] {
+  var o: number[] = [], i, j, k, s;
   for (i = 0; i < 4; i++) for (j = 0; j < 4; j++) { s = 0; for (k = 0; k < 4; k++) s += a[i * 4 + k] * b[k * 4 + j]; o.push(s); }
   return o;
 }
-function m4pt(m, v) { return [m[0] * v[0] + m[1] * v[1] + m[2] * v[2] + m[3], m[4] * v[0] + m[5] * v[1] + m[6] * v[2] + m[7], m[8] * v[0] + m[9] * v[1] + m[10] * v[2] + m[11]]; }
-function m4t(x, y, z) { return [1, 0, 0, x, 0, 1, 0, y, 0, 0, 1, z, 0, 0, 0, 1]; }
-function m4s(x, y, z) { return [x, 0, 0, 0, 0, y, 0, 0, 0, 0, z, 0, 0, 0, 0, 1]; }
-function m4rx(d) { var c = Math.cos(rad(d)), s = Math.sin(rad(d)); return [1, 0, 0, 0, 0, c, -s, 0, 0, s, c, 0, 0, 0, 0, 1]; }
-function m4ry(d) { var c = Math.cos(rad(d)), s = Math.sin(rad(d)); return [c, 0, s, 0, 0, 1, 0, 0, -s, 0, c, 0, 0, 0, 0, 1]; }
-function m4rz(d) { var c = Math.cos(rad(d)), s = Math.sin(rad(d)); return [c, -s, 0, 0, s, c, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]; }
+function m4pt(m: number[], v: number[]): Vec { return [m[0] * v[0] + m[1] * v[1] + m[2] * v[2] + m[3], m[4] * v[0] + m[5] * v[1] + m[6] * v[2] + m[7], m[8] * v[0] + m[9] * v[1] + m[10] * v[2] + m[11]]; }
+function m4t(x: number, y: number, z: number): number[] { return [1, 0, 0, x, 0, 1, 0, y, 0, 0, 1, z, 0, 0, 0, 1]; }
+function m4s(x: number, y: number, z: number): number[] { return [x, 0, 0, 0, 0, y, 0, 0, 0, 0, z, 0, 0, 0, 0, 1]; }
+function m4rx(d: number): number[] { var c = Math.cos(rad(d)), s = Math.sin(rad(d)); return [1, 0, 0, 0, 0, c, -s, 0, 0, s, c, 0, 0, 0, 0, 1]; }
+function m4ry(d: number): number[] { var c = Math.cos(rad(d)), s = Math.sin(rad(d)); return [c, 0, s, 0, 0, 1, 0, 0, -s, 0, c, 0, 0, 0, 0, 1]; }
+function m4rz(d: number): number[] { var c = Math.cos(rad(d)), s = Math.sin(rad(d)); return [c, -s, 0, 0, s, c, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]; }
 
 // A transform value at t after expressions; position is read per axis when its dimensions are separated.
-function xval(l, match, t) {
+function xval(l: Layer, match: string, t: number): Vec {
   var P = tp(l, match);
-  if (match === "ADBE Position" && P.dimensionsSeparated) return [tp(l, "ADBE Position_0").valueAtTime(t, false), tp(l, "ADBE Position_1").valueAtTime(t, false), l.threeDLayer ? tp(l, "ADBE Position_2").valueAtTime(t, false) : 0];
+  if (match === "ADBE Position" && P.dimensionsSeparated) return [tp(l, "ADBE Position_0").valueAtTime(t, false), tp(l, "ADBE Position_1").valueAtTime(t, false), (l as AVLayer).threeDLayer ? tp(l, "ADBE Position_2").valueAtTime(t, false) : 0];
   return v3(copyArr(P.valueAtTime(t, false)));
 }
 
 // Layer space -> world (comp) space at t: position * orientation * rotation x/y/z * scale * -anchor, through parents.
-function worldMatrix(l, t) {
-  var m = null, q, p, an, sc, o, r;
+function worldMatrix(l: Layer, t: number): number[] {
+  var m: number[] | null = null, q: Layer | null, p, an, sc, o, r;
   for (q = l; q; q = q.parent) {
     p = xval(q, "ADBE Position", t); an = xval(q, "ADBE Anchor Point", t); sc = v3(copyArr(tp(q, "ADBE Scale").valueAtTime(t, false)));
-    if (!q.threeDLayer) { p[2] = 0; an[2] = 0; sc[2] = 100; }
+    if (!(q as AVLayer).threeDLayer) { p[2] = 0; an[2] = 0; sc[2] = 100; }
     r = m4t(p[0], p[1], p[2]);
-    if (q.threeDLayer) {
+    if ((q as AVLayer).threeDLayer) {
       o = tp(q, "ADBE Orientation").valueAtTime(t, false);
       r = m4mul(r, m4mul(m4rx(o[0]), m4mul(m4ry(o[1]), m4rz(o[2]))));
       r = m4mul(r, m4mul(m4rx(tp(q, "ADBE Rotate X").valueAtTime(t, false)), m4ry(tp(q, "ADBE Rotate Y").valueAtTime(t, false))));
@@ -334,13 +344,13 @@ function worldMatrix(l, t) {
     r = m4mul(r, m4mul(m4rz(tp(q, "ADBE Rotate Z").valueAtTime(t, false)), m4mul(m4s(sc[0] / 100, sc[1] / 100, sc[2] / 100), m4t(-an[0], -an[1], -an[2]))));
     m = m ? m4mul(r, m) : r;
   }
-  return m;
+  return m!;
 }
 
 // The camera that sees the comp at t: its position, forward / right / down axes and zoom (After Effects' default
 // camera when there is none). One-node cameras look along their orientation.
-function viewAt(c, t) {
-  var cam = null, i, l, P, f, m, z;
+function viewAt(c: CompItem, t: number): CamView {
+  var cam: CameraLayer | null = null, i, l, P, f, m, z;
   for (i = 1; i <= c.numLayers; i++) { l = c.layer(i); if (l instanceof CameraLayer && l.enabled && l.inPoint <= t && l.outPoint > t) { cam = l; break; } }
   if (!cam) { z = c.width * 50 / 36; return { P: [c.width / 2, c.height / 2, -z], f: [0, 0, 1], r: [1, 0, 0], d: [0, 1, 0], zoom: z }; }
   P = v3(copyArr(tp(cam, "ADBE Position").valueAtTime(t, false)));
@@ -351,9 +361,9 @@ function viewAt(c, t) {
 }
 
 // A layer's box on screen at t, and its depth along the camera's view (0 for 2D layers, which are not seen through it).
-function screenBox(l, c, v, t) {
-  var r = l.sourceRectAtTime(t, false), xs = [r.left, r.left + r.width], ys = [r.top, r.top + r.height], m = worldMatrix(l, t), three = false, q, i, j, w, d, k, x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9, ctr;
-  for (q = l; q; q = q.parent) if (q.threeDLayer) three = true;
+function screenBox(l: AVLayer, c: CompItem, v: CamView, t: number): ScreenBox | null {
+  var r = l.sourceRectAtTime(t, false), xs = [r.left, r.left + r.width], ys = [r.top, r.top + r.height], m = worldMatrix(l, t), three = false, q: Layer | null, i, j, w, d, k, x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9, ctr;
+  for (q = l; q; q = q.parent) if ((q as AVLayer).threeDLayer) three = true;
   for (i = 0; i < 2; i++) for (j = 0; j < 2; j++) {
     w = m4pt(m, [xs[i], ys[j], 0]);
     if (three) {
@@ -367,7 +377,7 @@ function screenBox(l, c, v, t) {
   return { x0: x0, y0: y0, x1: x1, y1: y1, three: three, z: three ? vdot(vsub(ctr, v.P), v.f) : 0 };
 }
 
-function sceneLayer(l, kind) {
+function sceneLayer(l: AVLayer, kind: string): boolean {
   if (!l.enabled || kind === "camera" || kind === "light" || kind === "null" || kind === "adjustment") return false;
   if (safe(function () { return l.guideLayer; }) || safe(function () { return l.hasAudio && !l.hasVideo; })) return false;
   return typeof l.sourceRectAtTime === "function";
@@ -375,15 +385,15 @@ function sceneLayer(l, kind) {
 
 // Solid colour that hides what is behind it: a solid, or a shape layer with a full-strength fill; normal blending,
 // full opacity, no matte.
-function opaqueAt(l, kind, t) {
+function opaqueAt(l: AVLayer, kind: string, t: number): boolean {
   if (kind !== "solid" && kind !== "shape") return false;
   if (l.blendingMode !== BlendingMode.NORMAL || safe(function () { return l.isTrackMatte || l.trackMatteType !== TrackMatteType.NO_TRACK_MATTE; })) return false;
-  if (safe(function () { return tp(l, "ADBE Opacity").valueAtTime(t, false); }) < 99.5) return false;
+  if ((safe(function () { return tp(l, "ADBE Opacity").valueAtTime(t, false); }) as number) < 99.5) return false;
   if (kind === "shape") return safe(function () { return shapeHasFill(l.property("ADBE Root Vectors Group")); }) === true;
   return true;
 }
 
-function shapeHasFill(g) {
+function shapeHasFill(g: any): boolean {
   var i, p;
   for (i = 1; i <= g.numProperties; i++) {
     p = g.property(i);
@@ -393,21 +403,21 @@ function shapeHasFill(g) {
   return false;
 }
 
-function sceneChecks(c, issue) {
-  var ls = [], views = {}, boxes = {}, i, j, l, kind, t, L, O, X, front, tt;
+function sceneChecks(c: CompItem, issue: (o: Obj) => void): void {
+  var ls: SceneItem[] = [], views: { [t: number]: CamView } = {}, boxes: { [key: string]: ScreenBox | null } = {}, i, j, l, kind, t: number, L: SceneItem, O, X, front, tt;
   if (c.numLayers > 400) return;
-  function boxOf(x, at) {
+  function boxOf(x: SceneItem, at: number): ScreenBox | null {
     var k = x.l.id + "@" + at;
     if (!has(boxes, k)) boxes[k] = safe(function () { return screenBox(x.l, c, views[at] || (views[at] = viewAt(c, at)), at); }) || null;
     return boxes[k];
   }
   for (i = 1; i <= c.numLayers; i++) {
-    l = c.layer(i); kind = layerKind(l);
+    l = c.layer(i) as AVLayer; kind = layerKind(l);
     if (sceneLayer(l, kind)) ls.push({ l: l, kind: kind, t: Math.round(Math.max(0, Math.min(c.duration - c.frameDuration, (l.inPoint + l.outPoint) / 2)) / c.frameDuration) * c.frameDuration });
   }
   for (i = 0; i < ls.length; i++) {
     L = ls[i]; t = L.t; tt = Math.round(t * 1000) / 1000;
-    if (safe(function () { return tp(L.l, "ADBE Opacity").valueAtTime(t, false); }) < 1) continue;
+    if ((safe(function () { return tp(L.l, "ADBE Opacity").valueAtTime(t, false); }) as number) < 1) continue;
     O = boxOf(L, t);
     if (!O) continue;
     if (O.x1 < 0 || O.x0 > c.width || O.y1 < 0 || O.y0 > c.height) {
@@ -433,15 +443,16 @@ function sceneChecks(c, issue) {
   }
 }
 
-C.review_motion = function (a) {
+C.review_motion = function (a: Args["review_motion"]) {
   need(a, ["comp_id"]);
   var c = getComp(a.comp_id), fd = c.frameDuration, maxHold = has(a, "max_hold") ? a.max_hold : 1, minText = has(a, "min_text") ? a.min_text : Math.round(c.height * 0.022),
-    issues = [], spans = [], events = [], starts = {}, beats = [], lin = {}, i, j, l, segs, s, kind, live, first, fs, sc, mk, gap, cur, onBeat = 0, starts2 = [], near, hold = 0, b, txt;
-  function issue(o) { issues.push(o); }
+    issues: Obj[] = [], spans: number[][] = [], events: number[] = [], starts: { [frame: string]: number[] } = {}, beats: number[] = [], lin: { [key: string]: boolean } = {}, i, j, l: AVLayer, segs: Seg[], s: Seg, kind, live: { on: boolean },
+    first: number | null, fs: string, sc: any, mk, gap, cur, onBeat = 0, starts2: Obj[] = [], near: any, hold = 0, b, txt: any;
+  function issue(o: Obj): void { issues.push(o); }
   mk = c.markerProperty;
   for (i = 1; i <= mk.numKeys; i++) if (mk.keyValue(i).comment === "beat") beats.push(mk.keyTime(i));
   for (i = 1; i <= c.numLayers; i++) {
-    l = c.layer(i); kind = layerKind(l);
+    l = c.layer(i) as AVLayer; kind = layerKind(l);
     if (!l.enabled || kind === "light" || /^Audio Amplitude/.test(l.name)) continue;
     if (safe(function () { return l.guideLayer; }) || safe(function () { return l.hasAudio && !l.hasVideo; })) continue;
     if (l.inPoint > fd / 2) events.push(l.inPoint);

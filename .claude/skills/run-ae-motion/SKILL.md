@@ -62,7 +62,7 @@ node $D reload-host                # "reloaded .../panel/host/host.jsx (N chars)
 node $D bridge <your_command> '{}' # or: node $D call <tool> '{...}'
 ```
 
-Verified by adding a throwaway `C.ping` to `host/dispatch.jsx`: `Unknown command: ping` → build:host + reload-host → `{"pong":true}` → revert + reload → `Unknown command` again.
+Verified by adding a throwaway `C.ping` to `host/dispatch.ts`: `Unknown command: ping` → build:host + reload-host → `{"pong":true}` → revert + reload → `Unknown command` again.
 
 ### Iterating on src/ (server) changes
 

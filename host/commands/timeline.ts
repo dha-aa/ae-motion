@@ -1,18 +1,18 @@
 // Timeline editing and markers. (src/tools/timeline.ts)
 // Times snap to whole frames (snapT) unless a command takes snap: false.
 
-C.split_layer = function (a) {
+C.split_layer = function (a: Args["split_layer"]) {
   need(a, ["layer_ids", "time"]);
   var ls = pickLayers(a.layer_ids), comp = sameComp(ls), t = a.snap === false ? a.time : snapT(comp, a.time), out = [], i, d;
   assertUnlocked(ls);
   for (i = 0; i < ls.length; i++) {
     if (!(t > ls[i].inPoint + EPS && t < ls[i].outPoint - EPS)) fail("BAD_ARGS", "Time " + t + " is not inside layer " + ls[i].id + " (" + ls[i].inPoint + " to " + ls[i].outPoint + ")");
   }
-  for (i = 0; i < ls.length; i++) { d = splitAt(ls[i], t); out.push({ first: layerTiming(ls[i]), second: layerTiming(d) }); }
+  for (i = 0; i < ls.length; i++) { d = splitAt(ls[i], t); out.push({ first: layerTiming(ls[i]), second: layerTiming(d as AVLayer) }); }
   return { time: t, splits: out };
 };
 
-C.shift_layers = function (a) {
+C.shift_layers = function (a: Args["shift_layers"]) {
   need(a, ["layer_ids", "offset_seconds"]);
   var ls = pickLayers(a.layer_ids), out = [], i;
   assertUnlocked(ls);
@@ -21,7 +21,7 @@ C.shift_layers = function (a) {
   return { layers: out };
 };
 
-C.sequence_layers = function (a) {
+C.sequence_layers = function (a: Args["sequence_layers"]) {
   need(a, ["layer_ids"]);
   var ls = pickLayers(a.layer_ids), ov = has(a, "overlap") ? a.overlap : 0, out = [], i, t;
   if (ls.length < 2) fail("BAD_ARGS", "Need at least two layers");
@@ -39,11 +39,11 @@ C.sequence_layers = function (a) {
 
 // Per layer, relative to the range [s, e]: before it -> untouched; after it -> shifted (ripple); inside -> deleted;
 // spanning it -> split with the middle removed; crossing one edge -> trimmed.
-C.delete_range = function (a) {
+C.delete_range = function (a: Args["delete_range"]) {
   need(a, ["comp_id", "start", "end"]);
   var comp = getComp(a.comp_id), s = snapT(comp, a.start), e = snapT(comp, a.end), ripple = a.ripple !== false, span = e - s,
     all = a.layer_ids ? pickLayers(a.layer_ids, comp) : layersOf(comp), targets = [],
-    res = { range: [s, e], ripple: ripple, deleted: [], trimmed: [], split: [], shifted: [], skipped_locked: [] }, i, l, li, lo, d;
+    res: Obj = { range: [s, e], ripple: ripple, deleted: [], trimmed: [], split: [], shifted: [], skipped_locked: [] }, i, l, li, lo, d;
   if (!(e > s + EPS)) fail("BAD_ARGS", "end must be after start (times snap to whole frames)");
   for (i = 0; i < all.length; i++) { if (all[i].locked) res.skipped_locked.push(all[i].id); else targets.push(all[i]); }
   for (i = 0; i < targets.length; i++) {
@@ -69,11 +69,11 @@ C.delete_range = function (a) {
 
 // Ripple insert, the counterpart of delete_range: open a gap of duration seconds at time at.
 // Layers starting at or after it move later, layers spanning it are split and their second part moves.
-C.insert_time = function (a) {
+C.insert_time = function (a: Args["insert_time"]) {
   need(a, ["comp_id", "at", "duration"]);
   var comp = getComp(a.comp_id), snap = a.snap !== false, t = snap ? snapT(comp, a.at) : a.at, d = snap ? snapT(comp, a.duration) : a.duration,
     all = a.layer_ids ? pickLayers(a.layer_ids, comp) : layersOf(comp), targets = [],
-    res = { at: t, duration: d, shifted: [], split: [], skipped_locked: [] }, i, l, nd;
+    res: Obj = { at: t, duration: d, shifted: [], split: [], skipped_locked: [] }, i, l, nd;
   if (!(d > EPS)) fail("BAD_ARGS", "duration must be at least one frame");
   if (t < 0 || t > comp.duration + EPS) fail("BAD_ARGS", "at must be within the comp (0 to " + comp.duration + " s)");
   for (i = 0; i < all.length; i++) { if (all[i].locked) res.skipped_locked.push(all[i].id); else targets.push(all[i]); }
@@ -92,7 +92,7 @@ C.insert_time = function (a) {
 };
 
 // Shift a whole comp so [s, e] becomes [0, e - s]: layers and comp markers move by -s, markers left outside are removed.
-C.trim_comp = function (a) {
+C.trim_comp = function (a: Args["trim_comp"]) {
   need(a, ["comp_id", "to"]);
   var c = getComp(a.comp_id), ls = layersOf(c), s, e, i, locked = [], mp = c.markerProperty, removed = 0, keep = [];
   if (a.to === "work_area") { s = c.workAreaStart; e = s + c.workAreaDuration; }
@@ -118,7 +118,7 @@ C.trim_comp = function (a) {
   return { trimmed_to: a.to, removed_range: [s, e], offset: -s, duration: c.duration, markers_removed: removed, layers_moved: ls.length };
 };
 
-C.set_playhead = function (a) {
+C.set_playhead = function (a: Args["set_playhead"]) {
   need(a, ["comp_id", "time"]);
   var c = getComp(a.comp_id), t = a.snap === false ? a.time : snapT(c, a.time);
   if (t < 0 || t > c.duration + EPS) fail("BAD_ARGS", "time must be within the comp (0 to " + c.duration + " s)");
@@ -129,16 +129,16 @@ C.set_playhead = function (a) {
 // ---------- markers ----------
 
 // The marker property of a layer (layer_id) or a comp (comp_id).
-function markerProp(a) {
+function markerProp(a: { layer_id?: number; comp_id?: number }): Prop {
   var hasL = has(a, "layer_id"), hasC = has(a, "comp_id");
   if (hasL === hasC) fail("BAD_ARGS", "Pass exactly one of layer_id or comp_id");
-  if (hasC) return getComp(a.comp_id).markerProperty;
-  return getLayer(a.layer_id).property("ADBE Marker");
+  if (hasC) return getComp(a.comp_id!).markerProperty;
+  return getLayer(a.layer_id!).property("ADBE Marker");
 }
 
 // Move comp markers at or after from by dt. With removeTo, markers in [from, removeTo) are deleted instead (ripple delete).
-function rippleCompMarkers(comp, from, dt, removeTo) {
-  var mp = comp.markerProperty, ks = [], removed = 0, i, t;
+function rippleCompMarkers(comp: CompItem, from: number, dt: number, removeTo?: number): Obj {
+  var mp = comp.markerProperty, ks: { t: number; v: MarkerValue }[] = [], removed = 0, i, t;
   for (i = mp.numKeys; i >= 1; i--) {
     t = mp.keyTime(i);
     if (t < from - EPS) continue;
@@ -151,7 +151,7 @@ function rippleCompMarkers(comp, from, dt, removeTo) {
 }
 
 // The marker an edit addresses: by 1-based index, or by time (within 0.05 s).
-function findMarker(prop, a) {
+function findMarker(prop: Prop, a: { index?: number; time?: number }): number {
   var idx;
   if (has(a, "index")) idx = a.index;
   else if (has(a, "time")) idx = prop.numKeys ? prop.nearestKeyIndex(a.time) : 0;
@@ -161,12 +161,12 @@ function findMarker(prop, a) {
   return idx;
 }
 
-function markerInfo(prop, i) {
+function markerInfo(prop: Prop, i: number): Obj {
   var v = prop.keyValue(i);
   return { index: i, time: prop.keyTime(i), comment: v.comment, duration: v.duration, chapter: v.chapter, url: v.url, label: safe(function () { return v.label; }) };
 }
 
-C.add_marker = function (a) {
+C.add_marker = function (a: Args["add_marker"]) {
   need(a, ["time"]);
   var prop = markerProp(a), mv = new MarkerValue(has(a, "comment") ? a.comment : "");
   if (has(a, "duration")) mv.duration = a.duration;
@@ -178,7 +178,7 @@ C.add_marker = function (a) {
 };
 
 // Change a marker in place; only the fields passed change. to_time moves it.
-C.update_marker = function (a) {
+C.update_marker = function (a: Args["update_marker"]) {
   var prop = markerProp(a), idx = findMarker(prop, a), v = prop.keyValue(idx), t = prop.keyTime(idx), nt;
   if (has(a, "comment")) v.comment = a.comment;
   if (has(a, "duration")) v.duration = a.duration;
@@ -195,7 +195,7 @@ C.update_marker = function (a) {
 };
 
 // Put layers' in points on consecutive markers (layer i on marker from_index + i), e.g. to cut to a beat.
-C.align_to_markers = function (a) {
+C.align_to_markers = function (a: Args["align_to_markers"]) {
   need(a, ["layer_ids"]);
   var ls = pickLayers(a.layer_ids), comp = sameComp(ls), prop, first = has(a, "from_index") ? a.from_index : 1, out = [], i, mt, next;
   if (has(a, "marker_layer_id")) { prop = getLayer(a.marker_layer_id).property("ADBE Marker"); if (getLayer(a.marker_layer_id).containingComp.id !== comp.id) fail("BAD_ARGS", "The marker layer is in a different comp"); }
@@ -214,13 +214,13 @@ C.align_to_markers = function (a) {
   return { layers: out };
 };
 
-C.list_markers = function (a) {
+C.list_markers = function (a: Args["list_markers"]) {
   var prop = markerProp(a), out = [], i;
   for (i = 1; i <= prop.numKeys && i <= 500; i++) out.push(markerInfo(prop, i));
   return { markers: out, total: prop.numKeys };
 };
 
-C.delete_marker = function (a) {
+C.delete_marker = function (a: Args["delete_marker"]) {
   var prop = markerProp(a), idx = findMarker(prop, a), info;
   info = markerInfo(prop, idx);
   prop.removeKey(idx);

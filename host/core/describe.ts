@@ -1,32 +1,40 @@
 // Turn After Effects objects into the plain JSON objects tools return.
 
-var MASKMODES = { none: "NONE", add: "ADD", subtract: "SUBTRACT", intersect: "INTERSECT", lighten: "LIGHTEN", darken: "DARKEN", difference: "DIFFERENCE" };
-var MATTES = { alpha: "ALPHA", alpha_inverted: "ALPHA_INVERTED", luma: "LUMA", luma_inverted: "LUMA_INVERTED" };
+/** A JSON object built field by field (tool results). */
+type Obj = { [key: string]: any };
+/** A layer as JSON (layerInfo); layerBrief removes the fields a comp's layer list doesn't need. */
+type LayerJson = {
+  id: number; index?: number; name: string; kind: string; "in"?: number; "out"?: number; start?: number; comp_id?: number; label?: number;
+  source_id?: number; parent_id?: number; enabled?: boolean; locked?: boolean; shy?: boolean; solo?: boolean; three_d?: boolean;
+  stretch?: number; blend_mode?: string; motion_blur?: boolean;
+};
 
-function layerKind(l) {
+var MASKMODES: { [name: string]: string } = { none: "NONE", add: "ADD", subtract: "SUBTRACT", intersect: "INTERSECT", lighten: "LIGHTEN", darken: "DARKEN", difference: "DIFFERENCE" };
+var MATTES: { [name: string]: string } = { alpha: "ALPHA", alpha_inverted: "ALPHA_INVERTED", luma: "LUMA", luma_inverted: "LUMA_INVERTED" };
+
+function layerKind(l: Layer): string {
   if (l instanceof TextLayer) return "text";
   if (l instanceof ShapeLayer) return "shape";
   if (l instanceof CameraLayer) return "camera";
   if (l instanceof LightLayer) return "light";
-  if (l.nullLayer) return "null";
-  if (l.adjustmentLayer) return "adjustment";
-  if (l.source instanceof CompItem) return "precomp";
-  if (l.source && l.source.mainSource instanceof SolidSource) return "solid";
+  if ((l as AVLayer).nullLayer) return "null";
+  if ((l as AVLayer).adjustmentLayer) return "adjustment";
+  if ((l as AVLayer).source instanceof CompItem) return "precomp";
+  if ((l as AVLayer).source && ((l as AVLayer).source as FootageItem).mainSource instanceof SolidSource) return "solid";
   return "footage";
 }
 
-/** @param {Layer} l @returns {any} */
 // BlendingMode enum value -> its name (NORMAL, ADD, SCREEN and so on), the same names set_layer blend_mode takes.
-function blendModeName(v) {
+function blendModeName(v: BlendingMode): string | undefined {
   var k;
-  for (k in BlendingMode) { if (BlendingMode.hasOwnProperty(k) && BlendingMode[k] === v) return k; }
+  for (k in BlendingMode) { if (BlendingMode.hasOwnProperty(k) && (BlendingMode as any)[k] === v) return k; }
   return undefined;
 }
 
 // A layer as JSON. Only non-default values are included, to keep get_comp and every result that describes a layer
 // small (the server instructions tell clients a missing flag means false, blend NORMAL, stretch 100, enabled true).
-function layerInfo(l) {
-  var o = { id: l.id, index: l.index, name: l.name, kind: layerKind(l), "in": l.inPoint, "out": l.outPoint, start: l.startTime, comp_id: l.containingComp.id, label: l.label },
+function layerInfo(l: AVLayer): LayerJson {
+  var o: LayerJson = { id: l.id, index: l.index, name: l.name, kind: layerKind(l), "in": l.inPoint, "out": l.outPoint, start: l.startTime, comp_id: l.containingComp.id, label: l.label },
     bm = safe(function () { return blendModeName(l.blendingMode); }), st = safe(function () { return l.stretch; });
   if ((o.kind === "precomp" || o.kind === "footage") && l.source) o.source_id = l.source.id; // the comp / footage item it plays
   if (l.parent) o.parent_id = l.parent.id;
@@ -42,17 +50,17 @@ function layerInfo(l) {
 }
 
 // What tools that change layers return: enough to address the layer again (get_layer has the rest).
-function layerRef(l) { return { id: l.id, index: l.index, name: l.name }; }
+function layerRef(l: Layer): Obj { return { id: l.id, index: l.index, name: l.name }; }
 
 // layerRef plus timing, for the timeline tools.
-function layerTiming(l) {
+function layerTiming(l: AVLayer): Obj {
   var o = layerRef(l), st = safe(function () { return l.stretch; });
   o["in"] = l.inPoint; o.out = l.outPoint; o.start = l.startTime;
   if (st !== undefined && st !== 100) o.stretch = st;
   return o;
 }
 
-var LAYER_FIELDS = {
+var LAYER_FIELDS: { [field: string]: (l: AVLayer) => any } = {
   name: function (l) { return l.name; }, start: function (l) { return l.startTime; }, "in": function (l) { return l.inPoint; },
   out: function (l) { return l.outPoint; }, stretch: function (l) { return l.stretch; }, parent_id: function (l) { return l.parent ? l.parent.id : null; },
   enabled: function (l) { return l.enabled; }, locked: function (l) { return l.locked; }, shy: function (l) { return l.shy; },
@@ -62,8 +70,8 @@ var LAYER_FIELDS = {
 
 // layerRef plus the layer fields named in args, read back (set_layer). Changing any timing field reports all three
 // (setting in moves out, and so on).
-function layerFieldsSet(l, args) {
-  var o = layerRef(l), k;
+function layerFieldsSet(l: AVLayer, args: Obj): Obj {
+  var o = layerRef(l), k: string;
   for (k in args) {
     if (!args.hasOwnProperty(k) || !LAYER_FIELDS.hasOwnProperty(k)) continue;
     if (k === "start" || k === "in" || k === "out" || k === "stretch") { o.start = l.startTime; o["in"] = l.inPoint; o.out = l.outPoint; }
@@ -74,8 +82,8 @@ function layerFieldsSet(l, args) {
 
 // A comp as JSON, leaving out settings at their defaults (square pixels, work area = whole comp, playhead at 0,
 // motion blur and frame blending off, no markers; the shutter only when motion blur is on).
-function compInfo(c, withLayers) {
-  var o = {
+function compInfo(c: CompItem, withLayers?: boolean): Obj {
+  var o: Obj = {
     id: c.id, name: c.name, width: c.width, height: c.height, fps: c.frameRate, duration: c.duration,
     bg_color: [c.bgColor[0], c.bgColor[1], c.bgColor[2]], num_layers: c.numLayers
   }, nm = safe(function () { return c.markerProperty.numKeys; });
@@ -86,24 +94,24 @@ function compInfo(c, withLayers) {
   if (c.motionBlur) { o.shutter_angle = c.shutterAngle; o.shutter_phase = c.shutterPhase; } // they only matter with blur on
   if (c.frameBlending) o.frame_blending = true;
   if (nm) o.num_markers = nm;
-  if (withLayers) { o.layers = []; for (var i = 1; i <= c.numLayers; i++) o.layers.push(layerBrief(c.layer(i), c)); }
+  if (withLayers) { o.layers = []; for (var i = 1; i <= c.numLayers; i++) o.layers.push(layerBrief(c.layer(i) as AVLayer, c)); }
   return o;
 }
 
 // A layer in a comp's layer list (get_comp): what layerInfo says minus what the list already tells (the comp, the
 // stacking order) and the defaults: in is left out at 0, out at the comp's end, start at 0 or when it equals in.
 // The label color is only in get_layer.
-function layerBrief(l, c) {
+function layerBrief(l: AVLayer, c: CompItem): LayerJson {
   var o = layerInfo(l), fd = c.frameDuration;
   delete o.index; delete o.comp_id; delete o.label;
-  if (o.start === 0 || Math.abs(o.start - o["in"]) < fd / 2) delete o.start;
-  if (o["in"] < fd / 2) delete o["in"];
-  if (o.out > c.duration - fd / 2) delete o.out;
+  if (o.start === 0 || Math.abs(o.start! - o["in"]!) < fd / 2) delete o.start;
+  if (o["in"]! < fd / 2) delete o["in"];
+  if (o.out! > c.duration - fd / 2) delete o.out;
   return o;
 }
 
-function itemInfo(it) {
-  var o = { id: it.id, name: it.name, type: it instanceof CompItem ? "comp" : (it instanceof FolderItem ? "folder" : "footage") };
+function itemInfo(it: _ItemClasses): Obj {
+  var o: Obj = { id: it.id, name: it.name, type: it instanceof CompItem ? "comp" : (it instanceof FolderItem ? "folder" : "footage") };
   if (it instanceof CompItem || it instanceof FootageItem) {
     if (it.width) { o.width = it.width; o.height = it.height; } // audio has no frame size
     o.duration = it.duration;
@@ -112,7 +120,7 @@ function itemInfo(it) {
 }
 
 // Short name for a property's value type.
-function vt(p) {
+function vt(p: Prop): string {
   var t = p.propertyValueType, V = PropertyValueType;
   if (t === V.OneD) return "1d"; if (t === V.TwoD) return "2d"; if (t === V.ThreeD) return "3d";
   if (t === V.COLOR) return "color"; if (t === V.TwoD_SPATIAL) return "2d_spatial"; if (t === V.ThreeD_SPATIAL) return "3d_spatial";
@@ -123,7 +131,7 @@ function vt(p) {
 
 // A property's value at time as JSON (paths as shape specs), or undefined for types that do not serialize (markers, custom).
 // pre: the value before any expression (keyframes or the static value).
-function safeVal(p, time, pre) {
+function safeVal(p: Prop, time: number, pre?: boolean): any {
   var t = p.propertyValueType, V = PropertyValueType, v;
   try {
     if (t === V.TEXT_DOCUMENT) return p.value.text;
@@ -138,21 +146,22 @@ function safeVal(p, time, pre) {
 
 // Groups list_properties leaves out unless asked (all, or a group_path into them): the layer marker, and the shape
 // "Material Options" groups (48 3D-only properties each, repeated in every shape group).
-var WALK_SKIP = { "ADBE Marker": 1, "ADBE Vector Materials Group": 1 };
+var WALK_SKIP: { [matchName: string]: number } = { "ADBE Marker": 1, "ADBE Vector Materials Group": 1 };
 // 3D-only groups, listed for 3D layers only
-var WALK_3D = { "ADBE Material Options Group": 1, "ADBE Extrsn Options Group": 1, "ADBE Plane Options Group": 1 };
+var WALK_3D: { [matchName: string]: number } = { "ADBE Material Options Group": 1, "ADBE Extrsn Options Group": 1, "ADBE Plane Options Group": 1 };
 var WALK_EXPR = 160; // longer expressions are cut (get_keyframes returns them whole)
 
 // Is any layer style turned on? (the Layer Styles group lists all nine styles' settings even when none is)
-function stylesOn(g) {
+function stylesOn(g: PropertyGroup): boolean {
   var i;
-  for (i = 1; i <= g.numProperties; i++) if (g.property(i).matchName !== "ADBE Blend Options Group" && safe(function () { return g.property(i).enabled; }) === true) return true;
+  for (i = 1; i <= g.numProperties; i++) if (g.property(i).matchName !== "ADBE Blend Options Group" && safe(function () { return g.property(i!).enabled; }) === true) return true;
   return false;
 }
 
 // Should walk list p? Hidden splits (X/Y/Z position while not separated), 3D groups on 2D layers and unused layer
 // styles are left out by default too.
-function walkShows(p, layer) {
+// p: any property or group (walk lists both); "any" because the checks read members only one of them has.
+function walkShows(p: any, layer: AVLayer): boolean {
   var m = p.matchName;
   if (WALK_SKIP[m]) return false;
   if (WALK_3D[m] && !safe(function () { return layer.threeDLayer; })) return false;
@@ -165,8 +174,9 @@ function walkShows(p, layer) {
 // Walk a property group down to maxDepth (list_properties). Groups have type group | indexed_group. Children of an
 // indexed group carry their index (paths address them by it); others are addressed by match name. Empty groups and
 // the WALK_SKIP groups are left out unless all is set.
-function walk(g, depth, maxDepth, time, all) {
-  var out = [], i, p, node, v, indexed = g.propertyType === PropertyType.INDEXED_GROUP;
+// all: truthy to list everything (list_properties passes "" for an empty group_path)
+function walk(g: PropertyGroup, depth: number, maxDepth: number, time: number, all?: boolean | ""): Obj[] {
+  var out: Obj[] = [], i, p: any, node: Obj, v, indexed = g.propertyType === PropertyType.INDEXED_GROUP;
   for (i = 1; i <= g.numProperties; i++) {
     p = g.property(i);
     if (!all && !walkShows(p, layerOf(p))) continue;
@@ -186,5 +196,5 @@ function walk(g, depth, maxDepth, time, all) {
   return out;
 }
 
-function maskModeName(mode) { var k; for (k in MASKMODES) { if (MASKMODES.hasOwnProperty(k) && MaskMode[MASKMODES[k]] === mode) return k; } return "unknown"; }
-function matteTypeName(t) { var k; for (k in MATTES) { if (MATTES.hasOwnProperty(k) && TrackMatteType[MATTES[k]] === t) return k; } return "none"; }
+function maskModeName(mode: MaskMode): string { var k; for (k in MASKMODES) { if (MASKMODES.hasOwnProperty(k) && (MaskMode as any)[MASKMODES[k]] === mode) return k; } return "unknown"; }
+function matteTypeName(t: TrackMatteType): string { var k; for (k in MATTES) { if (MATTES.hasOwnProperty(k) && (TrackMatteType as any)[MATTES[k]] === t) return k; } return "none"; }

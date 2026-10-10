@@ -1,7 +1,7 @@
 // Preview frames, render preparation and the run_jsx escape hatch. (src/tools/output.ts, src/tools/scripting.ts)
 
 // The server waits for the PNG afterwards: saveFrameToPng can return before the file is fully written.
-C.preview_frame = function (a) {
+C.preview_frame = function (a: HostArgs["preview_frame"]) {
   need(a, ["comp_id", "time", "output_path"]);
   var comp = getComp(a.comp_id), f = new File(a.output_path), rf;
   if (typeof comp.saveFrameToPng !== "function") fail("UNSUPPORTED", "comp.saveFrameToPng is not available in this After Effects version", "Update After Effects");
@@ -16,14 +16,14 @@ C.preview_frame = function (a) {
 };
 
 // The first GPU renderer this machine offers (Metal, CUDA or OpenCL), or the current one if there is none.
-function gpuRenderer() {
-  var ts = safe(function () { return app.availableGPUAccelTypes; }) || [], i;
+function gpuRenderer(): GpuAccelType {
+  var ts = safe(function () { return app.availableGPUAccelTypes as unknown as GpuAccelType[]; }) || [], i;
   for (i = 0; i < ts.length; i++) { if (ts[i] !== GpuAccelType.SOFTWARE) return ts[i]; }
   return app.project.gpuAccelType;
 }
 
 // Called by render_start (not a tool): save the project and report what aerender needs.
-C.prepare_render = function (a) {
+C.prepare_render = function (a: HostArgs["prepare_render"]) {
   need(a, ["comp_id"]);
   var comp = getComp(a.comp_id);
   if (!app.project.file) fail("BAD_ARGS", "Project has never been saved", "Save the project in After Effects first");
@@ -38,7 +38,7 @@ C.prepare_render = function (a) {
 };
 
 // The server refuses this unless AE_MCP_ALLOW_JSX=1.
-C.run_jsx = function (a) {
+C.run_jsx = function (a: Args["run_jsx"]) {
   need(a, ["code"]);
   var r = eval(a.code);
   if (r === undefined) r = null;
