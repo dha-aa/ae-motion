@@ -201,30 +201,40 @@
   // the most recently active session, today's total and the costliest tools. Estimates of what ae-motion sends.
   var usageDir = path.join(path.dirname(bridgeFile), "usage");
   function kTok(n) { return n >= 100000 ? Math.round(n / 1000) + "k" : (n >= 1000 ? (n / 1000).toFixed(1) + "k" : String(n)); }
+  // One row per session (a running MCP server that has made tool calls), newest first; servers that never made a
+  // call (tests, helper scripts) are left out. The live one (updated in the last 30 minutes) is marked.
   function readUsage() {
-    var files = [], cur = null, today = 0, others = 0, day = new Date().toDateString(), i, u, tot, top = [], k;
+    var files = [], list = [], today = 0, day = new Date().toDateString(), i, u, tot, top = [], k, box = $("tok-sessions"), cur, row, t, live;
     try { files = fs.readdirSync(usageDir); } catch (e) { return; }
     for (i = 0; i < files.length; i++) {
       if (!/\.json$/.test(files[i])) continue;
       try { u = JSON.parse(fs.readFileSync(path.join(usageDir, files[i]), "utf8")); } catch (e) { continue; }
-      tot = (u.result_text_tokens || 0) + (u.image_tokens || 0);
-      if (new Date(u.updated).toDateString() === day) today += tot;
-      if (!cur || u.updated > cur.updated) { if (cur && Date.now() - Date.parse(cur.updated) < 30 * 60 * 1000) others++; cur = u; }
-      else if (Date.now() - Date.parse(u.updated) < 30 * 60 * 1000) others++;
+      if (!u.calls) continue;
+      u.total = (u.result_text_tokens || 0) + (u.image_tokens || 0);
+      if (new Date(u.updated).toDateString() === day) today += u.total;
+      list.push(u);
     }
-    if (!cur) return;
-    tot = cur.result_text_tokens + cur.image_tokens;
-    $("tok-session").textContent = "~" + kTok(tot);
-    $("tok-calls").textContent = cur.calls + " calls" + (cur.client ? " \u00b7 " + cur.client : "") + (others ? " (+" + others + " other)" : "");
-    $("tok-text").textContent = "~" + kTok(cur.result_text_tokens);
-    $("tok-img").textContent = "~" + kTok(cur.image_tokens);
-    $("tok-bar-text").style.width = (tot ? 100 * cur.result_text_tokens / tot : 0) + "%";
-    $("tok-bar-img").style.width = (tot ? 100 * cur.image_tokens / tot : 0) + "%";
-    $("tok-defs").textContent = cur.definitions_tokens ? "~" + kTok(cur.definitions_tokens) + " / request" : "-";
+    list.sort(function (a, b) { return a.updated < b.updated ? 1 : -1; });
+    while (box.firstChild) box.removeChild(box.firstChild);
+    if (!list.length) { row = document.createElement("div"); row.className = "k"; row.textContent = "No sessions yet"; box.appendChild(row); }
+    for (i = 0; i < list.length && i < 6; i++) {
+      u = list[i]; t = new Date(u.started);
+      live = Date.now() - Date.parse(u.updated) < 30 * 60 * 1000;
+      row = document.createElement("div"); row.className = "row";
+      row.title = (u.client || "client") + ", started " + t.toLocaleString() + ": " + u.calls + " calls, ~" + kTok(u.result_text_tokens || 0) + " text, ~" + kTok(u.image_tokens || 0) + " images";
+      row.innerHTML = '<span class="k"></span><span></span>';
+      row.firstChild.textContent = (live ? "\u25cf " : "") + (u.client || "session") + " \u00b7 " + (t.toDateString() === day ? "" : (t.getMonth() + 1) + "/" + t.getDate() + " ") + ("0" + t.getHours()).slice(-2) + ":" + ("0" + t.getMinutes()).slice(-2);
+      if (live) row.firstChild.className = "k live";
+      row.lastChild.textContent = "~" + kTok(u.total) + "  (" + u.calls + ")";
+      if (i === 0) row.lastChild.className = "big";
+      box.appendChild(row);
+    }
+    cur = list[0];
+    $("tok-defs").textContent = cur && cur.definitions_tokens ? "~" + kTok(cur.definitions_tokens) + " / request" : "-";
     $("tok-today").textContent = "~" + kTok(today);
-    for (k in cur.tools) { if (cur.tools.hasOwnProperty(k)) top.push([k, cur.tools[k].text + cur.tools[k].image, cur.tools[k].calls]); }
+    if (cur) for (k in cur.tools) { if (cur.tools.hasOwnProperty(k)) top.push([k, cur.tools[k].text + cur.tools[k].image, cur.tools[k].calls]); }
     top.sort(function (a, b) { return b[1] - a[1]; });
-    $("tok-top").textContent = top.length ? "Costliest: " + top.slice(0, 3).map(function (t) { return t[0] + " " + kTok(t[1]) + " (" + t[2] + "\u00d7)"; }).join(" \u00b7 ") : "";
+    $("tok-top").textContent = top.length ? "Costliest (latest session): " + top.slice(0, 3).map(function (t) { return t[0] + " " + kTok(t[1]) + " (" + t[2] + "\u00d7)"; }).join(" \u00b7 ") : "";
   }
   readUsage();
   setInterval(readUsage, 2000);

@@ -2,6 +2,14 @@
 
 All notable changes. Versions follow [semantic versioning](https://semver.org); each release is a git tag `vX.Y.Z`, which is what the update check looks for.
 
+## Unreleased
+
+### Fixed
+- CI: the render-progress test (C3) waited a fixed 1.6 s for the fake renderer's frames and failed on slower macOS runners; it now waits for the frames, and failing server tests print the values they saw.
+
+### Changed
+- The panel's token meter lists tokens per session (client, start time, tokens, calls; newest first, the live one marked) in place of the single "This session" block with its text / image split. Servers that never made a tool call (tests, helper scripts) no longer show up as sessions.
+
 ## 2.11.1 — 2026-10-10
 
 ### Fixed
