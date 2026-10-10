@@ -86,9 +86,12 @@ that incident. How-to material (setup, adding a tool step by step, the quirk lis
 1. `npm run build`, `bash scripts/install.sh`, then `node .claude/skills/run-ae-motion/driver.ts reload-host` and
    **check it printed `"ok": true`**. If it did not, After Effects is still running the old code (see 2.2).
 2. Exercise the change with the driver (`call` or `script`), including its error paths.
-3. For anything visual, look at it: `preview_frame` at the key times (several in one call), and `review_motion` for
+3. Run the live tests: `node test/live/run.ts --yes` (replaces the open project). They check the behaviours the mocks
+   model against real After Effects; a mock that no longer matches shows up here and nowhere else. When you add a
+   quirk to a mock, add a live check for it too.
+4. For anything visual, look at it: `preview_frame` at the key times (several in one call), and `review_motion` for
    motion. For renders, read `render_status`'s `check`.
-4. Note in the PR what was verified live and what was not.
+5. Note in the PR what was verified live and what was not.
 
 ## 6. Documentation
 
@@ -100,7 +103,8 @@ Update in the same change: `docs/tools.md` (tool reference), the README group ta
 
 1. Work on a branch, never on `main`.
 2. Release: bump the version in `package.json` and both places in `panel/CSXS/manifest.xml`, turn `## Unreleased`
-   into `## X.Y.Z — date`, then `npm install --package-lock-only`, `npm run typecheck`, `npm test`.
+   into `## X.Y.Z — date`, then `npm install --package-lock-only`, `npm run typecheck`, `npm test`, and the live tests
+   (`node test/live/run.ts --yes`) when After Effects is available.
 3. Commit with the attribution line, push, open a PR whose description says what changed, why, and how it was
    tested (including live checks).
 4. **Merge only when CI is green on every runner** (`gh pr checks <n> --watch`). *Incident: 2.11.1 was merged
@@ -118,7 +122,7 @@ Update in the same change: `docs/tools.md` (tool reference), the README group ta
 - [ ] ES3 clean, no reserved-word names, flags tested `=== true`, read-only stays read-only
 - [ ] Errors in the standard format with hints; paths sandboxed; destructive results report what they removed
 - [ ] Tests added (fail without the change); no fixed sleeps; `npm test` + `npm run typecheck` pass
-- [ ] Host change reloaded (`"ok": true`) and verified live; visual changes previewed
+- [ ] Host change reloaded (`"ok": true`) and verified live; `test/live/run.ts` passes; visual changes previewed
 - [ ] Token budget respected (or raised with a reason)
 - [ ] Docs and `CHANGELOG.md` updated
 - [ ] CI green on every runner before merge; tag + release after

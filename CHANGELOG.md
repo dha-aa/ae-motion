@@ -9,6 +9,8 @@ All notable changes. Versions follow [semantic versioning](https://semver.org); 
 - A command that timed out while waiting behind a slow one still ran later, out of the model's sight. The panel now drops a queued command once its caller has given up, and the `TIMEOUT` error says whether the command is still running in After Effects (inspect before retrying) or was dropped before it started (safe to retry), with what After Effects is busy with.
 
 ### Added
+- Live tests (`node test/live/run.ts --yes`): 21 checks of the behaviours the mock tests model (layer timing, frame snapping, track mattes, parenting, markers, keyframe easing, springs, cameras, alignment and more) against a real After Effects, so a mock that no longer matches After Effects shows up. Run before a release; CI has no After Effects.
+- Build evaluations (`node evals/run.ts --build`): seven tasks that change the test project, each graded by a check that reads the result through the tools. The existing ten questions only read.
 - Tests for the panel (`test/panel.test.ts`: the real `panel/main.js` with a fake CEP, driven by the server's bridge) and the update script (`test/update-script.test.ts`).
 - `docs/future.md`: Adobe's move from CEP to UXP in After Effects (public beta targeted for November 2026, CEP off by default from December 2028 and removed in December 2029) and what it would mean for ae-motion's panel, host and bridge.
 

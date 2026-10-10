@@ -168,9 +168,25 @@ CI (`.github/workflows/ci.yml`) runs `npm run typecheck` and `npm test` on macOS
 
 A green `npm test` doesn't prove a change works in real After Effects: the mocks only know the behavior already seen there.
 
+## Live tests
+
+`npm test` runs against mock After Effects objects written by hand, so it can pass while real After Effects behaves differently (a new AE version, a quirk modelled wrong). `test/live/run.ts` checks the same behaviours against a real After Effects through the built server: layer timing, frame snapping, split, track mattes, parenting, precompose, insert_time, markers, keyframe easing kept on a move, springs (overshoot and exact landing), expressions under `get_keyframes`, text, effects, masks and shapes, alignment by bounds, camera direction, 3D, the motion tools, previews, `batch` and the error format.
+
+```bash
+npm run build && node test/live/run.ts --yes            # replaces the open project with a new, unsaved one
+node test/live/run.ts --yes --only spring               # checks whose name contains "spring"
+```
+
+Each check gets its own comp. CI can't run them (no After Effects), so run them before a release and after any change to `host/` or `panel/`; when a mock gets a new quirk, add a live check for it. `scripts/mcp-client.ts` is the small stdio MCP client they (and the evals) use.
+
 ## Evaluations
 
-`evals/` holds ten read-only questions about a fixed test project, run through headless Claude Code (`claude -p`, no API key) against a live After Effects: `npm run build && node evals/run.ts`. Use it after changing tool descriptions, result shapes or `SERVER_INSTRUCTIONS`, and compare the score and tool calls per question with the previous run. Details in `evals/README.md`.
+`evals/` checks how well a model uses the tools, through headless Claude Code (`claude -p`, no API key) against a live After Effects:
+
+- `node evals/run.ts`: ten read-only questions about a fixed test project, graded on the answer.
+- `node evals/run.ts --build`: seven build tasks on the same project (add an eased text layer, fade layers out, re-time a stagger, add markers, change an effect, re-time a camera key, centre a layer); the model gets the tools that change things, and each task's check (`evals/build-tasks.ts`) reads the result through the tools.
+
+Use them after changing tool descriptions, result shapes or `SERVER_INSTRUCTIONS`, and compare the score and tool calls per question with the previous run. Details in `evals/README.md`.
 
 ## Verification status
 
