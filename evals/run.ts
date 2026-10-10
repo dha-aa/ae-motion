@@ -4,7 +4,7 @@
 //
 //   npm run build && node evals/run.ts [--no-build] [--model <alias>] [--only 1,4] [--jobs N]   questions (read-only)
 //   npm run build && node evals/run.ts --build [--model <alias>] [--only 1,4]                   build tasks
-//   --toolsets all    start the server with AE_MCP_TOOLSETS=all instead of the default (core, the rest via load_tools)
+//   --toolsets core   start the server with AE_MCP_TOOLSETS=core (the rest via load_tools), to compare tool-set sizes
 //
 // Questions (evals/evaluation.xml) get the read-only tools and are graded on the answer. Build tasks
 // (evals/build-tasks.ts) get the tools that change the project too (not run_jsx, rendering, or opening, saving and
@@ -158,7 +158,7 @@ console.log(`\n${passed}/${results.length} ${BUILD ? "tasks done right" : "corre
 const dir = path.join(ROOT, "evals", "results");
 fs.mkdirSync(dir, { recursive: true });
 const file = path.join(dir, new Date().toISOString().replace(/[:.]/g, "-") + ".json");
-fs.writeFileSync(file, JSON.stringify({ mode: BUILD ? "build" : "questions", toolsets: TOOLSETS ?? "core", model: MODEL ?? "default", passed, total: results.length, not_run: notRun, results }, null, 2));
+fs.writeFileSync(file, JSON.stringify({ mode: BUILD ? "build" : "questions", toolsets: TOOLSETS ?? "all", model: MODEL ?? "default", passed, total: results.length, not_run: notRun, results }, null, 2));
 console.log(`details (each answer's summary of how it got there): ${path.relative(ROOT, file)}`);
 fs.rmSync(work, { recursive: true, force: true });
 client.close();

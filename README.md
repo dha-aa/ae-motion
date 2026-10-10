@@ -116,7 +116,7 @@ claude mcp add ae-motion -- node /absolute/path/to/ae-motion/dist/index.js
 }
 ```
 
-The server starts with the core tools (comps, layers, keyframes, text, effects, motion, previews, renders): about 9k tokens of tool definitions on every message instead of 16k. The model adds the others (3D and cameras, timeline and markers, masks, layout, audio) with `load_tools` when a task needs them. Set `AE_MCP_TOOLSETS` to `all` to load everything up front.
+All tools are loaded by default. To send fewer tool definitions with every message (about 9k tokens instead of 16k), add `"env": { "AE_MCP_TOOLSETS": "core" }`: the model then adds 3D and cameras, timeline and markers, masks, layout and audio with `load_tools` when it needs them. The evals kept their scores with `core` but cost only 2-8% less (most of the input is cached) and ran slower, and the model often rebuilt camera moves and alignment by hand instead of loading those tools, so it is off by default. Claude Code defers unused MCP tools on its own.
 
 **Other clients**: any client that can launch a stdio MCP server works with `node /absolute/path/to/ae-motion/dist/index.js`.
 
@@ -148,7 +148,7 @@ If a call fails, the error includes a code and a hint. See [Troubleshooting](#tr
 | Preview and render | `preview_frame`, `render_start`, `render_status`, `render_cancel` |
 | Escape hatch | `run_jsx` (only offered with `AE_MCP_ALLOW_JSX=1`) |
 | Audio | `beat_markers`, `audio_react`, `find_sound_cues`, `add_sfx`, `duck_music` |
-| Server | `check_for_updates`, `batch` (many steps in one call), `load_tools` (adds the groups not loaded at startup) |
+| Server | `check_for_updates`, `batch` (many steps in one call), `load_tools` (only when `AE_MCP_TOOLSETS` leaves groups out) |
 
 Also: resources `ae://project` and `ae://selection`, and the prompt `motion-guide` (conventions and a recommended build loop).
 
@@ -164,7 +164,7 @@ All settings are environment variables on the MCP server process. The one except
 |---|---|
 | `AE_MCP_ALLOWED_DIRS` | Folders (separated by the OS path delimiter, `:` or `;`) that tools may read from and write to. Default: your home folder. The temp folder is always allowed. |
 | `AE_MCP_ALLOW_JSX` | Set to `1` to offer `run_jsx` (without it the tool isn't listed at all). |
-| `AE_MCP_TOOLSETS` | Load only some tool groups, to send the model fewer tool definitions (cheaper requests): a comma list of `project`, `layers`, `timeline`, `masks`, `animate`, `motion`, `scene3d`, `design`, `output`, `audio`, `scripting`, `core` (= project, layers, animate, motion, output), or `all`. `inspect`, `check_for_updates` and `batch` are always on, and `load_tools` adds the other groups during a session (the client is told to refresh its tool list; the new tools also run through `batch`). Default: `core` (it scored the same as `all` in the evals on about 40% fewer input tokens). |
+| `AE_MCP_TOOLSETS` | Load only some tool groups, to send the model fewer tool definitions (cheaper requests): a comma list of `project`, `layers`, `timeline`, `masks`, `animate`, `motion`, `scene3d`, `design`, `output`, `audio`, `scripting`, `core` (= project, layers, animate, motion, output), or `all`. `inspect`, `check_for_updates` and `batch` are always on, and `load_tools` adds the other groups during a session (the client is told to refresh its tool list; the new tools also run through `batch`). Default: `all`. |
 | `AE_AERENDER` | Full path to `aerender` if auto-detection fails. |
 | `AE_MCP_BRIDGE_FILE` | Override the bridge file (default `~/.ae-motion-mcp/bridge.json`). |
 | `AE_MCP_UPDATE_CHECK` | Set to `0` to turn off the daily check for new releases (see [Updates](#updates)). |
