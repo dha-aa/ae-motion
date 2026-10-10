@@ -75,7 +75,8 @@ console.log("      indexOf uses (must all be on strings):");
 for (const u of indexOfUses) console.log("        " + u);
 
 // 3. tool/command cross-check via a real tools/list
-const srv = spawn(process.execPath, [path.join(ROOT, "dist", "index.js")], { stdio: ["pipe", "pipe", "pipe"], env: { ...process.env, AE_MCP_UPDATE_CHECK: "0" } });
+// every tool: all groups (the default is core) and run_jsx (only registered when enabled)
+const srv = spawn(process.execPath, [path.join(ROOT, "dist", "index.js")], { stdio: ["pipe", "pipe", "pipe"], env: { ...process.env, AE_MCP_UPDATE_CHECK: "0", AE_MCP_ALLOW_JSX: "1", AE_MCP_TOOLSETS: "all" } });
 let out = "";
 srv.stdout.on("data", (d) => (out += d));
 const send = (o: object): boolean => srv.stdin.write(JSON.stringify(o) + "\n");

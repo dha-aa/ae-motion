@@ -188,7 +188,7 @@ Each check gets its own comp. CI can't run them (no After Effects), so run them 
 `evals/` checks how well a model uses the tools, through headless Claude Code (`claude -p`, no API key) against a live After Effects:
 
 - `node evals/run.ts`: ten read-only questions about a fixed test project, graded on the answer.
-- `node evals/run.ts --build`: seven build tasks on the same project (add an eased text layer, fade layers out, re-time a stagger, add markers, change an effect, re-time a camera key, centre a layer); the model gets the tools that change things, and each task's check (`evals/build-tasks.ts`) reads the result through the tools.
+- `node evals/run.ts --build`: thirteen build tasks on the same project (an eased text layer, fades, a re-timed stagger, markers, an effect value, camera keys and a push-in, centring a layer, a text reveal, a transition at a cut, beat markers from the fixture's synthesized music, spring pop-ins, a 3D layer); the model gets the tools that change things, and each task's check (`evals/build-tasks.ts`) reads the result through the tools. Runs use the default tool set (`core`); `--toolsets all` compares with everything loaded, and every run reports input tokens per question.
 
 Use them after changing tool descriptions, result shapes or `SERVER_INSTRUCTIONS`, and compare the score and tool calls per question with the previous run. Details in `evals/README.md`.
 

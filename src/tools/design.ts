@@ -1,10 +1,10 @@
 /**
  * Design tools: layout (align, distribute, anchor points), shapes, layer styles and text-to-shapes.
- * Host side: host/commands/design.jsx (geometry in host/core/layout.jsx).
+ * Host side: host/commands/design.ts (geometry in host/core/layout.ts).
  */
 import { z } from "zod";
 import type { ToolRegistry } from "./registry.js";
-import { Anchor, id, LayerIds, Pt, ShapeLayerSpec, Time, Value } from "./schemas.js";
+import { Anchor, id, LayerIds, Pt, ShapeLayerRef, Time, Value } from "./schemas.js";
 
 export function registerDesignTools(r: ToolRegistry): void {
   r.bridged(
@@ -33,7 +33,7 @@ export function registerDesignTools(r: ToolRegistry): void {
   r.bridged(
     "add_shape",
     "Add a shape group to a shape layer, with fill and/or stroke. at top (default): above the others as group 1, earlier groups move down one; at bottom: below them, indexes kept. position is the offset inside the layer. Returns group_index and its path (plus a path shape's property for set_keyframes). Gradients cannot be set by script.",
-    { layer_id: id("Shape layer"), shape: ShapeLayerSpec, at: z.enum(["top", "bottom"]).optional() },
+    { layer_id: id("Shape layer"), shape: ShapeLayerRef, at: z.enum(["top", "bottom"]).optional() },
     { destructive: false },
   );
 

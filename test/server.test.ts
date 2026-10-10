@@ -59,7 +59,7 @@ fs.writeFileSync(fakeFf, `#!/bin/bash\necho "$@" >> ${DIR}/ffmpeg.calls\nlast="\
 function startServer(extraEnv: Record<string, string> = {}) {
   const p = spawn("node", [SERVER], {
     // update checks stay off unless a test turns them on (no real network calls from tests)
-    env: { ...process.env, AE_MCP_BRIDGE_FILE: path.join(DIR, "bridge.json"), AE_AERENDER: fake, AE_MCP_ALLOWED_DIRS: DIR, AE_MCP_UPDATE_CHECK: "0", AE_MCP_FFMPEG: fakeFf, ...extraEnv },
+    env: { ...process.env, AE_MCP_BRIDGE_FILE: path.join(DIR, "bridge.json"), AE_AERENDER: fake, AE_MCP_ALLOWED_DIRS: DIR, AE_MCP_UPDATE_CHECK: "0", AE_MCP_FFMPEG: fakeFf, AE_MCP_TOOLSETS: "all", ...extraEnv },
     stdio: ["pipe", "pipe", "pipe"],
   });
   let buf = "";
@@ -275,7 +275,8 @@ const results: [name: string, pass: boolean, detail?: string][] = [];
   results.push(["E: path arguments outside the allowed folders are refused before reaching the host", errCode(outside) === "FORBIDDEN" && !received.import_footage]);
 
   const jsx = await callTool("run_jsx", { code: "1+1" });
-  results.push(["E: run_jsx is refused unless AE_MCP_ALLOW_JSX=1", errCode(jsx) === "FORBIDDEN" && !received.run_jsx]);
+  const listed = ((await s.call("tools/list", {})).result as unknown as { tools: { name: string }[] }).tools.map((t) => t.name);
+  results.push(["E: run_jsx is not offered unless AE_MCP_ALLOW_JSX=1", !listed.includes("run_jsx") && !received.run_jsx && (jsx.error !== undefined || jsx.result?.isError === true)]);
 
   s.p.stdin.end();
   await Promise.race([s.exited, sleep(3000)]);
@@ -418,9 +419,9 @@ const results: [name: string, pass: boolean, detail?: string][] = [];
   s.p.kill();
 }
 
-// Phase I: AE_MCP_TOOLSETS leaves groups out; load_tools adds them during the session.
+// Phase I: AE_MCP_TOOLSETS leaves groups out (core, the default when unset); load_tools adds them during the session.
 {
-  const s = startServer({ AE_MCP_TOOLSETS: "core" });
+  const s = startServer({ AE_MCP_TOOLSETS: "" });
   const initReply = await s.call("initialize", { protocolVersion: "2024-11-05", capabilities: {}, clientInfo: { name: "t", version: "0" } });
   s.p.stdin.write(JSON.stringify({ jsonrpc: "2.0", method: "notifications/initialized" }) + "\n");
   const listNames = async (srv: { call: typeof s.call }): Promise<string[]> => (((await srv.call("tools/list", {})).result as Json | undefined)?.tools ?? []).map((t: Json) => t.name);

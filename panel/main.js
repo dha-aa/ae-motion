@@ -23,6 +23,7 @@
   var os = require("os");
   var path = require("path");
   var crypto = require("crypto");
+  var Buf = require("buffer").Buffer;
 
   var cep = window.__adobe_cep__;
   var token = crypto.randomBytes(24).toString("hex");
@@ -52,12 +53,18 @@
     return p;
   }
 
+  // Constant-time comparison, so response timing says nothing about how much of a guessed token was right.
+  function tokenOk(h) {
+    var a = Buf.from(typeof h === "string" ? h : ""), b = Buf.from(token);
+    return a.length === b.length && crypto.timingSafeEqual(a, b);
+  }
+
   var server = http.createServer(function (req, res) {
     function send(code, obj) {
       res.writeHead(code, { "content-type": "application/json" });
       res.end(JSON.stringify(obj));
     }
-    if (req.headers["x-ae-token"] !== token) return send(401, { ok: false, error: { code: "FORBIDDEN", message: "bad token" } });
+    if (!tokenOk(req.headers["x-ae-token"])) return send(401, { ok: false, error: { code: "FORBIDDEN", message: "bad token" } });
     if (req.method === "GET" && req.url === "/health") {
       return send(200, { ok: true, result: { panel: "ae-motion-mcp", busy: running ? { cmd: running.cmd, seconds: Math.round((Date.now() - running.since) / 1000) } : undefined, queued: queued } });
     }

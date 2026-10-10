@@ -126,7 +126,7 @@ C.add_shape = function (a: Args["add_shape"]) {
   const l = getLayer(a.layer_id), at = a.at || "top";
   if (at !== "top" && at !== "bottom") fail("BAD_ARGS", "at must be top or bottom");
   if (!(l instanceof ShapeLayer)) fail("BAD_ARGS", "Layer is not a shape layer", "Create one with add_layer kind shape");
-  const root = group(l, "ADBE Root Vectors Group"), g = addShapeContent(l, a.shape), n = root.numProperties, gi = at === "top" ? 1 : n;
+  const root = group(l, "ADBE Root Vectors Group"), g = addShapeContent(l, a.shape as LayerShapeSpec), n = root.numProperties, gi = at === "top" ? 1 : n;
   const base: (string | number)[] = ["ADBE Root Vectors Group", gi, "ADBE Vectors Group"];
   const res: { group_index: number; name: string; groups: number; path_group: (string | number)[]; path?: (string | number)[] } =
     { group_index: gi, name: g.name, groups: n, path_group: base };

@@ -1,5 +1,5 @@
 // @ts-nocheck -- the fake After Effects DOM here is deliberately loose (untyped fakes); these tests are checked by running them.
-// The motion tools (host/commands/motion.jsx: animate, text_reveal, transition, review_motion) against a fake After
+// The motion tools (host/commands/motion.ts: animate, text_reveal, transition, review_motion) against a fake After
 // Effects whose properties evaluate the expressions the tools write, so the spring and reveal maths (overshoot,
 // exact landing, stagger order) is checked on real values, not just on the expression text.
 import fs from "node:fs";

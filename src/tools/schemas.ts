@@ -18,7 +18,7 @@ export const Size = z.tuple([z.number().positive(), z.number().positive()]);
 export const Time = z.number().min(0);
 export const V3 = z.array(z.number()).min(2).max(3); // [x,y] or [x,y,z] px (server instructions)
 export const Rot3 = z.strictObject({ x: z.number().optional(), y: z.number().optional(), z: z.number().optional() }).describe("Rotation in degrees per axis");
-export const LayerIds = z.array(z.number().int()).min(1).describe("Same comp");
+export const LayerIds = z.array(z.number().int()).min(1); // all in one comp (the server instructions say so once)
 // an alias or a match-name path (server instructions; list_properties finds paths)
 export const PropPath = z.union([z.string(), z.array(z.union([z.string(), z.number()])).min(1)]);
 /** A mask or shape-layer path: rect / ellipse (position, size), polygon (points) or path (vertices + tangents). Same format get_keyframes returns. */
@@ -43,9 +43,15 @@ const ShapeRef = z.record(z.string(), z.unknown()).superRefine((v, ctx) => {
 export const ValueOrShape = z
   .union([z.number(), z.string(), z.boolean(), z.array(z.number()), ShapeRef])
   .describe("number, boolean, number array, or for path properties a shape spec as add_mask's shape");
+// Advertised as "easy" or an object (the fields are in the description; the host fills speed 0 / influence 33.33)
+// and validated strictly against EaseObject, like ShapeRef.
+const EaseObject = z.strictObject({ speed: z.number().optional(), influence: z.number().min(0.1).max(100).optional() });
 export const Ease = z
-  .union([z.literal("easy"), z.strictObject({ speed: z.number().default(0), influence: z.number().min(0.1).max(100).default(33.33) })])
-  .describe('"easy" (easy ease) or {speed, influence}');
+  .union([z.literal("easy"), z.record(z.string(), z.unknown()).superRefine((v, ctx) => {
+    const r = EaseObject.safeParse(v);
+    if (!r.success) for (const issue of r.error.issues) ctx.addIssue({ code: "custom", path: issue.path, message: `ease: ${issue.message}` });
+  })])
+  .describe('"easy" (easy ease) or {speed, influence 0.1-100}');
 export const Label = z.number().int().min(0).max(16);
 export const LightType = z.enum(["point", "spot", "parallel", "ambient"]);
 
@@ -62,6 +68,16 @@ export const ShapeLayerSpec = z.strictObject({
   name: z.string().optional(), position: Pt.optional().describe("Offset of the shape inside the layer, [x,y]"),
   rotation: z.number().optional(), opacity: z.number().min(0).max(100).optional(),
 });
+
+// add_shape takes the same shape as add_layer's options.shape: advertised by reference (writing it out again costs
+// ~1,200 characters), validated strictly. A missing type is a rect in the host, as in ShapeLayerSpec.
+export const ShapeLayerRef = z
+  .record(z.string(), z.unknown())
+  .superRefine((v, ctx) => {
+    const r = ShapeLayerSpec.safeParse(v);
+    if (!r.success) for (const issue of r.error.issues) ctx.addIssue({ code: "custom", path: issue.path, message: `shape: ${issue.message}` });
+  })
+  .describe("the same fields as add_layer's options.shape (type, size, fill, stroke, points, vertices and so on)");
 
 /** Anchor positions on a layer's content (set_anchor, add_layer options.anchor). */
 export const Anchor = z.enum(["center", "top_left", "top", "top_right", "left", "right", "bottom_left", "bottom", "bottom_right"]);

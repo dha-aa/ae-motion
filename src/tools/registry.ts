@@ -183,8 +183,8 @@ const BOUNDS = new Set(["minimum", "maximum", "exclusiveMinimum", "exclusiveMaxi
 
 /**
  * A copy of an input schema with local $refs inlined (a ref path is longer than what it points to), bounds and
- * nested additionalProperties: false dropped (zod enforces both; the top level keeps it), and string propertyNames
- * dropped (JSON keys are strings anyway).
+ * nested additionalProperties: false dropped (zod enforces both; the top level keeps it), string propertyNames
+ * dropped (JSON keys are strings anyway), and an anyOf of plain types merged into one type list.
  * Tuples (zod's draft-07 `items: [a, b]`) become one `items` schema when the members are alike, else `prefixItems`:
  * without the $schema header clients read the schema as draft 2020-12, where an `items` array is invalid (the Claude
  * API refused add_layer, set_layer and set_text over box_size / solid_size).
@@ -203,8 +203,21 @@ export function slimSchema(root: Record<string, unknown>): Record<string, unknow
     for (const [k, x] of Object.entries(o)) if (k !== "$schema" && !BOUNDS.has(k)) out[k] = walk(x);
     // nested objects: strictness is enforced by zod and stated in the server instructions (the top level keeps it)
     if (out.additionalProperties === false && o !== root) delete out.additionalProperties;
-    // zod 4 states that a record's keys are strings, which JSON object keys always are
+    // zod 4 states that a record's keys are strings, which JSON object keys always are; additionalProperties {} (any
+    // value) is the default anyway
     if (JSON.stringify(out.propertyNames) === '{"type":"string"}') delete out.propertyNames;
+    if (JSON.stringify(out.additionalProperties) === "{}") delete out.additionalProperties;
+    // anyOf of plain types (at most one of them an array) -> one type list: {"type": ["number", "array"], "items": ...}
+    if (Array.isArray(out.anyOf)) {
+      const opts = out.anyOf as Record<string, unknown>[];
+      const plain = (o: Record<string, unknown>): boolean => typeof o.type === "string" && Object.keys(o).every((k) => k === "type" || (o.type === "array" && k === "items"));
+      if (opts.every(plain) && opts.filter((o) => o.type === "array").length <= 1) {
+        const arr = opts.find((o) => o.type === "array");
+        delete out.anyOf;
+        out.type = opts.map((o) => o.type);
+        if (arr?.items) out.items = arr.items;
+      }
+    }
     if (Array.isArray(out.items)) {
       const members = out.items as unknown[], first = JSON.stringify(members[0]);
       if (members.every((m) => JSON.stringify(m) === first)) out.items = members[0];
