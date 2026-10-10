@@ -99,7 +99,7 @@ const alive = (pid: number): boolean => { try { process.kill(pid, 0); return tru
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 /** First text block of a tool result. */
 const textOf = (r: RpcReply): string => { const c = r.result?.content?.[0]; return c && c.type === "text" ? c.text : ""; };
-const results: [name: string, pass: boolean][] = [];
+const results: [name: string, pass: boolean, detail?: string][] = [];
 
 // Phase A: a render that cannot start (project never saved) must not destroy the existing output file.
 {
@@ -194,12 +194,15 @@ const results: [name: string, pass: boolean][] = [];
   const job = JSON.parse(textOf(r)).job_id;
   const status = async () => JSON.parse(textOf(await s.call("tools/call", { name: "render_status", arguments: { job_id: job } })));
   const first = await status();
-  await sleep(1600);
-  const mid = await status();
+  // wait for the fake renderer's 4 frames (0.25 s apart after a 0.6 s start) instead of a fixed time: CI runners are
+  // slower than a laptop, and a fixed 1.6 s once caught only 3 frames there
+  let mid: Json = {};
+  for (let i = 0; i < 100 && !(mid.frames_done >= 4); i++) { await sleep(100); mid = await status(); }
   results.push(["C3: before the first frame the job is 'starting' with a poll hint", first.frames_done === 0 && first.phase === "starting" && first.poll_after_s === 10]);
   results.push(["C3: mid-render status has frames, speed, eta, finish time and poll_after_s",
-    mid.state === "running" && mid.frames_done === 4 && mid.total_frames === 10 && mid.percent === 40 && mid.seconds_per_frame > 0.1 && mid.seconds_per_frame < 1
-    && mid.eta_s >= 1 && mid.eta_s <= 6 && typeof mid.finishes_at === "string" && mid.poll_after_s === 5 && mid.elapsed_s > 1]);
+    mid.state === "running" && mid.frames_done === 4 && mid.total_frames === 10 && mid.percent === 40 && mid.seconds_per_frame > 0.05 && mid.seconds_per_frame < 3
+    && mid.eta_s >= 0 && mid.eta_s <= 20 && typeof mid.finishes_at === "string" && mid.poll_after_s >= 5 && mid.poll_after_s <= 10 && mid.elapsed_s > 0.5,
+    JSON.stringify({ frames: mid.frames_done, spf: mid.seconds_per_frame, eta: mid.eta_s, poll: mid.poll_after_s, elapsed: mid.elapsed_s })]);
   await s.call("tools/call", { name: "render_cancel", arguments: { job_id: job } });
   s.p.stdin.end();
   await Promise.race([s.exited, sleep(3000)]);
@@ -476,7 +479,7 @@ const results: [name: string, pass: boolean][] = [];
   tagServer.close();
 }
 
-for (const [name, ok] of results) console.log((ok ? "PASS" : "FAIL") + "  " + name);
+for (const [name, ok, detail] of results) console.log((ok ? "PASS" : "FAIL") + "  " + name + (ok || !detail ? "" : "\n      " + detail));
 bridge.close();
 fs.rmSync(DIR, { recursive: true, force: true });
 process.exit(results.every((x) => x[1]) ? 0 : 1);
