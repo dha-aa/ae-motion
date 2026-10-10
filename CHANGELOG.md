@@ -2,6 +2,12 @@
 
 All notable changes. Versions follow [semantic versioning](https://semver.org); each release is a git tag `vX.Y.Z`, which is what the update check looks for.
 
+## 2.15.0 — 2026-10-11
+
+### Changed
+- All tools are loaded by default again (`AE_MCP_TOOLSETS=core` is still there to opt in). With core as the default (2.14.0) the evals kept their scores on about 40% fewer input tokens, but cost only 2-8% less, because most of the input is cached and cached tokens are cheap, and ran 12-20% slower; and the model rebuilt camera moves, alignment and 3D settings from keyframes instead of loading `camera_move`, `align_layers` and `set_3d`. The smaller schemas and the hidden `run_jsx` from 2.14.0 stay: they cut 5-7% of the tokens with no such side effect.
+- No hard limit on the size of the tool definitions any more (`npm test` prints it).
+
 ## 2.14.0 — 2026-10-11
 
 ### Changed

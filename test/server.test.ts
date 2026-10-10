@@ -419,9 +419,9 @@ const results: [name: string, pass: boolean, detail?: string][] = [];
   s.p.kill();
 }
 
-// Phase I: AE_MCP_TOOLSETS leaves groups out (core, the default when unset); load_tools adds them during the session.
+// Phase I: AE_MCP_TOOLSETS leaves groups out; load_tools adds them during the session.
 {
-  const s = startServer({ AE_MCP_TOOLSETS: "" });
+  const s = startServer({ AE_MCP_TOOLSETS: "core" });
   const initReply = await s.call("initialize", { protocolVersion: "2024-11-05", capabilities: {}, clientInfo: { name: "t", version: "0" } });
   s.p.stdin.write(JSON.stringify({ jsonrpc: "2.0", method: "notifications/initialized" }) + "\n");
   const listNames = async (srv: { call: typeof s.call }): Promise<string[]> => (((await srv.call("tools/list", {})).result as Json | undefined)?.tools ?? []).map((t: Json) => t.name);

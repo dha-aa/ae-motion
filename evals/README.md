@@ -29,7 +29,7 @@ node evals/run.ts                 # rebuilds the fixture (replaces the open proj
 node evals/run.ts --no-build --only 3,7 --jobs 3 --model sonnet
 node evals/run.ts --build         # build tasks: rebuilds the fixture before each task (one at a time)
 node evals/run.ts --build --only 2,6
-node evals/run.ts --toolsets all  # the server with every tool group loaded (default: core, the others via load_tools)
+node evals/run.ts --toolsets core # the server with the core tools only (the others via load_tools), to compare
 ```
 
 The fixture includes a music track synthesized by `build-fixture.ts` (clicks on a 120 BPM grid, written to the temp
@@ -70,8 +70,8 @@ From here with input tokens per question (cached share in brackets), on the fixt
 | Date | Version | Tool set | Score | Calls / question | Input tokens / question | Notes |
 |---|---|---|---|---|---|---|
 | 2026-10-11 | 2.13.0 | all | 10/10 | 5.3 | 168k (97%) | baseline |
-| 2026-10-11 | unreleased | all | 10/10 | 5.0 | 156k (96%) | compact schemas, run_jsx only when enabled |
-| 2026-10-11 | unreleased | core | 10/10 | 5.7 | 109k (95%) | core by default, load_tools lists tool names; 2 questions tried `batch` (not read-only) after load_tools |
+| 2026-10-11 | 2.14.0 | all | 10/10 | 5.0 | 156k (96%) | compact schemas, run_jsx only when enabled |
+| 2026-10-11 | 2.14.0 | core | 10/10 | 5.7 | 109k (95%) | core by default, load_tools lists tool names; 2 questions tried `batch` (not read-only) after load_tools |
 
 Build tasks:
 
@@ -85,5 +85,10 @@ Thirteen tasks, with input tokens per task:
 | Date | Version | Tool set | Score | Calls / task | Input tokens / task | Notes |
 |---|---|---|---|---|---|---|
 | 2026-10-11 | 2.13.0 | all | 13/13 | 6.2 | 204k (98%) | baseline |
-| 2026-10-11 | unreleased | all | 13/13 | 6.0 | 194k (98%) | compact schemas, run_jsx only when enabled |
-| 2026-10-11 | unreleased | core | 13/13 | 6.3 | 126k (96%) | load_tools for markers and beats; camera, 3D and layout tasks done with the core tools |
+| 2026-10-11 | 2.14.0 | all | 13/13 | 6.0 | 194k (98%) | compact schemas, run_jsx only when enabled |
+| 2026-10-11 | 2.14.0 | core | 13/13 | 6.3 | 126k (96%) | load_tools for markers and beats; camera, 3D and layout tasks done with the core tools |
+
+What core bought: about 40% fewer input tokens, but only 2-8% lower cost (questions $0.086 -> $0.084, tasks $0.100 ->
+$0.092: 95-98% of the input is cached, which costs about a tenth), 12-20% more time per question, and the model
+built camera moves, alignment and 3D by hand (keyframes, set_property) where it used camera_move, align_layers and
+set_3d with every tool loaded. All tools is the default again since 2.15.0; the compact schemas stay.

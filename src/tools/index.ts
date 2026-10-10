@@ -15,7 +15,7 @@
  *   src/tools/scripting.ts <-> host/commands/output.ts    (run_jsx)
  *   src/tools/meta.ts      (server only: check_for_updates)
  *   src/tools/batch.ts     (server only: batch, always on)
- *   load_tools (below)     (server only: present when groups are left out, as by default: AE_MCP_TOOLSETS=core)
+ *   load_tools (below)     (server only: present when AE_MCP_TOOLSETS leaves groups out, e.g. core)
  */
 import { z } from "zod";
 import { enabledToolsets, TOOLSETS, type Toolset } from "../config.js";
@@ -58,7 +58,7 @@ const GROUP_SUMMARY: Partial<Record<Toolset, string>> = {
 };
 
 /**
- * Register the tool groups in `on` (default: those AE_MCP_TOOLSETS enables, core when unset), then batch, and, when some
+ * Register the tool groups in `on` (default: those AE_MCP_TOOLSETS enables, all when unset), then batch, and, when some
  * groups are left out, load_tools to add them later (the SDK tells the client with tools/list_changed).
  */
 export function registerAllTools(r: ToolRegistry, on: Set<Toolset> = enabledToolsets()): void {

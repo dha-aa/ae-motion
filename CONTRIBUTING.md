@@ -18,16 +18,15 @@ that incident. How-to material (setup, adding a tool step by step, the quirk lis
 2. **Ask before building anything large or visual-taste-heavy** (a new tool group, a character system, a style).
    Show a plan or one sample first. *Incident: a character rig and a clothing system were built, rebuilt three times
    for quality, then removed.*
-3. **Tool definitions cost tokens on every request.** `TOOLS_LIST_BUDGET` in `test/static-checks.ts` is a hard
-   limit. Before raising it, shorten descriptions; when you do raise it, write why in the comment next to it. Never
-   repeat in a description what the schema already says (enums, ranges). Prefer one option on an existing tool over
-   a new tool.
+3. **Tool definitions cost tokens on every request.** There is no hard limit (`npm test` prints the size), so keep
+   them lean by habit: never repeat in a description what the schema already says (enums, ranges), and prefer one
+   option on an existing tool over a new tool. Check a big addition with the evals (tokens per question).
 4. **Results leave out defaults and stay short.** Return ids and what changed, not full objects. Over 25k characters
    becomes an error with a hint, so big lists need filters or paging (`limit` / `offset` / `next_offset`).
 5. **Destructive behaviour must be visible in the result.** If a call replaces or removes existing data, the result
    says how much (`replaced`, `removed`, `deleted`). *Incident: `set_keyframes` silently replaced a whole animation.*
 6. **Remove features cleanly.** Taking something out means the tool, its registration, schema, tests, docs, changelog
-   lines, budget and `EXPECTED_TOOLS` all go back. Keep generally useful fixes found along the way, as separate
+   lines and `EXPECTED_TOOLS` all go back. Keep generally useful fixes found along the way, as separate
    changelog entries.
 
 ## 2. Host code (ExtendScript, `host/`)
@@ -127,6 +126,6 @@ Update in the same change: `docs/tools.md` (tool reference), the README group ta
 - [ ] Errors in the standard format with hints; paths sandboxed; destructive results report what they removed
 - [ ] Tests added (fail without the change); no fixed sleeps; `npm test` + `npm run typecheck` pass
 - [ ] Host change reloaded (`"ok": true`) and verified live; `test/live/run.ts` passes; visual changes previewed
-- [ ] Token budget respected (or raised with a reason)
+- [ ] Tool definitions kept lean (size printed by `npm test`; evals for big additions)
 - [ ] Docs and `CHANGELOG.md` updated
 - [ ] CI green on every runner before merge; tag + release after

@@ -56,14 +56,15 @@ export type Toolset = (typeof TOOLSETS)[number];
 export const ALWAYS_ON: readonly Toolset[] = ["inspect", "meta"];
 
 /**
- * Which tool groups to register at startup (AE_MCP_TOOLSETS, comma separated; default: core). Fewer tools means a
+ * Which tool groups to register at startup (AE_MCP_TOOLSETS, comma separated; default: all). Fewer tools means a
  * smaller tool list in every request; load_tools adds the others during the session. inspect and meta are always on.
- * "core" = inspect, project, layers, animate, motion, output; "all" = every group. The evals scored the same with
- * core as with all, on about 40% fewer input tokens (evals/README.md).
+ * "core" = inspect, project, layers, animate, motion, output. core was the default in 2.14.0: the evals scored the
+ * same on about 40% fewer input tokens but cost only 2-8% less (cached input is cheap), ran 12-20% slower, and the
+ * model rebuilt camera moves, alignment and 3D from keyframes instead of loading those tools (evals/README.md).
  */
 export const CORE_TOOLSETS = ["project", "layers", "animate", "motion", "output"] as const;
 export function enabledToolsets(): Set<Toolset> {
-  const env = process.env.AE_MCP_TOOLSETS?.trim() || "core";
+  const env = process.env.AE_MCP_TOOLSETS?.trim() || "all";
   if (env === "all") return new Set(TOOLSETS);
   const out = new Set<Toolset>(ALWAYS_ON);
   for (const raw of env.split(",").map((s) => s.trim().toLowerCase()).filter(Boolean)) {
