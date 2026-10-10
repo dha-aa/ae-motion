@@ -20,8 +20,6 @@
   h2 { font-size: 12px; margin: 12px 0 4px; display: flex; justify-content: space-between; }
   h2 small { color: #777; font-weight: normal; }
   .big { color: #ffd479; font-weight: 600; }
-  #tok-sessions .row .live { color: #7fd17f; }
-  #tok-top { color: #999; font-size: 11px; padding-top: 3px; border-top: 1px solid #333; }
 </style>
 </head>
 <body>
@@ -33,10 +31,8 @@
   <div class="row"><span class="k">Version</span><span id="version">-</span></div>
   <div class="row" id="update-row" style="display:none"><span class="k">Update</span><span id="update" class="bad"></span></div>
   <h2 title="Estimated tokens ae-motion adds to the model's context: tool results (text at ~3.6 characters per token, images at width x height / 750) and its tool definitions. Your client's total also includes your messages and the model's replies.">Tokens <small>estimate &#9432;</small></h2>
-  <div id="tok-sessions"><div class="k">No sessions yet</div></div>
+  <div class="row"><span class="k">This session</span><span id="tok-session" class="big">-</span></div>
   <div class="row" title="Sent with every request; most clients cache it, which makes repeats much cheaper. AE_MCP_TOOLSETS=core shrinks it."><span class="k">Tool definitions</span><span id="tok-defs">-</span></div>
-  <div class="row"><span class="k">Today (all sessions)</span><span id="tok-today">-</span></div>
-  <div id="tok-top"></div>
   <div class="actions"><button id="update-btn" data-label="Reinstall" title="git pull, then re-run the installer, then restart this panel">Reinstall</button></div>
   <pre id="update-log" style="display:none"></pre>
   <script src="main.js"></script>

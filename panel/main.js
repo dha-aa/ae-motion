@@ -201,40 +201,18 @@
   // the most recently active session, today's total and the costliest tools. Estimates of what ae-motion sends.
   var usageDir = path.join(path.dirname(bridgeFile), "usage");
   function kTok(n) { return n >= 100000 ? Math.round(n / 1000) + "k" : (n >= 1000 ? (n / 1000).toFixed(1) + "k" : String(n)); }
-  // One row per session (a running MCP server that has made tool calls), newest first; servers that never made a
-  // call (tests, helper scripts) are left out. The live one (updated in the last 30 minutes) is marked.
+  // This session: the most recently active MCP server that has made tool calls (servers that never made one, such as
+  // tests and helper scripts, are left out), and the size of the tool definitions it sends with every request.
   function readUsage() {
-    var files = [], list = [], today = 0, day = new Date().toDateString(), i, u, tot, top = [], k, box = $("tok-sessions"), cur, row, t, live;
+    var files = [], cur = null, i, u;
     try { files = fs.readdirSync(usageDir); } catch (e) { return; }
     for (i = 0; i < files.length; i++) {
       if (!/\.json$/.test(files[i])) continue;
       try { u = JSON.parse(fs.readFileSync(path.join(usageDir, files[i]), "utf8")); } catch (e) { continue; }
-      if (!u.calls) continue;
-      u.total = (u.result_text_tokens || 0) + (u.image_tokens || 0);
-      if (new Date(u.updated).toDateString() === day) today += u.total;
-      list.push(u);
+      if (u.calls && (!cur || u.updated > cur.updated)) cur = u;
     }
-    list.sort(function (a, b) { return a.updated < b.updated ? 1 : -1; });
-    while (box.firstChild) box.removeChild(box.firstChild);
-    if (!list.length) { row = document.createElement("div"); row.className = "k"; row.textContent = "No sessions yet"; box.appendChild(row); }
-    for (i = 0; i < list.length && i < 6; i++) {
-      u = list[i]; t = new Date(u.started);
-      live = Date.now() - Date.parse(u.updated) < 30 * 60 * 1000;
-      row = document.createElement("div"); row.className = "row";
-      row.title = (u.client || "client") + ", started " + t.toLocaleString() + ": " + u.calls + " calls, ~" + kTok(u.result_text_tokens || 0) + " text, ~" + kTok(u.image_tokens || 0) + " images";
-      row.innerHTML = '<span class="k"></span><span></span>';
-      row.firstChild.textContent = (live ? "\u25cf " : "") + (u.client || "session") + " \u00b7 " + (t.toDateString() === day ? "" : (t.getMonth() + 1) + "/" + t.getDate() + " ") + ("0" + t.getHours()).slice(-2) + ":" + ("0" + t.getMinutes()).slice(-2);
-      if (live) row.firstChild.className = "k live";
-      row.lastChild.textContent = "~" + kTok(u.total) + "  (" + u.calls + ")";
-      if (i === 0) row.lastChild.className = "big";
-      box.appendChild(row);
-    }
-    cur = list[0];
+    $("tok-session").textContent = cur ? "~" + kTok((cur.result_text_tokens || 0) + (cur.image_tokens || 0)) : "-";
     $("tok-defs").textContent = cur && cur.definitions_tokens ? "~" + kTok(cur.definitions_tokens) + " / request" : "-";
-    $("tok-today").textContent = "~" + kTok(today);
-    if (cur) for (k in cur.tools) { if (cur.tools.hasOwnProperty(k)) top.push([k, cur.tools[k].text + cur.tools[k].image, cur.tools[k].calls]); }
-    top.sort(function (a, b) { return b[1] - a[1]; });
-    $("tok-top").textContent = top.length ? "Costliest (latest session): " + top.slice(0, 3).map(function (t) { return t[0] + " " + kTok(t[1]) + " (" + t[2] + "\u00d7)"; }).join(" \u00b7 ") : "";
   }
   readUsage();
   setInterval(readUsage, 2000);
