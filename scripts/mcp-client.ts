@@ -1,5 +1,5 @@
 // A minimal MCP client for scripts that drive the built server (dist/index.js) over stdio: the live tests
-// (test/live/run.ts) and the evaluations (evals/). Talks to whatever panel the bridge file names (real After Effects).
+// (test/live/run.ts). Talks to whatever panel the bridge file names (real After Effects).
 import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";

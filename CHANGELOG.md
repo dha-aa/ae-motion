@@ -2,6 +2,12 @@
 
 All notable changes. Versions follow [semantic versioning](https://semver.org); each release is a git tag `vX.Y.Z`, which is what the update check looks for.
 
+## Unreleased
+
+### Removed
+- The evaluations (`evals/`): the question and build-task runs through headless Claude Code. The live tests (`test/live/run.ts`) stay.
+- The hard limit on the size of the tool definitions (`npm test` prints the size instead).
+
 ## 2.16.0 — 2026-10-11
 
 ### Changed
