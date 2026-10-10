@@ -2,6 +2,11 @@
 
 All notable changes. Versions follow [semantic versioning](https://semver.org); each release is a git tag `vX.Y.Z`, which is what the update check looks for.
 
+## Unreleased
+
+### Added
+- `docs/future.md`: Adobe's move from CEP to UXP in After Effects (public beta targeted for November 2026, CEP off by default from December 2028 and removed in December 2029) and what it would mean for ae-motion's panel, host and bridge.
+
 ## 2.12.0 — 2026-10-10
 
 ### Added

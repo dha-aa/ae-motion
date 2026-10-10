@@ -12,7 +12,7 @@ MCP client --stdio--> MCP server (src/, TypeScript) --HTTP 127.0.0.1 + token--> 
 
 **Before changing code, follow `CONTRIBUTING.md`** (strict rules and the pre-merge checklist, each backed by an incident).
 
-Full docs: `docs/architecture.md` (layout, protocol, lifecycle), `docs/tools.md` (tool reference), `docs/development.md` (adding a tool, quirks, tests).
+Full docs: `docs/architecture.md` (layout, protocol, lifecycle), `docs/tools.md` (tool reference), `docs/development.md` (adding a tool, quirks, tests), `docs/future.md` (Adobe's CEP → UXP move and what it would touch).
 
 ## Commands
 

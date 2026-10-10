@@ -231,6 +231,7 @@ How the check works: the MCP server asks GitHub for the repository's version tag
 - [docs/architecture.md](docs/architecture.md): how the pieces fit, the wire protocol, the repository layout
 - [CONTRIBUTING.md](CONTRIBUTING.md): the rules for changing ae-motion and the pre-merge checklist
 - [docs/development.md](docs/development.md): building, testing, adding a tool, After Effects quirks, verification status
+- [docs/future.md](docs/future.md): changes coming from outside ae-motion, such as Adobe replacing CEP with UXP
 
 ## License
 
