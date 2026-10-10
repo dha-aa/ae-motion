@@ -24,7 +24,7 @@ npm run typecheck   # TypeScript 7: src/, tsconfig.tools.json (scripts/, test/, 
 ```
 
 Tests, `scripts/` and the skill driver are TypeScript that Node (22.18+) runs directly via type stripping: erasable syntax only (no enum/namespace/parameter properties), `.ts` import extensions, `import type` for types. The `test/mock-*.test.ts` files are `// @ts-nocheck` (loose AE fakes); the rest are strictly typed. There is no lint command and no single-test runner. `node test/live/run.ts --yes` runs the live tests against real AE (not part of `npm test`). `npm test` runs `test/run-all.ts`; run one file with `node test/<file>` after `npm run build`:
-1. `static-checks.ts` — generated `host.jsx` is current and parses; ES3 lint of `host/` (reports `host/<file>:<line>`); boots `dist/index.js` and diffs `tools/list` against the `C.<name> = function` commands. `EXPECTED_TOOLS` must match the tool count; `tools/list` must fit `TOOLS_LIST_BUDGET` and carry no `$schema`.
+1. `static-checks.ts` — generated `host.jsx` is current and parses; ES3 lint of the compiled host (reports `build/host/<file>:<line>`); every schema is a `z.strictObject`; boots `dist/index.js` and diffs `tools/list` against the `C.<name> = function` commands, and `host/args.d.ts` against the schemas. `EXPECTED_TOOLS` must match the tool count; `tools/list` must fit `TOOLS_LIST_BUDGET` and carry no `$schema`.
 2. `mock-host.test.ts` — layer/timeline/comp/marker commands (incl. insert_time, align_to_markers, trim_comp, update_marker, replace_source) against a mock AE DOM.
 3. `mock-camera.test.ts` — camera maths, rigs, shake, lights, 3D layers, linking, 3D views against a mock DOM.
 4. `mock-shapes.test.ts` — path (shape) values for masks/shape layers, ellipse vertex order, comp motion blur.
