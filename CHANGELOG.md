@@ -2,7 +2,7 @@
 
 All notable changes. Versions follow [semantic versioning](https://semver.org); each release is a git tag `vX.Y.Z`, which is what the update check looks for.
 
-## Unreleased
+## 2.11.2 — 2026-10-10
 
 ### Fixed
 - CI: the render-progress test (C3) waited a fixed 1.6 s for the fake renderer's frames and failed on slower macOS runners; it now waits for the frames, and failing server tests print the values they saw.
