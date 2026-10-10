@@ -2,6 +2,16 @@
 
 All notable changes. Versions follow [semantic versioning](https://semver.org); each release is a git tag `vX.Y.Z`, which is what the update check looks for.
 
+## Unreleased
+
+### Changed
+- The server starts with the core tools by default (`AE_MCP_TOOLSETS=core`: comps, layers, keyframes, text, effects, motion, previews, renders), about 9k tokens of tool definitions per request instead of 16k; the model adds 3D and cameras, timeline and markers, masks, layout and audio with `load_tools`, whose description now lists each group's tools. In the evals this kept every score (10/10 questions, 13/13 build tasks) on 35-38% fewer input tokens. `AE_MCP_TOOLSETS=all` loads everything up front as before.
+- Smaller tool schemas for every tool set: plain-type unions are written as one type list, add_shape's shape and the easing options are advertised by reference (still validated strictly), and layer_ids' "same comp" is said once in the server instructions. About 4% smaller with all tools loaded.
+- `run_jsx` is only listed when `AE_MCP_ALLOW_JSX=1`; before, every request carried the definition of a tool that could only refuse.
+
+### Added
+- Six more build evaluations (a camera push-in, a word-by-word text reveal, a wipe transition at a cut, beat markers from a music track, spring pop-ins, a 3D layer), each check confirmed to fail on the untouched project and pass on a correct solution, and the input tokens per question in every eval run. The fixture gains a synthesized 120 BPM music track.
+
 ## 2.13.0 — 2026-10-10
 
 Update the panel too (the Update button, or reinstall), then reopen it: the timeout fix lives in the panel.

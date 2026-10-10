@@ -107,30 +107,7 @@ interface Args {
   };
   add_shape: {
     layer_id: number;
-    shape: {
-      type?: "rect" | "ellipse" | "star" | "polygon" | "path";
-      points?: number;
-      outer_radius?: number;
-      inner_radius?: number;
-      vertices?: number[][];
-      in_tangents?: number[][];
-      out_tangents?: number[][];
-      closed?: boolean;
-      size?: number[];
-      fill?: number[];
-      stroke?: number[];
-      stroke_width?: number;
-      roundness?: number;
-      fill_opacity?: number;
-      stroke_opacity?: number;
-      dashes?: number[];
-      line_cap?: "butt" | "round" | "square";
-      line_join?: "miter" | "round" | "bevel";
-      name?: string;
-      position?: number[];
-      rotation?: number;
-      opacity?: number;
-    };
+    shape: { [key: string]: unknown };
     at?: "top" | "bottom";
   };
   add_shape_modifier: {
@@ -308,14 +285,8 @@ interface Args {
       to?: number;
       v?: number | string | boolean | number[] | { [key: string]: unknown };
       interp?: "linear" | "bezier" | "hold" | "spring" | "bounce";
-      ease_in?: "easy" | {
-        speed?: number;
-        influence?: number;
-      };
-      ease_out?: "easy" | {
-        speed?: number;
-        influence?: number;
-      };
+      ease_in?: "easy" | { [key: string]: unknown };
+      ease_out?: "easy" | { [key: string]: unknown };
       spatial_in?: number[];
       spatial_out?: number[];
       auto_bezier?: boolean;
@@ -552,14 +523,8 @@ interface Args {
       t: number;
       v: number | string | boolean | number[] | { [key: string]: unknown };
       interp?: "linear" | "bezier" | "hold" | "spring" | "bounce";
-      ease_in?: "easy" | {
-        speed?: number;
-        influence?: number;
-      };
-      ease_out?: "easy" | {
-        speed?: number;
-        influence?: number;
-      };
+      ease_in?: "easy" | { [key: string]: unknown };
+      ease_out?: "easy" | { [key: string]: unknown };
     })[];
     merge?: boolean;
   };

@@ -1,4 +1,4 @@
-/** Timeline editing and marker tools. Host side: host/commands/timeline.jsx. */
+/** Timeline editing and marker tools. Host side: host/commands/timeline.ts. */
 import { z } from "zod";
 import type { ToolRegistry } from "./registry.js";
 import { id, Label, LayerIds, Time } from "./schemas.js";

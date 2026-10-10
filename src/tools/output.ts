@@ -1,6 +1,6 @@
 /**
  * Preview and render tools. preview_frame renders one PNG through the bridge; render_* run aerender in the
- * background (src/render/manager.ts). Host side: host/commands/output.jsx (preview_frame, prepare_render).
+ * background (src/render/manager.ts). Host side: host/commands/output.ts (preview_frame, prepare_render).
  */
 import fs from "node:fs";
 import os from "node:os";

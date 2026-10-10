@@ -1,4 +1,4 @@
-/** Layer tools: add, edit, link, delete, duplicate, reorder, precompose. Host side: host/commands/layers.jsx. */
+/** Layer tools: add, edit, link, delete, duplicate, reorder, precompose. Host side: host/commands/layers.ts. */
 import { z } from "zod";
 import type { ToolRegistry } from "./registry.js";
 import { Anchor, Color, id, Label, LayerIds, LightType, ShapeLayerSpec, Size, TextStyleRef, V3 } from "./schemas.js";

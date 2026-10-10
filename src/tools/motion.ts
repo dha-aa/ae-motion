@@ -1,6 +1,6 @@
 /**
  * Motion vocabulary: entrance/exit moves with springs, text reveals, shape transitions and a motion review.
- * Host side: host/commands/motion.jsx.
+ * Host side: host/commands/motion.ts.
  */
 import { z } from "zod";
 import type { ToolRegistry } from "./registry.js";
