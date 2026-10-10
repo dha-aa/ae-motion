@@ -2,7 +2,7 @@
 
 All notable changes. Versions follow [semantic versioning](https://semver.org); each release is a git tag `vX.Y.Z`, which is what the update check looks for.
 
-## Unreleased
+## 2.14.0 — 2026-10-11
 
 ### Changed
 - The server starts with the core tools by default (`AE_MCP_TOOLSETS=core`: comps, layers, keyframes, text, effects, motion, previews, renders), about 9k tokens of tool definitions per request instead of 16k; the model adds 3D and cameras, timeline and markers, masks, layout and audio with `load_tools`, whose description now lists each group's tools. In the evals this kept every score (10/10 questions, 13/13 build tasks) on 35-38% fewer input tokens. `AE_MCP_TOOLSETS=all` loads everything up front as before.
