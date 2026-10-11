@@ -403,6 +403,11 @@ const results: [name: string, pass: boolean, detail?: string][] = [];
   const [bare, bareErr] = await body("batch", { steps: [{ tool: "add_layer", args: { comp_id: 1, kind: "text", options: { text: "$99" } } }] });
   results.push(["H: \"$$99\" is the literal text $99; a bare \"$99\" is refused with the escape in the message", !priceErr && received.add_layer?.options?.text === "$99" && bareErr && /\$\$99/.test(JSON.stringify(bare)) && calls.length === 1]);
 
+  // a reference inside an array (layer_ids) is a number once resolved: the pre-check must not reject it as a string
+  calls.length = 0;
+  const [inArr, inArrErr] = await body("batch", { steps: [{ tool: "add_layer", args: { comp_id: 1, kind: "null" } }, { tool: "shift_layers", args: { layer_ids: ["$1.id"], offset_seconds: 1 } }] });
+  results.push(["H: references inside arrays pass the pre-check and resolve", !inArrErr && JSON.stringify(received.shift_layers?.layer_ids) === "[42]" && calls.join(",") === "add_layer,shift_layers", JSON.stringify(inArr)]);
+
   const [last] = await body("batch", { steps: [{ tool: "add_layer", args: { comp_id: 1, kind: "null" } }, { tool: "set_layer", args: { layer_id: "$1.id" } }], results: "none" });
   results.push(["H: results none returns only the step count", JSON.stringify(last) === '{"steps":2}']);
 
