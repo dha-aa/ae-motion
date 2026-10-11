@@ -14,22 +14,32 @@ import { id } from "./schemas.js";
 
 const PREVIEW_DIR = path.join(os.tmpdir(), "ae-motion-mcp");
 
+/** A PNG is complete once it ends with its IEND chunk (length 0, "IEND", CRC): the last 12 bytes. */
+function pngComplete(p: string): boolean {
+  let fd: number | undefined;
+  try {
+    fd = fs.openSync(p, "r");
+    const size = fs.fstatSync(fd).size;
+    if (size < 20) return false;
+    const tail = Buffer.alloc(12);
+    fs.readSync(fd, tail, 0, 12, size - 12);
+    return tail.readUInt32BE(0) === 0 && tail.toString("latin1", 4, 8) === "IEND";
+  } catch {
+    return false;
+  } finally {
+    if (fd !== undefined) fs.closeSync(fd);
+  }
+}
+
 /**
- * Wait until a file exists and its size is stable across two polls. After Effects can still be writing the PNG
- * when saveFrameToPng returns (heavy 3D frames).
+ * Wait until After Effects has finished writing the PNG: saveFrameToPng returns before the file is written (35-50 ms
+ * later for a light frame, seconds for heavy 3D). Polled every 10 ms and done as soon as the IEND chunk is there.
  */
 async function waitForFile(p: string, timeoutMs: number): Promise<boolean> {
   const end = Date.now() + timeoutMs;
-  let last = -1;
   while (Date.now() < end) {
-    try {
-      const size = fs.statSync(p).size;
-      if (size > 0 && size === last) return true;
-      last = size;
-    } catch {
-      last = -1;
-    }
-    await new Promise((r) => setTimeout(r, 150));
+    if (pngComplete(p)) return true;
+    await new Promise((r) => setTimeout(r, 10));
   }
   return false;
 }
@@ -49,9 +59,11 @@ export function registerOutputTools(r: ToolRegistry): void {
       fs.mkdirSync(PREVIEW_DIR, { recursive: true });
       const times = Array.isArray(a.time) ? a.time : [a.time];
       const files: string[] = [];
+      // the long side each frame needs in the returned image: the host renders no finer than that
+      const edge = times.length === 1 ? (a.size ?? 768) : Math.ceil((a.size ?? 1152) / Math.ceil(Math.sqrt(times.length)));
       for (const t of times) {
         const out = path.join(PREVIEW_DIR, `preview_${a.comp_id}_${String(t).replace(".", "_")}_${Date.now()}.png`);
-        const res = await bridge.run("preview_frame", { comp_id: a.comp_id, time: t, output_path: toAe(out) }, TIMEOUTS.preview);
+        const res = await bridge.run("preview_frame", { comp_id: a.comp_id, time: t, output_path: toAe(out), max_edge: edge }, TIMEOUTS.preview);
         if (!res.ok) return fromBridge(res);
         if (!(await waitForFile(out, TIMEOUTS.previewFile))) {
           return errorResult({

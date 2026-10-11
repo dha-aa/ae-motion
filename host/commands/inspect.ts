@@ -1,11 +1,21 @@
 // Read-only commands: project, comp, layer, property tree, keyframes, effects. (src/tools/inspect.ts)
 
+// Each comp's layers are included (as in get_comp's list) unless the project is big, so a model can go straight from
+// here to the layer it needs (get_project, get_comp, get_layer was the usual start: two turns more).
+var PROJECT_LAYERS_MAX = 300;
 C.get_project = function () {
-  var p = app.project, items = [], i, ai = p.activeItem;
-  for (i = 1; i <= p.numItems && i <= 500; i++) items.push(itemInfo(p.item(i)));
+  var p = app.project, items: Obj[] = [], i, j, ai = p.activeItem, total = 0, it, o, withLayers;
+  for (i = 1; i <= p.numItems; i++) { it = p.item(i); if (it instanceof CompItem) total += it.numLayers; }
+  withLayers = total <= PROJECT_LAYERS_MAX;
+  for (i = 1; i <= p.numItems && i <= 500; i++) {
+    it = p.item(i); o = itemInfo(it);
+    if (withLayers && it instanceof CompItem) { o.layers = []; for (j = 1; j <= it.numLayers; j++) o.layers.push(layerBrief(it.layer(j) as AVLayer, it)); }
+    items.push(o);
+  }
   return {
     ae_version: app.version, project_path: p.file ? p.file.fsName : null,
-    active_comp_id: (ai instanceof CompItem) ? ai.id : null, num_items: p.numItems, items: items, truncated: p.numItems > 500
+    active_comp_id: (ai instanceof CompItem) ? ai.id : null, num_items: p.numItems, items: items, truncated: p.numItems > 500,
+    layers_listed: withLayers
   };
 };
 

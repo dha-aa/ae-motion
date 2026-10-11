@@ -28,7 +28,8 @@ interface PropertyBase { property(nameOrIndex: string | number): any }
 
 /** Commands the server calls with other arguments than the tool's, or that are not tools (args.d.ts has the rest). */
 interface HostArgs {
-  preview_frame: { comp_id: number; time: number; output_path: string };
+  /** max_edge: the long side the returned image needs, in px (the render may be coarser than full resolution). */
+  preview_frame: { comp_id: number; time: number; output_path: string; max_edge?: number };
   prepare_render: { comp_id: number; software?: boolean };
 }
 

@@ -16,7 +16,10 @@ type ScreenBox = { x0: number; y0: number; x1: number; y1: number; three: boolea
 type SceneItem = { l: AVLayer; kind: string; t: number };
 
 var REVEAL_TAG = "// ae-motion reveal";
-var MOVES: { [move: string]: number } = { fade: 1, pop: 1, grow: 1, slide: 1, drop: 1, spin: 1 };
+var MOVES: { [move: string]: number } = { fade: 1, pop: 1, grow: 1, slide: 1, drop: 1, spin: 1, push: 1, drift: 1 };
+// Moves that keep a layer alive through a hold instead of bringing it in or out: a slow scale push-in, or a slow
+// float in a direction. They start where the layer's animation ends and run to its out point unless told otherwise.
+var CONTINUOUS: { [move: string]: number } = { push: 1, drift: 1 };
 var MOVE_STYLES: { [style: string]: number } = { snappy: 1, smooth: 1, spring: 1, bounce: 1, linear: 1 };
 
 // One side of a key: "linear", or bezier with speed 0 and the given influence.
@@ -85,10 +88,30 @@ function keyMove(p: Prop, part: MovePart, t0: number, t1: number, phase: string,
   else shapeSegment(p, i0, i1, SPRINGS[curve] ? (phase === "in" ? "snappy" : "accelerate") : curve);
 }
 
+// The last transform key of a layer (where its entrance has landed), or its in point when nothing is keyed.
+function lastTransformKey(l: AVLayer): number {
+  var names = ["ADBE Position", "ADBE Scale", "ADBE Rotate Z", "ADBE Opacity"], t = l.inPoint, i: number, p;
+  for (i = 0; i < names.length; i++) { p = safe(function () { return tp(l, names[i]); }); if (p && p.numKeys) t = Math.max(t, p.keyTime(p.numKeys)); }
+  return t;
+}
+
+// Key one property from its value at t0 to target(value) at t1 with a gentle ease at both ends. A key already at t0
+// (an entrance landing) is kept with its incoming ease: only the segment after it is shaped. Keys inside (t0, t1] go.
+function keyContinuous(p: Prop, t0: number, t1: number, target: (v: any) => any, curve: string, fd: number): void {
+  var rest = p.valueAtTime(t0, true), i0, i1, k, lin = KeyframeInterpolationType.LINEAR;
+  for (k = p.numKeys; k >= 1; k--) if (p.keyTime(k) > t0 + fd / 2 && p.keyTime(k) <= t1 + EPS) p.removeKey(k);
+  if (!p.numKeys || Math.abs(p.keyTime(p.nearestKeyIndex(t0)) - t0) > fd / 2) p.setValueAtTime(t0, rest);
+  p.setValueAtTime(t1, target(rest));
+  i0 = p.nearestKeyIndex(t0); i1 = p.nearestKeyIndex(t1);
+  if (curve === "linear") { p.setInterpolationTypeAtKey(i0, p.keyInInterpolationType(i0), lin); p.setInterpolationTypeAtKey(i1, lin, p.keyOutInterpolationType(i1)); }
+  else { keySide(p, i0, "out", 45); keySide(p, i1, "in", 45); }
+}
+
 C.animate = function (a: Args["animate"]) {
   need(a, ["layer_ids", "move"]);
   var ls = pickLayers(a.layer_ids), c = sameComp(ls), phase = a.phase || "in", move = a.move, i, j, l, plan, t0, dur, curve, list: { l: AVLayer; plan: MovePart[]; t0: number }[] = [], p, out: Obj[] = [], order;
-  if (!MOVES[move]) fail("BAD_ARGS", "move must be fade, pop, grow, slide, drop or spin");
+  if (!MOVES[move]) fail("BAD_ARGS", "move must be fade, pop, grow, slide, drop, spin, push or drift");
+  if (CONTINUOUS[move]) return animateContinuous(a, ls, c);
   if (phase !== "in" && phase !== "out") fail("BAD_ARGS", "phase must be in or out");
   curve = a.style || (move === "pop" || move === "spin" ? "spring" : (move === "drop" ? "bounce" : (phase === "in" ? "snappy" : "accelerate")));
   if (!MOVE_STYLES[curve] && curve !== "accelerate") fail("BAD_ARGS", "style must be snappy, smooth, spring, bounce or linear");
@@ -116,6 +139,39 @@ C.animate = function (a: Args["animate"]) {
   }
   return { move: move, phase: phase, style: curve, layers: out };
 };
+
+// push / drift: from where each layer's animation lands (or time) to its out point (or time + duration).
+function animateContinuous(a: Args["animate"], ls: AVLayer[], c: CompItem): Obj {
+  var fd = c.frameDuration, curve = a.style || "smooth", amt = (has(a, "amount") ? a.amount : 4) / 100,
+    dir = a.direction || "up", dist = has(a, "distance") ? a.distance : Math.round(c.height * 0.02),
+    dx = dir === "left" ? -dist : (dir === "right" ? dist : 0), dy = dir === "up" ? -dist : (dir === "down" ? dist : 0),
+    out: Obj[] = [], order = copyArr(ls), i, l, t0, t1, p;
+  if (curve !== "smooth" && curve !== "linear") fail("BAD_ARGS", "push and drift take style smooth (default) or linear");
+  assertUnlocked(ls);
+  if (a.order === "reverse") order.reverse();
+  for (i = 0; i < order.length; i++) {
+    l = order[i];
+    t0 = snapT(c, (has(a, "time") ? a.time : lastTransformKey(l)) + i * (a.stagger || 0));
+    t1 = snapT(c, has(a, "duration") ? t0 + a.duration : l.outPoint - fd);
+    if (t1 - t0 < 0.25) fail("BAD_ARGS", "Layer " + l.id + ": less than 0.25 s left for the " + a.move + " (from " + t0 + " s)", "Pass time and duration");
+    if (a.move === "push") {
+      p = tp(l, "ADBE Scale");
+      if (springList(p) === null) fail("BAD_ARGS", "Layer " + l.id + ": Scale has an expression");
+      keyContinuous(p, t0, t1, function (v: number[]) { var o: number[] = [], k; for (k = 0; k < v.length; k++) o.push(v[k] * (1 + amt)); return o; }, curve, fd);
+    } else {
+      p = tp(l, "ADBE Position");
+      if (p.dimensionsSeparated) {
+        if (dx) keyContinuous(tp(l, "ADBE Position_0"), t0, t1, function (v: number) { return v + dx; }, curve, fd);
+        if (dy) keyContinuous(tp(l, "ADBE Position_1"), t0, t1, function (v: number) { return v + dy; }, curve, fd);
+      } else {
+        if (springList(p) === null) fail("BAD_ARGS", "Layer " + l.id + ": Position has an expression");
+        keyContinuous(p, t0, t1, function (v: number[]) { var o = copyArr(v); o[0] += dx; o[1] += dy; return o; }, curve, fd);
+      }
+    }
+    out.push({ id: l.id, start: t0, end: t1 });
+  }
+  return { move: a.move, phase: "hold", style: curve, layers: out };
+}
 
 // ---------- text reveals ----------
 
@@ -239,6 +295,12 @@ C.transition = function (a: Args["transition"]) {
 
 // ---------- review ----------
 
+// Changes smaller than this are invisible (a 1 px nudge, a 0.5 % scale wobble) and don't count as motion, so a layer
+// that only wobbles is still reported as holding.
+var REVIEW_MIN: { [matchName: string]: number } = {
+  "ADBE Position": 2, "ADBE Position_0": 2, "ADBE Position_1": 2, "ADBE Position_2": 2, "ADBE Anchor Point": 2,
+  "ADBE Scale": 1, "ADBE Rotate Z": 0.5, "ADBE Rotate X": 0.5, "ADBE Rotate Y": 0.5, "ADBE Opacity": 2
+};
 var REVIEW_SKIP: { [matchName: string]: number } = { "ADBE Marker": 1, "ADBE Audio Group": 1 };
 // expressions that keep moving all the time (springs only reshape their keys; reveals are timed: revealSpan)
 var REVIEW_LIVE = /wiggle|loopOut|loopIn|time\s*\*|ae-motion (rig|shake)/;
@@ -269,6 +331,7 @@ function motionSegments(g: any, out: Seg[], live: { on: boolean }, l: Layer): Se
         v0 = safe(function () { return p.keyValue(k); }); v1 = safe(function () { return p.keyValue(k + 1); });
         if (v0 !== undefined && v1 !== undefined && typeof v0 !== "object" && v0 === v1) continue;
         if (v0 instanceof Array && v1 instanceof Array && dist(v0, v1) < 1e-6) continue;
+        if (REVIEW_MIN[p.matchName] !== undefined && v0 !== undefined && v1 !== undefined && dist(v0, v1) < REVIEW_MIN[p.matchName]) continue;
         out.push({ p: p, k: k, t0: p.keyTime(k), t1: p.keyTime(k + 1),
           linear: p.keyOutInterpolationType(k) === KeyframeInterpolationType.LINEAR && p.keyInInterpolationType(k + 1) === KeyframeInterpolationType.LINEAR,
           sampled: p.numKeys > 8, spring: safe(function () { return p.expressionEnabled && p.expression.indexOf(SPRING_TAG) === 0; }) === true });
@@ -424,6 +487,12 @@ function sceneChecks(c: CompItem, issue: (o: Obj) => void): void {
       issue({ type: "off_screen", severity: "warn", layer_id: L.l.id, layer: L.l.name, t: tt, msg: "Entirely outside the frame (as the camera sees it)" });
       continue;
     }
+    // vertical (9:16-ish) comps are social video: the apps' UI covers the top ~10% and bottom ~20%
+    if (L.kind === "text" && c.height > c.width * 1.3 && (O.x0 < c.width * 0.05 || O.x1 > c.width * 0.95 || O.y0 < c.height * 0.1 || O.y1 > c.height * 0.8)) {
+      issue({ type: "outside_safe", severity: "warn", layer_id: L.l.id, layer: L.l.name, t: tt, msg: "Text is where social apps put their UI (vertical: keep it below the top 10%, above the bottom 20%, 5% from the sides)" });
+    } else if (L.kind === "text" && (O.x0 < c.width * 0.05 || O.x1 > c.width * 0.95 || O.y0 < c.height * 0.05 || O.y1 > c.height * 0.95)) {
+      issue({ type: "outside_safe", severity: "warn", layer_id: L.l.id, layer: L.l.name, t: tt, msg: "Text crosses the title-safe margin (5% of the frame on each side)" });
+    }
     for (j = 0; j < ls.length; j++) {
       if (j === i || ls[j].l.inPoint > t || ls[j].l.outPoint <= t || !opaqueAt(ls[j].l, ls[j].kind, t)) continue;
       X = boxOf(ls[j], t);
@@ -445,7 +514,7 @@ function sceneChecks(c: CompItem, issue: (o: Obj) => void): void {
 
 C.review_motion = function (a: Args["review_motion"]) {
   need(a, ["comp_id"]);
-  var c = getComp(a.comp_id), fd = c.frameDuration, maxHold = has(a, "max_hold") ? a.max_hold : 1, minText = has(a, "min_text") ? a.min_text : Math.round(c.height * 0.022),
+  var c = getComp(a.comp_id), fd = c.frameDuration, maxHold = has(a, "max_hold") ? a.max_hold : 1, minText = has(a, "min_text") ? a.min_text : Math.round(Math.min(c.width, c.height) * 0.03),
     issues: Obj[] = [], spans: number[][] = [], events: number[] = [], starts: { [frame: string]: number[] } = {}, beats: number[] = [], lin: { [key: string]: boolean } = {}, i, j, l: AVLayer, segs: Seg[], s: Seg, kind, live: { on: boolean },
     first: number | null, fs: string, sc: any, mk, gap, cur, onBeat = 0, starts2: Obj[] = [], near: any, hold = 0, b, txt: any;
   function issue(o: Obj): void { issues.push(o); }
@@ -503,6 +572,9 @@ C.review_motion = function (a: Args["review_motion"]) {
     if (gap > maxHold + fd / 2) issue({ type: "hold", severity: gap > maxHold * 2 ? "warn" : "info", t: Math.round(cur * 1000) / 1000, duration: Math.round(gap * 1000) / 1000, msg: "Nothing moves for " + (Math.round(gap * 10) / 10) + " s" });
     if (b[1] > cur) cur = b[1];
   }
+  // a late first move (a longer empty opening is already a hold): the first frames are where viewers decide to stay
+  near = spans.length ? spans[0][0] : c.duration;
+  if (near > 0.3 + fd / 2 && near <= maxHold + fd / 2) issue({ type: "late_start", severity: "warn", t: 0, duration: Math.round(near * 1000) / 1000, msg: "Nothing moves for the first " + (Math.round(near * 10) / 10) + " s: start the first move within about 0.2 s" });
   // beat sync: how many moves start within a frame and a half of a beat marker
   if (beats.length >= 4 && starts2.length) {
     for (i = 0; i < starts2.length; i++) {

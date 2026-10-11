@@ -4,6 +4,15 @@ All notable changes. Versions follow [semantic versioning](https://semver.org); 
 
 ## Unreleased
 
+### Added
+- `animate` moves for holds: `push` (a slow scale-up, default 4%) and `drift` (a slow float), from where a layer's animation lands to its out point, keeping the landing's ease (a spring still lands exactly). In review, frozen holds after the build were the most common flaw.
+- Design rules for the model in the server instructions and `motion-guide`, as a senior motion designer and video editor would work: sizes relative to the comp's short side so they fit landscape, vertical (9:16 social) and square; the safe areas social apps cover; copy kept exactly as given; timing (move within 0.2 s, finish the build by 40%), keeping holds alive, polish (soft-edged glows, depth, one accent colour); and for footage: cutting on action or the beat, shot lengths, hooks, trimming dead air, b-roll over jump cuts, framing and reframing for vertical, text over video and captions, sound levels and delivery loudness.
+- `review_motion` checks: a late first move (after 0.3 s); changes too small to see no longer count as motion, so a wobbling layer still shows as a hold; text crossing the 5% title-safe margin, or in vertical comps the top 10% and bottom 20% that social apps cover; small text judged against 3% of the comp's short side (was 2.2% of its height).
+
+### Changed
+- `preview_frame` is 5-7 times faster: about 0.1 s per frame instead of 0.6 s, 0.2 s for a six-frame sheet instead of about 3 s. It returns as soon as the PNG is complete (its IEND chunk) instead of polling the size in 150 ms steps, and renders at the coarsest resolution that still covers the returned image instead of always at full resolution.
+- `get_project` lists each comp's layers (unless the project has over 300), and `set_keyframes` returns the keys as set, so a model needs fewer calls; the server instructions ask it to make independent calls together and not to re-read what a result already shows.
+
 ### Removed
 - The evaluations (`evals/`): the question and build-task runs through headless Claude Code. The live tests (`test/live/run.ts`) stay.
 - The hard limit on the size of the tool definitions (`npm test` prints the size instead).
