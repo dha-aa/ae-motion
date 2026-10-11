@@ -110,8 +110,12 @@ function layerBrief(l: AVLayer, c: CompItem): LayerJson {
   return o;
 }
 
+function itemType(it: _ItemClasses): string {
+  return it instanceof CompItem ? "comp" : (it instanceof FolderItem ? "folder" : "footage");
+}
+
 function itemInfo(it: _ItemClasses): Obj {
-  var o: Obj = { id: it.id, name: it.name, type: it instanceof CompItem ? "comp" : (it instanceof FolderItem ? "folder" : "footage") };
+  var o: Obj = { id: it.id, name: it.name, type: itemType(it) };
   if (it instanceof CompItem || it instanceof FootageItem) {
     if (it.width) { o.width = it.width; o.height = it.height; } // audio has no frame size
     o.duration = it.duration;

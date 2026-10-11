@@ -106,6 +106,6 @@ export function registerScene3dTools(r: ToolRegistry): void {
       view: z.enum(["active_camera", "default", "front", "left", "top", "back", "right", "bottom", "custom_1", "custom_2", "custom_3"]),
       comp_id: id("Comp").optional(),
     },
-    { idempotent: true },
+    { destructive: false, idempotent: true },
   );
 }

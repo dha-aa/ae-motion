@@ -1,12 +1,21 @@
 // Read-only commands: project, comp, layer, property tree, keyframes, effects. (src/tools/inspect.ts)
 
-C.get_project = function () {
-  var p = app.project, items = [], i, ai = p.activeItem;
-  for (i = 1; i <= p.numItems && i <= 500; i++) items.push(itemInfo(p.item(i)));
-  return {
-    ae_version: app.version, project_path: p.file ? p.file.fsName : null,
-    active_comp_id: (ai instanceof CompItem) ? ai.id : null, num_items: p.numItems, items: items, truncated: p.numItems > 500
-  };
+// Project items in panel order. On big projects, name / type narrow the list and limit / offset page it (the same
+// fields as get_comp: matched and next_offset only when not everything was returned).
+C.get_project = function (a?: Args["get_project"]) {
+  var p = app.project, items = [], i, it, ai = p.activeItem, o: Obj, n = 0, q, lim, off;
+  a = a || {};
+  q = a.name ? String(a.name).toLowerCase() : ""; lim = a.limit || 200; off = a.offset || 0;
+  for (i = 1; i <= p.numItems; i++) {
+    it = p.item(i);
+    if (q && it.name.toLowerCase().indexOf(q) === -1) continue;
+    if (a.type && itemType(it) !== a.type) continue;
+    if (n++ < off || items.length >= lim) continue;
+    items.push(itemInfo(it));
+  }
+  o = { ae_version: app.version, project_path: p.file ? p.file.fsName : null, active_comp_id: (ai instanceof CompItem) ? ai.id : null, num_items: p.numItems, items: items };
+  if (n !== items.length) { o.matched = n; if (off + items.length < n) o.next_offset = off + items.length; }
+  return o;
 };
 
 // Backs the ae://selection resource (not a tool).

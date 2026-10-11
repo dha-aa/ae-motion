@@ -2,6 +2,14 @@
 
 All notable changes. Versions follow [semantic versioning](https://semver.org); each release is a git tag `vX.Y.Z`, which is what the update check looks for.
 
+## Unreleased
+
+### Fixed
+- `get_project` works on big projects: it used to stop at 500 items and, past roughly 300 items with real file names, went over the size limit and failed with no way to ask for less. It now takes `name` (substring) and `type` filters and pages with `limit` (default 200) / `offset`, reporting `matched` and `next_offset` like `get_comp` (the `truncated` field is gone).
+- `list_markers` pages with `limit` (default 100) / `offset` and returns `next_offset`, instead of stopping at 500 markers.
+- `set_playhead` and `set_3d_view` are no longer marked destructive: they only change the viewer.
+- The `ae://project` and `ae://selection` resources return compact JSON, and a failed read is now a resources/read error (with the code and hint) instead of the error body returned as if it were the resource.
+
 ## 2.16.0 — 2026-10-11
 
 ### Changed

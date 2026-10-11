@@ -17,7 +17,7 @@ export function registerMaskTools(r: ToolRegistry): void {
 
   r.bridged(
     "set_track_matte",
-    "Use one layer as the track matte of another. matte_layer_id is the layer that acts as the matte, or null to remove the matte. type: alpha (default) | alpha_inverted | luma | luma_inverted.",
+    "Use one layer as the track matte of another. matte_layer_id is the matte layer, or null to remove the matte. type defaults to alpha.",
     {
       layer_id: id("Layer"), matte_layer_id: z.number().int().nullable().describe("Matte layer id, or null to remove the matte"),
       type: z.enum(["alpha", "alpha_inverted", "luma", "luma_inverted"]).optional(),

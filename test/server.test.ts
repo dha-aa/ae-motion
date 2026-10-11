@@ -37,6 +37,7 @@ const bridge = http.createServer((req, res) => {
       if (!prepareOk) return res.end(JSON.stringify({ ok: false, error: { code: "BAD_ARGS", message: "Project has never been saved" } }));
       return res.end(JSON.stringify({ ok: true, result: { project_path: "/tmp/x.aep", comp_name: "C", total_frames: 10, aerender_dir: DIR } }));
     }
+    if (cmd === "get_selection") return res.end(JSON.stringify({ ok: false, error: { code: "AE_ERROR", message: "boom", hint: "try again" } }));
     if (cmd === "list_properties") return res.end(JSON.stringify({ ok: true, result: { properties: "x".repeat(30000) } })); // over CHARACTER_LIMIT
     if (cmd === "preview_frame") {
       // After Effects can finish writing the PNG a moment after the command returns, especially for heavy 3D frames.
@@ -378,6 +379,14 @@ const results: [name: string, pass: boolean, detail?: string][] = [];
   results.push(["H: bad arguments come back as isError {error: {code: BAD_ARGS, message, hint}} without reaching the host",
     badArgsErr && badArgs.error?.code === "BAD_ARGS" && /layer_id/.test(badArgs.error.message) && /colour/.test(badArgs.error.message) && !/MCP error/.test(badArgs.error.message) && typeof badArgs.error.hint === "string" && calls.length === 0,
     JSON.stringify(badArgs)]);
+
+  // get_project passes its filter and paging to the host; a failed resource read is a resources/read error, not JSON
+  await body("get_project", { name: "logo", type: "footage", limit: 5, offset: 10 });
+  const [, projBadErr] = await body("get_project", { limit: 0 });
+  const sel = await s.call("resources/read", { uri: "ae://selection" });
+  results.push(["H: get_project forwards name/type/limit/offset; ae://selection fails as an error with code and hint",
+    JSON.stringify(received.get_project) === '{"name":"logo","type":"footage","limit":5,"offset":10}' && projBadErr && !sel.result && /AE_ERROR: boom \(try again\)/.test(JSON.stringify(sel.error)),
+    JSON.stringify([received.get_project, sel])]);
 
   // "$$" is a literal dollar: a price as text reaches the host as "$99"; a bare "$99" is a reference and says how to escape it
   calls.length = 0;

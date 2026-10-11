@@ -17,7 +17,7 @@
 
 | Group | Tool | What it does |
 |---|---|---|
-| Inspect | `get_project` | Project items, active comp id, AE version, project path |
+| Inspect | `get_project` | Project items, active comp id, AE version, project path. `name` / `type` filter and `limit` (200) / `offset` page big projects (`matched`, `next_offset`) |
 | | `get_comp` | Comp settings, work area, playhead time, marker count, and its layers, top first. Layer rows leave out what the list already says and defaults (no comp id, index or label; `in` only when not 0, `out` only before the comp's end, `start` only when it differs from `in`). Big comps: `name` (substring), `kind`, `at` (layers visible at that time), `limit` (default 150) / `offset` with `matched` / `next_offset`; `kinds` counts all layers by kind (comps over 20 layers) |
 | | `get_layer` | Transform values, a text layer's text, effects, expressions, masks, track matte, marker count, layer flags (incl. blend mode and motion blur), and bounds (content box and where it sits in the comp). `layer_ids` reads several layers in one call (`{layers: [...]}`) |
 | | `list_properties` | Walk a layer's property tree (names, match names, values, keyframe counts, expressions). By default it leaves out the layer marker, empty groups, unused layer styles, 3D-only options on 2D layers, shape Material Options and X/Y/Z position while not separated, and cuts expressions over 160 characters; `all: true` (or a `group_path` into one of them) lists everything. Only children of indexed groups carry an `index` |
@@ -45,7 +45,7 @@
 | | `align_to_markers` | Start layers on consecutive comp or layer markers, optionally trimming each at the next (cut to a beat) |
 | | `trim_comp` | Trim the comp to its work area or to its layers |
 | | `set_playhead` | Move the current-time indicator |
-| | `add_marker`, `update_marker`, `list_markers`, `delete_marker` | Layer and comp markers with comment, duration, chapter, url, label; edit or move one in place |
+| | `add_marker`, `update_marker`, `list_markers`, `delete_marker` | Layer and comp markers with comment, duration, chapter, url, label; edit or move one in place. `list_markers` pages with `limit` (100) / `offset` (`next_offset`) |
 | Masks and mattes | `add_mask` | Add a rect, ellipse, polygon or bezier-path mask with mode, feather, opacity, expansion |
 | | `set_track_matte` | Use a layer as an alpha or luma track matte, or remove the matte |
 | Design | `align_layers` | Align (left, center, right, top, middle, bottom) to the comp, the selection or a layer, and distribute evenly, by visible content |
@@ -93,7 +93,7 @@
 | Server | `load_tools` | Present only when `AE_MCP_TOOLSETS` leaves groups out: adds the named groups (`timeline`, `masks`, `scene3d`, `design`, `scripting` and so on) during the session and returns their tool names. The server sends `tools/list_changed`; clients that ignore it can still run the new tools through `batch` |
 | Server | `batch` | Run up to 50 tool calls in order in one call. A string `"$N.path"` in a step's args is replaced by that value from step N's result (`"$1.id"`, `"$2.layers.0.id"`); `"$$"` is a literal dollar, so a price as text is `"$$99"`. Every step is checked before any runs (tool, references, arguments; a reference's value is unknown until its step runs, so only type errors at a reference are let through), and all problems are listed at once with nothing changed. Each step gets the same validation and path sandbox as a direct call and is its own undo step; a step that fails in After Effects stops the batch and returns the results so far (`results: "last"` / `"none"` returns less). Server-side tools run as steps too (`get_project`, `render_start`, `render_status`, `check_for_updates`); not `preview_frame` (an image), `run_jsx` or `open_project`. Loose input is accepted: `steps` or a step's `args` as a JSON string, `name` / `arguments` / `params` for `tool` / `args`, client-prefixed names (`mcp__ae-motion__add_layer`). Results over the size limit are shortened to ids and names (then to the last one) instead of becoming an error, since every step has already run. With a progress token the client gets a progress notification per step. Every tool call is a round trip that re-reads the conversation, so batching a scene's steps is the biggest token saving A batch that fails returns a `batch_id`: send the same steps (fixed) with `resume: {batch_id, from: N}` to run from step N with the earlier steps' results (the last 10 batches are kept, in memory). |
 
-Resources: `ae://project` (same as `get_project`) and `ae://selection` (layers selected in the active comp). Prompt: `motion-guide`.
+Resources: `ae://project` (same as `get_project` with no arguments; a failed read is a resources/read error) and `ae://selection` (layers selected in the active comp). Prompt: `motion-guide`.
 
 Every tool has a title and the four MCP annotations: `readOnlyHint` (inspection, preview, render status), `destructiveHint` (false only for purely additive tools such as `create_comp`, `add_layer`, `add_marker`), `idempotentHint` (the `set_*` tools and deletes by id) and `openWorldHint` (only `run_jsx`). Clients can use them to skip confirmation for safe calls.
 
