@@ -2,7 +2,7 @@
 
 All notable changes. Versions follow [semantic versioning](https://semver.org); each release is a git tag `vX.Y.Z`, which is what the update check looks for.
 
-## Unreleased
+## 2.17.0 — 2026-10-11
 
 ### Added
 - `animate` moves for holds: `push` (a slow scale-up, default 4%) and `drift` (a slow float), from where a layer's animation lands to its out point, keeping the landing's ease (a spring still lands exactly). In review, frozen holds after the build were the most common flaw.
