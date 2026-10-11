@@ -3,7 +3,7 @@
 // The server waits for the PNG afterwards: saveFrameToPng can return before the file is fully written.
 C.preview_frame = function (a: HostArgs["preview_frame"]) {
   need(a, ["comp_id", "time", "output_path"]);
-  var comp = getComp(a.comp_id), f = new File(a.output_path), rf, want;
+  var comp = getComp(a.comp_id), f = new File(a.output_path), rf, want, out: Obj, scene;
   if (typeof comp.saveFrameToPng !== "function") fail("UNSUPPORTED", "comp.saveFrameToPng is not available in this After Effects version", "Update After Effects");
   if (!f.parent.exists) f.parent.create();
   try { comp.openInViewer(); } catch (e) {}
@@ -16,8 +16,22 @@ C.preview_frame = function (a: HostArgs["preview_frame"]) {
   rf = safe(function () { return comp.resolutionFactor; });
   if (rf && (rf[0] !== want || rf[1] !== want)) comp.resolutionFactor = [want, want];
   try { comp.saveFrameToPng(a.time, f); } finally { if (rf && (rf[0] !== want || rf[1] !== want)) comp.resolutionFactor = rf; }
-  return { path: f.fsName, exists: f.exists };
+  out = { path: f.fsName, exists: f.exists };
+  scene = sceneAt(comp, a.time);
+  if (scene) out.scene = scene;
+  return out;
 };
+
+// The scene a time shows in an edit: the name of the top enabled precomp layer playing then (null when none), so a
+// preview of a master comp says which scene comp to change.
+function sceneAt(comp: CompItem, t: number): string | null {
+  var i, l;
+  for (i = 1; i <= comp.numLayers; i++) {
+    l = comp.layer(i) as AVLayer;
+    if (l.enabled && l.source instanceof CompItem && t >= l.inPoint - 1e-6 && t < l.outPoint - 1e-6) return l.name;
+  }
+  return null;
+}
 
 // The first GPU renderer this machine offers (Metal, CUDA or OpenCL), or the current one if there is none.
 function gpuRenderer(): GpuAccelType {
@@ -37,6 +51,7 @@ C.prepare_render = function (a: HostArgs["prepare_render"]) {
   return {
     project_path: app.project.file.fsName, comp_name: comp.name,
     total_frames: Math.round(comp.duration * comp.frameRate), aerender_dir: appDir(),
+    frame_rate: comp.frameRate, display_start_frame: Math.round(comp.displayStartTime * comp.frameRate),
     software: app.project.gpuAccelType === GpuAccelType.SOFTWARE
   };
 };

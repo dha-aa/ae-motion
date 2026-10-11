@@ -27,10 +27,17 @@ function fitToLayer(l: AVLayer, target: AVLayer, padding?: number | number[]): v
   l.moveAfter(target);
 }
 
+// After Effects gives a new text layer the Character panel's current settings, so it inherits whatever the last
+// text was styled with (tracking 400 made every later title wide-spaced). New text starts from these instead.
+var NEUTRAL_TEXT: { [field: string]: number | boolean } = {
+  tracking: 0, baseline_shift: 0, tsume: 0, horizontal_scale: 100, vertical_scale: 100, faux_bold: false, faux_italic: false,
+  all_caps: false, small_caps: false, superscript: false, subscript: false, auto_leading: true
+};
+
 C.add_layer = function (a: Args["add_layer"]) {
   need(a, ["comp_id", "kind"]);
   var comp = getComp(a.comp_id), o = a.options || {}, kind = a.kind, dur = has(o, "duration") ? o.duration : comp.duration,
-    center = o.center || [comp.width / 2, comp.height / 2], l, item, col, size, lt, styled = null, styleArgs: Obj, k, out, fit: AVLayer | null = null;
+    center = o.center || [comp.width / 2, comp.height / 2], l, item, col, size, lt, styled = null, styleArgs: Obj, k, kept, out, fit: AVLayer | null = null;
   if (o.text_style && kind !== "text") fail("BAD_ARGS", "text_style is for text layers");
   if (o.text_style && o.text_style.font) checkFont(o.text_style.font as string); // before the layer exists
   if (kind === "shape" && o.shape && o.shape.type && " rect ellipse star polygon path ".indexOf(" " + o.shape.type + " ") === -1) fail("BAD_ARGS", "shape.type must be rect, ellipse, star, polygon or path");
@@ -70,10 +77,20 @@ C.add_layer = function (a: Args["add_layer"]) {
   if (o.name) l.name = o.name;
   if (has(o, "three_d")) (l as AVLayer).threeDLayer = o.three_d;
   // style, then anchor (it measures the styled content), then position (it places that anchor)
-  if (o.text_style) {
+  if (kind === "text") {
     styleArgs = { layer_id: l.id };
-    for (k in o.text_style) { if (o.text_style.hasOwnProperty(k)) styleArgs[k] = o.text_style[k]; }
+    for (k in NEUTRAL_TEXT) { if (NEUTRAL_TEXT.hasOwnProperty(k)) styleArgs[k] = NEUTRAL_TEXT[k]; }
+    if (o.text_style) { for (k in o.text_style) { if (o.text_style.hasOwnProperty(k)) styleArgs[k] = o.text_style[k]; } }
     styled = C.set_text(styleArgs);
+    // report only what the caller asked for: a neutral default an older After Effects refuses is not news
+    if (styled && styled.skipped) {
+      kept = 0;
+      for (k in styled.skipped) {
+        if (!styled.skipped.hasOwnProperty(k)) continue;
+        if (o.text_style && o.text_style.hasOwnProperty(k)) kept++; else delete styled.skipped[k];
+      }
+      if (kept === 0) delete styled.skipped;
+    }
   }
   if (fit) fitToLayer(l as AVLayer, fit, o.fit_to!.padding);
   if (o.anchor) C.set_anchor({ layer_id: l.id, anchor: o.anchor, keep_position: fit !== null });

@@ -37,5 +37,7 @@ C.set_track_matte = function (a: Args["set_track_matte"]) {
     if (l.index === 1 || comp.layer(l.index - 1).id !== matte.id) fail("UNSUPPORTED", "This After Effects version needs the matte layer directly above the target layer", "Use reorder_layer to place the matte directly above it, then retry");
     l.trackMatteType = (TrackMatteType as any)[tm];
   }
-  return { layer: layerRef(l), matte_layer_id: matte.id, type: mt };
+  const out: Obj = { layer: layerRef(l), matte_layer_id: matte.id, type: mt };
+  if ((l as AVLayer).threeDLayer && hasLayerStyles(l)) out.warning = STYLED_3D_NOTE;
+  return out;
 };

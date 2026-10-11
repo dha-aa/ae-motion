@@ -4,7 +4,18 @@ All notable changes. Versions follow [semantic versioning](https://semver.org); 
 
 ## Unreleased
 
+### Added
+- `set_property` takes `layer_ids`: the same value on many layers in one call (13 coins, 10 ingots), every layer checked before any changes.
+- `save_project` `snapshot: true` (with an optional `note`) keeps a numbered copy in `snapshots/` next to the project, so going back to an earlier version is `open_project` on that copy instead of rebuilding it from memory.
+- `render_start` `start` / `end` (seconds) render part of a comp, and `draft: true` uses the Draft Settings template: a quick moving preview of a few seconds, where `preview_frame` only shows stills.
+- `preview_frame` names the scene each frame shows in an edit (`scene`, or `scenes` for a contact sheet): the top precomp playing at that time.
+- `add_layer_style` accepts the Layer Style panel's labels where the match name differs: `size` (blur), `spread` / `choke`, `angle`, `altitude`, `blend_mode`, `range`, `technique`.
+
 ### Fixed
+- `render_start` always passes the comp's frame range to `aerender`, and a finished file shorter than that fails the job. A render once stopped at 54 of 2,422 frames, exited 0 and was reported as done with a clean check.
+- A new text layer no longer inherits the last text's character settings (After Effects takes the Character panel's current ones): `add_layer` starts text from tracking 0, no faux styles or caps, auto leading, 100% scale, before any `text_style`.
+- `set_track_matte` and `add_layer_style` warn when a 3D layer has layer styles: After Effects then ignores its track matte and draws it in stacking order instead of by depth (verified live; even a style switched off does it).
+- `review_motion` checks text against the title-safe margin on its last frame too, not only mid-way: camera pushes carried titles out of frame by the end, where the check never looked.
 - `batch`: a `"$N.path"` reference inside an array (e.g. `layer_ids: ["$1.id", "$2.id"]`) was rejected by the pre-check ("expected number, received string") although it resolves to a number when the step runs. Zod reports array positions as numbers and the comparison only matched strings.
 
 ## 2.17.0 — 2026-10-11

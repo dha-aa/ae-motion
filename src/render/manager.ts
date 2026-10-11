@@ -83,6 +83,8 @@ interface Job {
   /** The requested output path (after sandboxing). */
   output: string;
   totalFrames: number;
+  /** Seconds the file should last (for the length check), when known. */
+  expectedSeconds?: number;
   log: string[];
   /** Error lines from aerender's output (first few). */
   errors: string[];
@@ -119,6 +121,11 @@ export interface RenderArgs {
   loudness?: number;
   /** Render only the audio (AIFF), to check the mix in seconds instead of rendering the picture. */
   audio_only?: boolean;
+  /** Render only this part of the comp, in seconds (default: the whole comp, whatever the work area). */
+  start?: number;
+  end?: number;
+  /** A quick look: the "Draft Settings" render settings (draft quality, lower resolution) unless rs_template is set. */
+  draft?: boolean;
 }
 
 /** What the host's prepare_render command returns. */
@@ -127,6 +134,9 @@ interface PreparedRender {
   comp_name: string;
   total_frames: number;
   aerender_dir: string;
+  /** Older hosts leave these out; then aerender's own time span is used and the length check is skipped. */
+  frame_rate?: number;
+  display_start_frame?: number;
 }
 
 export class RenderManager {
@@ -141,6 +151,7 @@ export class RenderManager {
   async start(a: RenderArgs): Promise<{ job_id: string; output_path: string }> {
     const out = assertAllowed(a.output_path);
     if (a.deliver && a.audio_only) throw new AeToolError("BAD_ARGS", "deliver and audio_only cannot be combined", "audio_only checks the mix; deliver makes the final MP4");
+    if (a.start !== undefined && a.end !== undefined && a.end <= a.start) throw new AeToolError("BAD_ARGS", "end must be after start", "Times are in seconds of comp time");
     if (a.deliver && !this.ffmpeg()) throw new AeToolError("UNSUPPORTED", "deliver needs ffmpeg, which was not found", "Install ffmpeg (brew install ffmpeg) or set AE_MCP_FFMPEG to its path");
     const replacing = fs.existsSync(out);
     if (replacing) {
@@ -152,21 +163,34 @@ export class RenderManager {
 
     const prep = await this.bridge.run("prepare_render", { comp_id: a.comp_id, ...(a.software === undefined ? {} : { software: a.software }) });
     if (!prep.ok) throw new AeToolError(prep.error.code, prep.error.message, prep.error.hint);
-    const { project_path, comp_name, total_frames, aerender_dir } = prep.result as PreparedRender;
+    const { project_path, comp_name, total_frames, aerender_dir, frame_rate, display_start_frame } = prep.result as PreparedRender;
 
     const bin = findAerender(aerender_dir);
     // delivering renders a ProRes master next to the target and encodes it afterwards; audio_only renders AIFF
     const renderPath = a.deliver ? out.replace(/(\.[^./\\]+)?$/, ".master.mov") : out;
     const om = a.om_template ?? (a.deliver ? "High Quality" : a.audio_only ? "AIFF 48kHz" : undefined);
     const args = ["-project", project_path, "-comp", comp_name, "-output", renderPath];
-    if (a.rs_template) args.push("-RStemplate", a.rs_template);
+    // An explicit frame range: aerender otherwise takes the time span from its render settings template, which once
+    // rendered 54 of 2,422 frames and still exited 0. start / end render part of the comp (a quick moving preview).
+    let frames = total_frames, expectedSeconds: number | undefined;
+    if (frame_rate) {
+      const first = a.start === undefined ? 0 : Math.round(a.start * frame_rate);
+      const last = a.end === undefined ? total_frames - 1 : Math.min(total_frames - 1, Math.round(a.end * frame_rate) - 1);
+      if (first > last || first >= total_frames) throw new AeToolError("BAD_ARGS", `start / end are outside the comp (0 to ${(total_frames / frame_rate).toFixed(2)} s)`, "Pass times in seconds of comp time");
+      const base = display_start_frame ?? 0;
+      args.push("-s", String(base + first), "-e", String(base + last));
+      frames = last - first + 1;
+      expectedSeconds = frames / frame_rate;
+    }
+    const rs = a.rs_template ?? (a.draft ? "Draft Settings" : undefined);
+    if (rs) args.push("-RStemplate", rs);
     if (om) args.push("-OMtemplate", om);
 
     if (replacing) fs.rmSync(out, { force: true });
 
     const child = spawn(bin, args, { windowsHide: true });
     const job: Job = {
-      id: randomUUID().slice(0, 8), state: "running", percent: 0, output: out, totalFrames: a.audio_only ? 1 : Math.max(1, total_frames),
+      id: randomUUID().slice(0, 8), state: "running", percent: 0, output: out, totalFrames: a.audio_only ? 1 : Math.max(1, frames), expectedSeconds,
       log: [], errors: [], gpuFailure: false, frames: 0, samples: [], child, exitCode: null, startedAt: Date.now(),
       renderPath, deliverTo: a.deliver ? out : undefined, lufs: a.loudness ?? -14, verify: a.verify ?? this.ffmpeg() !== null,
     };
@@ -284,6 +308,12 @@ export class RenderManager {
       }
     }
     if (job.state !== "running") return;
+    // a render can end early and still exit 0: compare the file's length with what was asked for
+    const got = job.check && "duration_s" in job.check ? job.check.duration_s : null;
+    if (job.expectedSeconds !== undefined && got !== null && got < job.expectedSeconds - 0.25)
+      return fail(`The render is ${got} s long but should be ${job.expectedSeconds.toFixed(2)} s: aerender stopped early (${job.frames} frames reported)`);
+    if (got === null && job.totalFrames > 1 && job.frames > 0 && job.frames < job.totalFrames)
+      return fail(`aerender reported ${job.frames} of ${job.totalFrames} frames: the render stopped early`);
     job.phase = undefined;
     job.state = "done";
     job.percent = 100;

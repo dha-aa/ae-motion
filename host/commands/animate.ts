@@ -2,18 +2,27 @@
 
 var MODIFIERS = { trim_paths: "ADBE Vector Filter - Trim", repeater: "ADBE Vector Filter - Repeater", round_corners: "ADBE Vector Filter - RC" };
 
+// One layer (layer_id) or the same property of many (layer_ids). Every layer is resolved and checked before any
+// value changes, so a bad path on layer 7 leaves layers 1-6 untouched.
 C.set_property = function (a: Args["set_property"]) {
-  need(a, ["layer_id", "path", "value"]);
-  var l = getLayer(a.layer_id), p = resolvePath(l, a.path), v = coerce(p, a.value), rv;
-  if (has(a, "time")) {
-    if (!p.canVaryOverTime) fail("BAD_ARGS", "Property is not keyframable", "Leave out time to set a static value");
-    p.setValueAtTime(a.time, v);
-  } else {
-    if (p.numKeys > 0) fail("BAD_ARGS", "Property is animated; pass time to set a value at a time, or use set_keyframes");
-    p.setValue(v);
+  need(a, ["path", "value"]);
+  var many = has(a, "layer_ids"), ids: number[], props: Prop[] = [], vals: any[] = [], i, p, rv;
+  if (many === has(a, "layer_id")) fail("BAD_ARGS", "Pass layer_id or layer_ids (not both)", "layer_ids sets the same property on many layers");
+  ids = many ? a.layer_ids! : [a.layer_id!];
+  if (!(ids instanceof Array) || ids.length === 0) fail("BAD_ARGS", "layer_ids must list at least one layer");
+  for (i = 0; i < ids.length; i++) {
+    p = resolvePath(getLayer(ids[i]), a.path);
+    var at = many ? " (layer " + ids[i] + ")" : "";
+    if (has(a, "time") && !p.canVaryOverTime) fail("BAD_ARGS", "Property is not keyframable" + at, "Leave out time to set a static value");
+    if (!has(a, "time") && p.numKeys > 0) fail("BAD_ARGS", "Property is animated" + at + "; pass time to set a value at a time, or use set_keyframes");
+    props.push(p); vals.push(coerce(p, a.value));
   }
-  rv = safeVal(p, has(a, "time") ? a.time : 0);
-  return { value: rv === undefined ? null : rv, num_keys: p.numKeys };
+  for (i = 0; i < props.length; i++) {
+    if (has(a, "time")) props[i].setValueAtTime(a.time, vals[i]); else props[i].setValue(vals[i]);
+  }
+  if (many) return { set: ids.length };
+  rv = safeVal(props[0], has(a, "time") ? a.time! : 0);
+  return { value: rv === undefined ? null : rv, num_keys: props[0].numKeys };
 };
 
 C.set_keyframes = function (a: Args["set_keyframes"]) {

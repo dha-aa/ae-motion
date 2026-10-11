@@ -20,6 +20,7 @@ const DIR = fs.mkdtempSync(path.join(os.tmpdir(), "ae-motion-render-"));
 const SERVER = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "dist", "index.js");
 const TOKEN = "testtoken";
 let prepareOk = true;
+let prepareFps: number | undefined; // set: prepare_render reports a frame rate (and 240 frames), so the server passes a range
 const received: Record<string, Json> = {}; // command -> args of the last call the fake bridge received
 const calls: string[] = []; // every command the fake bridge received, in order
 
@@ -36,8 +37,10 @@ const bridge = http.createServer((req, res) => {
     if (cmd === "delete_layer" && args.layer_id === 13) return res.end(JSON.stringify({ ok: false, error: { code: "NOT_FOUND", message: "No layer with id 13", hint: "Use get_comp" } }));
     if (cmd === "prepare_render") {
       if (!prepareOk) return res.end(JSON.stringify({ ok: false, error: { code: "BAD_ARGS", message: "Project has never been saved" } }));
+      if (prepareFps) return res.end(JSON.stringify({ ok: true, result: { project_path: "/tmp/x.aep", comp_name: "C", total_frames: 240, aerender_dir: DIR, frame_rate: prepareFps, display_start_frame: 0 } }));
       return res.end(JSON.stringify({ ok: true, result: { project_path: "/tmp/x.aep", comp_name: "C", total_frames: 10, aerender_dir: DIR } }));
     }
+    if (cmd === "save_project") { fs.writeFileSync(path.join(DIR, "proj.aep"), "aep v" + calls.length); return res.end(JSON.stringify({ ok: true, result: { project_path: path.join(DIR, "proj.aep") } })); }
     if (cmd === "get_selection") return res.end(JSON.stringify({ ok: false, error: { code: "AE_ERROR", message: "boom", hint: "try again" } }));
     if (cmd === "list_properties") return res.end(JSON.stringify({ ok: true, result: { properties: "x".repeat(30000) } })); // over CHARACTER_LIMIT
     if (cmd === "preview_frame") {
@@ -46,7 +49,7 @@ const bridge = http.createServer((req, res) => {
       const png = PNG.sync.write(Object.assign(new PNG({ width: 64, height: 36 }), { data: Buffer.alloc(64 * 36 * 4, 200) }));
       setTimeout(() => fs.writeFileSync(args.output_path, png.subarray(0, png.length >> 1)), 300);
       setTimeout(() => fs.writeFileSync(args.output_path, png), 700);
-      return res.end(JSON.stringify({ ok: true, result: {} }));
+      return res.end(JSON.stringify({ ok: true, result: args.time >= 5 ? { scene: "S02 Gold" } : {} }));
     }
     res.end(JSON.stringify({ ok: true, result: {} }));
   });
@@ -55,7 +58,7 @@ await new Promise<void>((r) => bridge.listen(0, "127.0.0.1", () => r()));
 fs.writeFileSync(path.join(DIR, "bridge.json"), JSON.stringify({ port: (bridge.address() as AddressInfo).port, token: TOKEN }));
 
 const fake = path.join(DIR, "aerender");
-fs.writeFileSync(fake, `#!/bin/bash\necho $$ > ${DIR}/aerender.pid\nif [ "$FAKE_MODE" = "write" ] || [ "$FAKE_MODE" = "gpu" ]; then\n  while [ "$1" != "-output" ]; do shift; done\n  out="$2"\n  if [ "$FAKE_MODE" = "gpu" ]; then echo "PROGRESS:  0:00:29:00 (870): 0 Seconds"; echo "PROGRESS:  After Effects has encountered a failure (code: 19969) related to GPU-enabled effects on this frame. This is likely because your GPU is out of memory."; fi\n  echo "PROGRESS: finished"; printf data > "\${out%.*}.mp4"; exit 0\nfi\nif [ "$FAKE_MODE" = "progress" ]; then\n  sleep 0.6; for f in 1 2 3 4; do echo "PROGRESS:  0:00:00:0$f ($f): 0 Seconds"; sleep 0.25; done\nfi\nexec sleep 300\n`, { mode: 0o755 });
+fs.writeFileSync(fake, `#!/bin/bash\necho $$ > ${DIR}/aerender.pid\necho "$@" > ${DIR}/aerender.args\nif [ "$FAKE_MODE" = "write" ] || [ "$FAKE_MODE" = "gpu" ]; then\n  while [ "$1" != "-output" ]; do shift; done\n  out="$2"\n  if [ "$FAKE_MODE" = "gpu" ]; then echo "PROGRESS:  0:00:29:00 (870): 0 Seconds"; echo "PROGRESS:  After Effects has encountered a failure (code: 19969) related to GPU-enabled effects on this frame. This is likely because your GPU is out of memory."; fi\n  echo "PROGRESS: finished"; printf data > "\${out%.*}.mp4"; exit 0\nfi\nif [ "$FAKE_MODE" = "progress" ]; then\n  sleep 0.6; for f in 1 2 3 4; do echo "PROGRESS:  0:00:00:0$f ($f): 0 Seconds"; sleep 0.25; done\nfi\nexec sleep 300\n`, { mode: 0o755 });
 
 // a fake ffmpeg: a probe sees video and audio, the check finds black 2-4 s, deliver writes its output (last argument)
 const fakeFf = path.join(DIR, "ffmpeg");
@@ -170,6 +173,38 @@ const results: [name: string, pass: boolean, detail?: string][] = [];
   s.p.kill();
 }
 
+// Phase C5: the server passes an explicit frame range (the whole comp by default, start / end for a part, draft
+// settings for a quick look) and fails a render whose file is shorter than asked for, even when aerender exits 0.
+{
+  prepareOk = true; prepareFps = 24;
+  const s = startServer({ FAKE_MODE: "write" });
+  await s.init();
+  const wait = async (job: string) => {
+    let st: Json = {};
+    for (let i = 0; i < 50 && (st.state === undefined || st.state === "running"); i++) {
+      await sleep(100);
+      st = JSON.parse(textOf(await s.call("tools/call", { name: "render_status", arguments: { job_id: job } })));
+    }
+    return st;
+  };
+  // the fake file lasts 4 s; the comp is 240 frames at 24 fps = 10 s
+  const full = JSON.parse(textOf(await s.call("tools/call", { name: "render_start", arguments: { comp_id: 1, output_path: path.join(DIR, "full.mp4") } }))).job_id;
+  const st = await wait(full);
+  const args = fs.readFileSync(path.join(DIR, "aerender.args"), "utf8");
+  results.push(["C5: the whole comp is rendered (-s 0 -e 239), not aerender's own time span", / -s 0 -e 239/.test(args), args]);
+  results.push(["C5: a file shorter than the comp fails the job even though aerender exited 0", st.state === "failed" && /stopped early/.test(String(st.errors?.[0])), JSON.stringify(st.errors)]);
+  const part = JSON.parse(textOf(await s.call("tools/call", { name: "render_start", arguments: { comp_id: 1, output_path: path.join(DIR, "part.mp4"), start: 1, end: 5, draft: true } }))).job_id;
+  const st2 = await wait(part);
+  const args2 = fs.readFileSync(path.join(DIR, "aerender.args"), "utf8");
+  results.push(["C5: start / end render frames 24-119 with the Draft Settings template", / -s 24 -e 119/.test(args2) && /-RStemplate Draft Settings/.test(args2) && st2.state === "done" && st2.total_frames === 96, args2 + JSON.stringify(st2)]);
+  const [bad] = [JSON.parse(textOf(await s.call("tools/call", { name: "render_start", arguments: { comp_id: 1, output_path: path.join(DIR, "bad.mp4"), start: 5, end: 2 } })))];
+  results.push(["C5: end before start is BAD_ARGS", bad.error?.code === "BAD_ARGS"]);
+  prepareFps = undefined;
+  s.p.stdin.end();
+  await Promise.race([s.exited, sleep(3000)]);
+  s.p.kill();
+}
+
 // Phase C2: aerender exits 0 after a GPU out-of-memory failure (black frames): the job fails, with the errors and the fix.
 {
   prepareOk = true;
@@ -248,6 +283,13 @@ const results: [name: string, pass: boolean, detail?: string][] = [];
   const r = await s.call("tools/call", { name: "preview_frame", arguments: { comp_id: 1, time: 0 } });
   const content = r.result?.content ?? [];
   const waited = Date.now() - started;
+  // in an edit the result says which scene (precomp) each time shows; a single frame outside any scene says nothing
+  const multi = await s.call("tools/call", { name: "preview_frame", arguments: { comp_id: 1, time: [0, 6] } });
+  const minfo = JSON.parse(textOf(multi) || "{}");
+  const single = await s.call("tools/call", { name: "preview_frame", arguments: { comp_id: 1, time: 6 } });
+  const sinfo = JSON.parse(textOf(single) || "{}");
+  results.push(["D: preview_frame names the scene each time shows (scenes for a sheet, scene for one frame)",
+    JSON.stringify(minfo.scenes) === '[null,"S02 Gold"]' && sinfo.scene === "S02 Gold", JSON.stringify([minfo, sinfo])]);
   results.push(["D: preview_frame waits for the whole PNG (written in two parts after the command returns), and no longer than that", r.result?.isError !== true && content.some((c) => c.type === "image") && waited >= 700 && waited < 1500]);
   // the token meter (src/usage.ts): this server's usage file next to the bridge file, for the panel
   await s.call("tools/list", {});
@@ -377,6 +419,15 @@ const results: [name: string, pass: boolean, detail?: string][] = [];
   const [, jsxErr] = await body("batch", { steps: [{ tool: "run_jsx", args: { code: "1" } }] });
   const [, openErr] = await body("batch", { steps: [{ tool: "open_project", args: { path: path.join(DIR, "x.aep") } }] });
   results.push(["H: paths are sandboxed, forward references, run_jsx and open_project are refused", sandboxed && outsideErr && refErr && jsxErr && openErr && calls.length === 0]);
+
+  // snapshot: true keeps numbered copies next to the project, named by the note; a plain save makes none
+  await body("save_project", {});
+  const [s1] = await body("save_project", { snapshot: true, note: "Before S01 change!" });
+  const [s2] = await body("save_project", { snapshot: true });
+  const snaps = fs.existsSync(path.join(DIR, "snapshots")) ? fs.readdirSync(path.join(DIR, "snapshots")).sort() : [];
+  results.push(["H: save_project snapshot keeps numbered copies (proj_001_before-s01-change.aep, proj_002.aep) of the saved file",
+    JSON.stringify(snaps) === '["proj_001_before-s01-change.aep","proj_002.aep"]' && s2.snapshots === 2 && String(s1.snapshot).endsWith("proj_001_before-s01-change.aep")
+      && fs.readFileSync(path.join(DIR, "snapshots", "proj_002.aep"), "utf8") === fs.readFileSync(path.join(DIR, "proj.aep"), "utf8"), JSON.stringify([snaps, s1, s2])]);
 
   // a job the server no longer knows (e.g. after a client restart) says why, and what to do instead
   const [lost, lostErr] = await body("render_status", { job_id: "gone" });

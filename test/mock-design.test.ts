@@ -56,11 +56,13 @@ function makeWorld() {
   };
   // Text layers whose glyph box grows with the font size (so anchor-after-style is observable), and an app.fonts
   // with allFonts grouped by family, as After Effects 24+ has.
+  const carry = { tracking: 0, fauxBold: false };
   comp.layers = {
+    // as After Effects: a new text layer takes the Character panel's current settings, i.e. the last ones used
     addText(text) {
-      const doc = { text, font: "ArialMT", fontSize: 50, applyFill: true };
+      const doc = { text, font: "ArialMT", fontSize: 50, applyFill: true, tracking: carry.tracking, fauxBold: carry.fauxBold };
       const l = make(TextLayer, { name: text });
-      const docProp = { get value() { return doc; }, numKeys: 0, setValue(d) { Object.assign(doc, d); } };
+      const docProp = { get value() { return doc; }, numKeys: 0, setValue(d) { Object.assign(doc, d); carry.tracking = doc.tracking; carry.fauxBold = doc.fauxBold; } };
       const tgProp = l.property;
       l.property = (n) => (n === "ADBE Text Properties" ? { property: () => docProp } : tgProp(n));
       l.sourceRectAtTime = () => { const k = doc.fontSize / 50; return { left: 0, top: -40 * k, width: 200 * k, height: 50 * k }; };
@@ -88,6 +90,16 @@ const t = (name, fn) => { try { fn(); results.push([name, true]); } catch (e) { 
 const ok = (r) => { assert.equal(r.ok, true, JSON.stringify(r.error)); return r.result; };
 const fails = (r, code) => { assert.equal(r.ok, false, "should fail"); if (code) assert.equal(r.error.code, code, JSON.stringify(r.error)); return r.error; };
 const bounds = (w, l) => ok(w.call("get_layer", { layer_id: l.id })).bounds.comp;
+
+t("a new text layer starts from neutral character settings, not the last text's tracking", () => {
+  const w = makeWorld();
+  const a = ok(w.call("add_layer", { comp_id: 1, kind: "text", options: { text: "WIDE", text_style: { tracking: 400, faux_bold: true } } }));
+  assert.equal(w.comp._layers.find((l) => l.id === a.id).doc.tracking, 400);
+  const b = ok(w.call("add_layer", { comp_id: 1, kind: "text", options: { text: "plain" } }));
+  const doc = w.comp._layers.find((l) => l.id === b.id).doc;
+  assert.equal(doc.tracking, 0); assert.equal(doc.fauxBold, false);
+  assert.equal(b.skipped, undefined);
+});
 
 t("get_layer reads several layers in one call, with a text layer's text and the comp a precomp plays", () => {
   const w = makeWorld();
@@ -204,9 +216,22 @@ t("add_layer_style checks parameter names before turning the style on", () => {
   const params = { "dropShadow/distance": { value: 5, setValue(v) { this.value = v; }, propertyValueType: undefined }, "dropShadow/blur": { value: 0, setValue(v) { this.value = v; } } };
   const group = { get enabled() { return enabled; }, set enabled(v) { enabled = v; }, numProperties: 2, property: (n) => (typeof n === "number" ? { matchName: Object.keys(params)[n - 1] } : params[n] || null) };
   l.property = ((orig) => (n) => (n === "ADBE Layer Styles" ? { enabled: true, property: () => group } : orig(n)))(l.property);
-  const e = fails(w.call("add_layer_style", { layer_id: l.id, style: "drop_shadow", params: { size: 3 } }), "BAD_ARGS");
-  assert.match(e.message, /size/); assert.match(e.hint, /distance, blur/);
+  const e = fails(w.call("add_layer_style", { layer_id: l.id, style: "drop_shadow", params: { sise: 3 } }), "BAD_ARGS");
+  assert.match(e.message, /sise/); assert.match(e.hint, /distance, blur/);
   assert.equal(enabled, false, "style untouched after a bad name");
+});
+
+t("add_layer_style takes panel labels (size is blur) and warns on a 3D layer", () => {
+  const w = makeWorld();
+  const l = w.make(w.TextLayer);
+  const params = { "dropShadow/distance": { value: 5, propertyValueType: "1d", setValue(v) { this.value = v; } }, "dropShadow/blur": { value: 0, propertyValueType: "1d", setValue(v) { this.value = v; } } };
+  const group = { enabled: true, numProperties: 2, property: (n) => (typeof n === "number" ? { matchName: Object.keys(params)[n - 1] } : params[n] || null) };
+  l.property = ((orig) => (n) => (n === "ADBE Layer Styles" ? { enabled: true, canSetEnabled: true, property: () => group } : orig(n)))(l.property);
+  let r = ok(w.call("add_layer_style", { layer_id: l.id, style: "drop_shadow", params: { size: 12 } }));
+  assert.equal(params["dropShadow/blur"].value, 12); assert.equal(r.warning, undefined);
+  l.threeDLayer = true;
+  r = ok(w.call("add_layer_style", { layer_id: l.id, style: "drop_shadow" }));
+  assert.match(r.warning, /track matte/);
 });
 
 t("add_shape and add_layer reject bad stroke options before creating anything", () => {

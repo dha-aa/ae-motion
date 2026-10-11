@@ -112,6 +112,17 @@ const ok = (r) => { assert.equal(r.ok, true, JSON.stringify(r.error)); return r.
 const fails = (r, code) => { assert.equal(r.ok, false, "should fail"); if (code) assert.equal(r.error.code, code, JSON.stringify(r.error)); return r.error; };
 const threeKeys = (w, l) => ok(w.call("set_keyframes", { layer_id: l.id, path: "position", keys: [{ t: 0, v: [0, 0, 0] }, { t: 1, v: [100, 0, 0] }, { t: 2, v: [200, 0, 0] }] }));
 
+t("set_property with layer_ids sets every layer, or none when one of them cannot take the value", () => {
+  const w = makeWorld(); const a = w.layer("a"), b = w.layer("b");
+  const op = (l) => l.property("ADBE Transform Group").property("ADBE Opacity");
+  const r = ok(w.call("set_property", { layer_ids: [a.id, b.id], path: "opacity", value: 40 }));
+  assert.equal(r.set, 2); assert.equal(op(a).value, 40); assert.equal(op(b).value, 40);
+  ok(w.call("set_keyframes", { layer_id: b.id, path: "opacity", keys: [{ t: 0, v: 0 }, { t: 1, v: 100 }] }));
+  const e = fails(w.call("set_property", { layer_ids: [a.id, b.id], path: "opacity", value: 70 }), "BAD_ARGS");
+  assert.match(e.message, new RegExp("layer " + b.id)); assert.equal(op(a).value, 40, "layer a untouched");
+  fails(w.call("set_property", { layer_id: a.id, layer_ids: [b.id], path: "opacity", value: 1 }), "BAD_ARGS");
+});
+
 t("marker properties point to the marker tools, other unsettable types to run_jsx", () => {
   const w = makeWorld(); const l = w.layer("a");
   const m = fails(w.call("set_property", { layer_id: l.id, path: ["ADBE Transform Group", "Fake Marker"], value: 1 }), "BAD_ARGS");
