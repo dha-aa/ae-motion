@@ -142,7 +142,7 @@ C.text_to_shapes = function (a: Args["text_to_shapes"]) {
   if (!(l instanceof TextLayer)) fail("BAD_ARGS", "Layer is not a text layer");
   selectOnly(l);
   runMenu("Create Shapes from Text", 3781);
-  if (c.numLayers !== n0 + 1 || l.index < 2) fail("AE_ERROR", "After Effects did not create the outline layer");
+  if (c.numLayers !== n0 + 1 || l.index < 2) fail("AE_ERROR", "After Effects did not create the outline layer", "Check After Effects for an open dialog, then try again");
   const made = c.layer(l.index - 1);
   return { shape_layer: layerRef(made), groups: group(made, "ADBE Root Vectors Group").numProperties, text_layer: layerRef(l) };
 };
@@ -168,7 +168,7 @@ C.add_layer_style = function (a: Args["add_layer_style"]) {
     app.executeCommand(s[0]);
     ls = group(l, "ADBE Layer Styles"); g = group(ls, s[1] + "/enabled"); // menu commands can invalidate references
   }
-  if (!g.enabled) fail("AE_ERROR", "After Effects did not turn on the " + a.style + " style");
+  if (!g.enabled) fail("AE_ERROR", "After Effects did not turn on the " + a.style + " style", "Check After Effects for an open dialog, then try again");
   if (a.params) {
     for (const key in a.params) {
       if (!a.params.hasOwnProperty(key)) continue;

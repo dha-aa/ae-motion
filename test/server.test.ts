@@ -373,6 +373,10 @@ const results: [name: string, pass: boolean, detail?: string][] = [];
   const [, openErr] = await body("batch", { steps: [{ tool: "open_project", args: { path: path.join(DIR, "x.aep") } }] });
   results.push(["H: paths are sandboxed, forward references, run_jsx and open_project are refused", sandboxed && outsideErr && refErr && jsxErr && openErr && calls.length === 0]);
 
+  // a job the server no longer knows (e.g. after a client restart) says why, and what to do instead
+  const [lost, lostErr] = await body("render_status", { job_id: "gone" });
+  results.push(["H: an unknown render job is NOT_FOUND with a hint about server restarts", lostErr && lost.error?.code === "NOT_FOUND" && /restart/.test(lost.error?.hint ?? ""), JSON.stringify(lost)]);
+
   // a schema failure is a tool error in ae-motion's format (isError, BAD_ARGS, a hint), not the SDK's raw text
   calls.length = 0;
   const [badArgs, badArgsErr] = await body("set_layer", { layer_id: "abc", colour: 1 });
@@ -472,7 +476,7 @@ const results: [name: string, pass: boolean, detail?: string][] = [];
   await s.init();
   const check = JSON.parse(textOf(await s.call("tools/call", { name: "check_for_updates", arguments: { force: true } })));
   results.push(["G: check_for_updates finds the newest vX.Y.Z tag and how to update",
-    check.latest === "99.1.0" && check.update_available === true && /git pull/.test(check.how ?? "")]);
+    check.latest === "99.1.0" && check.update_available === true && /node scripts\/update\.ts/.test(check.how ?? "") && !/git pull/.test(check.how ?? "")]);
   results.push(["G: the result is cached next to the bridge file (the panel reads it)", fs.existsSync(cache) && JSON.parse(fs.readFileSync(cache, "utf8")).latest === "99.1.0"]);
   const proj = JSON.parse(textOf(await s.call("tools/call", { name: "get_project", arguments: {} })));
   results.push(["G: get_project carries the update note", proj.update?.latest === "99.1.0"]);

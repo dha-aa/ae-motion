@@ -270,6 +270,7 @@ t("set_layer in/out only changes what you pass", () => {
 t("set_layer flags and stretch validation", () => {
   const w = makeWorld(); const c = w.comp(); const a = w.layer(c, "a", 0, 5);
   fails(w.call("set_layer", { layer_id: a.id, stretch: 0 }), "BAD_ARGS");
+  const bm = w.call("set_layer", { layer_id: a.id, blend_mode: "glow" }); fails(bm, "BAD_ARGS"); assert.match(bm.error.hint, /MULTIPLY/);
   ok(w.call("set_layer", { layer_id: a.id, shy: true, solo: true, label: 5, locked: true })); assert.equal(a.shy, true); assert.equal(a.label, 5); assert.equal(a.locked, true);
   ok(w.call("set_layer", { layer_id: a.id, locked: false, name: "renamed" })); assert.equal(a.locked, false); assert.equal(a.name, "renamed");
 });

@@ -8,6 +8,9 @@ All notable changes. Versions follow [semantic versioning](https://semver.org); 
 - `get_project` works on big projects: it used to stop at 500 items and, past roughly 300 items with real file names, went over the size limit and failed with no way to ask for less. It now takes `name` (substring) and `type` filters and pages with `limit` (default 200) / `offset`, reporting `matched` and `next_offset` like `get_comp` (the `truncated` field is gone).
 - `list_markers` pages with `limit` (default 100) / `offset` and returns `next_offset`, instead of stopping at 500 markers.
 - `set_playhead` and `set_3d_view` are no longer marked destructive: they only change the viewer.
+- The update instructions `get_project` and `check_for_updates` give for updating by hand said `git pull`, which fails in the state the panel's Update button leaves the repo in (a release tag, not a branch). They now say `node scripts/update.ts`, which checks out the newest release and runs the installer.
+- `set_light`'s `point_of_interest` was described as where a camera looks.
+- Errors that left the model guessing now say what to do: an unknown `blend_mode` lists the valid names, an unknown render job explains that jobs are forgotten when the MCP server restarts, a marker property points to the marker tools (not `run_jsx`), and "not keyframable", "does not support expressions", a missing preset and failed menu commands (`text_to_shapes`, `add_layer_style`) have hints.
 - The `ae://project` and `ae://selection` resources return compact JSON, and a failed read is now a resources/read error (with the code and hint) instead of the error body returned as if it were the resource.
 
 ## 2.16.0 — 2026-10-11

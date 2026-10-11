@@ -34,7 +34,7 @@ function coerce(prop: Prop, v: any): any {
     l = layerOf(prop);
     return shapeFromSpec(v, l.width || l.containingComp.width, l.height || l.containingComp.height);
   }
-  if (t === V.NO_VALUE || t === V.CUSTOM_VALUE || t === V.MARKER) fail("BAD_ARGS", "Property type '" + vt(prop) + "' cannot be set with this tool", "Use run_jsx if AE_MCP_ALLOW_JSX=1");
+  if (t === V.NO_VALUE || t === V.CUSTOM_VALUE || t === V.MARKER) fail("BAD_ARGS", "Property type '" + vt(prop) + "' cannot be set with this tool", t === V.MARKER ? "Use add_marker / update_marker / delete_marker" : "Use run_jsx if AE_MCP_ALLOW_JSX=1");
   if (t === V.COLOR && v instanceof Array && v.length === 3) return rgba(v);
   if (typeof v === "number" && prop.matchName === "ADBE Audio Levels") return [v, v];
   return v;

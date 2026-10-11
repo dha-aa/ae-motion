@@ -8,7 +8,7 @@ import { Color, id, LightType, Rot3, Time, V3 } from "./schemas.js";
 
 const Xform = {
   position: V3.optional(),
-  point_of_interest: V3.optional().describe("Where a two-node camera looks, [x,y,z]"),
+  point_of_interest: V3.optional().describe("What it aims at (two-node), [x,y,z]"),
   orientation: V3.optional().describe("Orientation in degrees [x,y,z]"),
   rotation: Rot3.optional(),
 };
