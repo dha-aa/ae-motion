@@ -55,6 +55,11 @@ class Prop {
   removeKey(i) { this.keys.splice(i - 1, 1); }
   nearestKeyIndex(t) { let b = 1; this.keys.forEach((k, i) => { if (Math.abs(k.t - t) < Math.abs(this.keys[b - 1].t - t)) b = i + 1; }); return b; }
   setValueAtTime(t, v) { const i = this.keys.findIndex((k) => Math.abs(k.t - t) < 1e-9); if (i >= 0) this.keys[i].v = v; else { this.keys.push({ t, v }); this.keys.sort((a, b) => a.t - b.t); } }
+  // what set_keyframes reads back for its result (linear keys; every keyframable AE property has these)
+  get propertyValueType() { return 2; } // TwoD below
+  get isSpatial() { return false; }
+  keyInInterpolationType() { return 1; } // LINEAR below
+  keyOutInterpolationType() { return 1; }
 }
 
 function makeWorld(amplitude, { menu = true } = {}) {
@@ -124,7 +129,7 @@ function makeWorld(amplitude, { menu = true } = {}) {
     },
   };
   const ctx = { app, MarkerValue, CompItem, AVLayer, TextLayer, ShapeLayer, CameraLayer, LightLayer, FolderItem: Stub, FootageItem, SolidSource: Stub, File, ImportOptions,
-    ImportAsType: { FOOTAGE: 1 }, PropertyValueType: { OneD: 1, TwoD: 2, ThreeD: 3, COLOR: 4, TwoD_SPATIAL: 5, ThreeD_SPATIAL: 6, SHAPE: 7, TEXT_DOCUMENT: 8, NO_VALUE: 9, MARKER: 10, CUSTOM_VALUE: 11 }, PropertyType: { PROPERTY: 1, INDEXED_GROUP: 2, NAMED_GROUP: 3 } };
+    ImportAsType: { FOOTAGE: 1 }, PropertyValueType: { OneD: 1, TwoD: 2, ThreeD: 3, COLOR: 4, TwoD_SPATIAL: 5, ThreeD_SPATIAL: 6, SHAPE: 7, TEXT_DOCUMENT: 8, NO_VALUE: 9, MARKER: 10, CUSTOM_VALUE: 11 }, PropertyType: { PROPERTY: 1, INDEXED_GROUP: 2, NAMED_GROUP: 3 }, KeyframeInterpolationType: { LINEAR: 1, BEZIER: 2, HOLD: 3 } };
   vm.createContext(ctx);
   vm.runInContext(SRC, ctx);
   const call = (cmd, args = {}) => JSON.parse(ctx.AEM.dispatch(JSON.stringify({ cmd, args })));

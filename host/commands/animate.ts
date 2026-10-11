@@ -46,7 +46,9 @@ C.set_keyframes = function (a: Args["set_keyframes"]) {
     for (i = 0; i < keys.length; i++) p.setValueAtTime(keys[i].t, keys[i].v);
   }
   for (i = 0; i < a.keys.length; i++) { idx = p.nearestKeyIndex(a.keys[i].t); applyKeyMeta(p, idx, a.keys[i]); }
-  res = { num_keys: p.numKeys }; // the keys are what was passed; get_keyframes reads them back
+  // the keys as they are now (values, interpolation, ease, springs), so no get_keyframes is needed to check them
+  res = { num_keys: p.numKeys, keys: [] };
+  for (i = 0; i < a.keys.length; i++) res.keys.push(keyInfo(p, p.nearestKeyIndex(a.keys[i].t)));
   // say when earlier keys went: replacing a property's whole animation by accident is easy to miss
   if (replaced) res.replaced = replaced;
   return res;

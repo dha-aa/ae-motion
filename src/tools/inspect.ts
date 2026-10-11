@@ -9,7 +9,7 @@ export function registerInspectTools(r: ToolRegistry): void {
 
   r.tool(
     "get_project",
-    "List project items (comps, footage, folders), the active comp id, AE version and project path. When a newer ae-motion-mcp version is known, the result also has an update field (current, latest, how to update): tell the user.",
+    "List project items (comps, footage, folders) with each comp's layers (id, name, kind, timing; left out when the project has over 300 layers: layers_listed false, use get_comp), the active comp id, AE version and project path. When a newer ae-motion-mcp version is known, the result also has an update field (current, latest, how to update): tell the user.",
     {},
     async () => {
       const res = await r.deps.bridge.run("get_project", {});
