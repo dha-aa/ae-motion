@@ -2,7 +2,7 @@
 
 All notable changes. Versions follow [semantic versioning](https://semver.org); each release is a git tag `vX.Y.Z`, which is what the update check looks for.
 
-## Unreleased
+## 2.18.0 — 2026-10-11
 
 ### Added
 - `set_property` takes `layer_ids`: the same value on many layers in one call (13 coins, 10 ingots), every layer checked before any changes.
