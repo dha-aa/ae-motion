@@ -93,7 +93,7 @@ C.set_layer = function (a: Args["set_layer"]) {
   // validate before changing anything
   if (has(a, "blend_mode")) {
     bm = (BlendingMode as any)[String(a.blend_mode).toUpperCase().replace(/ /g, "_")];
-    if (bm === undefined) fail("BAD_ARGS", "Unknown blend mode: " + a.blend_mode);
+    if (bm === undefined) fail("BAD_ARGS", "Unknown blend mode: " + a.blend_mode, "Use an After Effects BlendingMode name, e.g. NORMAL, ADD, SCREEN, MULTIPLY, OVERLAY, SOFT_LIGHT, HARD_LIGHT, LIGHTEN, DARKEN, DIFFERENCE, COLOR_DODGE, COLOR_BURN, LINEAR_DODGE, HUE, SATURATION, COLOR, LUMINOSITY");
   }
   if (has(a, "parent_id")) par = getLayer(a.parent_id);
   if (has(a, "auto_orient") && a.auto_orient !== "path" && a.auto_orient !== "off") fail("BAD_ARGS", "auto_orient must be path or off");

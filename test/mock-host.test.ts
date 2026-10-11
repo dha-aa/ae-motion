@@ -206,6 +206,28 @@ t("markers: add, list, delete on layers and comps", () => {
   ok(w.call("delete_marker", { comp_id: c.id, index: 1 }));
   fails(w.call("list_markers", {}), "BAD_ARGS"); fails(w.call("list_markers", { layer_id: a.id, comp_id: c.id }), "BAD_ARGS");
   fails(w.call("delete_marker", { comp_id: c.id, index: 1 }), "NOT_FOUND");
+  for (let i = 0; i < 5; i++) ok(w.call("add_marker", { comp_id: c.id, time: i, comment: "m" + i }));
+  r = w.call("list_markers", { comp_id: c.id, limit: 2, offset: 1 }); ok(r);
+  assert.deepEqual(r.result.markers.map((m) => m.comment), ["m1", "m2"]); assert.equal(r.result.total, 5); assert.equal(r.result.next_offset, 3);
+  r = w.call("list_markers", { comp_id: c.id, offset: 3 }); assert.equal(r.result.markers.length, 2); assert.equal(r.result.next_offset, undefined);
+});
+
+t("get_project filters by name and type and pages with limit / offset", () => {
+  const w = makeWorld();
+  for (let i = 0; i < 4; i++) w.comp("Shot " + i);
+  const f = new w.FootageItem(); f.name = "logo.png"; w.world.items.push(f);
+  let r = w.call("get_project"); ok(r);
+  assert.equal(r.result.items.length, 5); assert.equal(r.result.matched, undefined); assert.equal(r.result.next_offset, undefined);
+  r = w.call("get_project", { type: "comp", limit: 2, offset: 1 });
+  assert.deepEqual(r.result.items.map((x) => x.name), ["Shot 1", "Shot 2"]); assert.equal(r.result.matched, 4); assert.equal(r.result.next_offset, 3); assert.equal(r.result.num_items, 5);
+  r = w.call("get_project", { name: "LOGO" }); assert.deepEqual(r.result.items.map((x) => x.type), ["footage"]); assert.equal(r.result.matched, undefined);
+  // comps on the page carry their layers unless the page holds over 300; a smaller page brings them back
+  w.layer(w.world.items[0], "bg", 0, 5);
+  r = w.call("get_project", { type: "comp", limit: 1 }); assert.equal(r.result.layers_listed, true); assert.deepEqual(r.result.items[0].layers.map((l) => l.name), ["bg"]);
+  for (let i = 0; i < 300; i++) w.layer(w.world.items[1], "l" + i, 0, 5);
+  r = w.call("get_project", { type: "comp" }); assert.equal(r.result.layers_listed, false); assert.equal(r.result.items[0].layers, undefined);
+  r = w.call("get_project", { type: "comp", limit: 1 }); assert.equal(r.result.layers_listed, true); assert.equal(r.result.items[0].layers.length, 1);
+  ok(w.call("open_project", { new: true }));
 });
 
 t("set_comp changes settings and handles the work area order", () => {
@@ -254,6 +276,7 @@ t("set_layer in/out only changes what you pass", () => {
 t("set_layer flags and stretch validation", () => {
   const w = makeWorld(); const c = w.comp(); const a = w.layer(c, "a", 0, 5);
   fails(w.call("set_layer", { layer_id: a.id, stretch: 0 }), "BAD_ARGS");
+  const bm = w.call("set_layer", { layer_id: a.id, blend_mode: "glow" }); fails(bm, "BAD_ARGS"); assert.match(bm.error.hint, /MULTIPLY/);
   ok(w.call("set_layer", { layer_id: a.id, shy: true, solo: true, label: 5, locked: true })); assert.equal(a.shy, true); assert.equal(a.label, 5); assert.equal(a.locked, true);
   ok(w.call("set_layer", { layer_id: a.id, locked: false, name: "renamed" })); assert.equal(a.locked, false); assert.equal(a.name, "renamed");
 });

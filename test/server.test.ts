@@ -38,6 +38,7 @@ const bridge = http.createServer((req, res) => {
       if (!prepareOk) return res.end(JSON.stringify({ ok: false, error: { code: "BAD_ARGS", message: "Project has never been saved" } }));
       return res.end(JSON.stringify({ ok: true, result: { project_path: "/tmp/x.aep", comp_name: "C", total_frames: 10, aerender_dir: DIR } }));
     }
+    if (cmd === "get_selection") return res.end(JSON.stringify({ ok: false, error: { code: "AE_ERROR", message: "boom", hint: "try again" } }));
     if (cmd === "list_properties") return res.end(JSON.stringify({ ok: true, result: { properties: "x".repeat(30000) } })); // over CHARACTER_LIMIT
     if (cmd === "preview_frame") {
       // After Effects writes the PNG after the command returns (a moment for light frames, seconds for heavy 3D ones):
@@ -377,12 +378,24 @@ const results: [name: string, pass: boolean, detail?: string][] = [];
   const [, openErr] = await body("batch", { steps: [{ tool: "open_project", args: { path: path.join(DIR, "x.aep") } }] });
   results.push(["H: paths are sandboxed, forward references, run_jsx and open_project are refused", sandboxed && outsideErr && refErr && jsxErr && openErr && calls.length === 0]);
 
+  // a job the server no longer knows (e.g. after a client restart) says why, and what to do instead
+  const [lost, lostErr] = await body("render_status", { job_id: "gone" });
+  results.push(["H: an unknown render job is NOT_FOUND with a hint about server restarts", lostErr && lost.error?.code === "NOT_FOUND" && /restart/.test(lost.error?.hint ?? ""), JSON.stringify(lost)]);
+
   // a schema failure is a tool error in ae-motion's format (isError, BAD_ARGS, a hint), not the SDK's raw text
   calls.length = 0;
   const [badArgs, badArgsErr] = await body("set_layer", { layer_id: "abc", colour: 1 });
   results.push(["H: bad arguments come back as isError {error: {code: BAD_ARGS, message, hint}} without reaching the host",
     badArgsErr && badArgs.error?.code === "BAD_ARGS" && /layer_id/.test(badArgs.error.message) && /colour/.test(badArgs.error.message) && !/MCP error/.test(badArgs.error.message) && typeof badArgs.error.hint === "string" && calls.length === 0,
     JSON.stringify(badArgs)]);
+
+  // get_project passes its filter and paging to the host; a failed resource read is a resources/read error, not JSON
+  await body("get_project", { name: "logo", type: "footage", limit: 5, offset: 10 });
+  const [, projBadErr] = await body("get_project", { limit: 0 });
+  const sel = await s.call("resources/read", { uri: "ae://selection" });
+  results.push(["H: get_project forwards name/type/limit/offset; ae://selection fails as an error with code and hint",
+    JSON.stringify(received.get_project) === '{"name":"logo","type":"footage","limit":5,"offset":10}' && projBadErr && !sel.result && /AE_ERROR: boom \(try again\)/.test(JSON.stringify(sel.error)),
+    JSON.stringify([received.get_project, sel])]);
 
   // "$$" is a literal dollar: a price as text reaches the host as "$99"; a bare "$99" is a reference and says how to escape it
   calls.length = 0;
@@ -468,7 +481,7 @@ const results: [name: string, pass: boolean, detail?: string][] = [];
   await s.init();
   const check = JSON.parse(textOf(await s.call("tools/call", { name: "check_for_updates", arguments: { force: true } })));
   results.push(["G: check_for_updates finds the newest vX.Y.Z tag and how to update",
-    check.latest === "99.1.0" && check.update_available === true && /git pull/.test(check.how ?? "")]);
+    check.latest === "99.1.0" && check.update_available === true && /node scripts\/update\.ts/.test(check.how ?? "") && !/git pull/.test(check.how ?? "")]);
   results.push(["G: the result is cached next to the bridge file (the panel reads it)", fs.existsSync(cache) && JSON.parse(fs.readFileSync(cache, "utf8")).latest === "99.1.0"]);
   const proj = JSON.parse(textOf(await s.call("tools/call", { name: "get_project", arguments: {} })));
   results.push(["G: get_project carries the update note", proj.update?.latest === "99.1.0"]);

@@ -298,7 +298,7 @@ export class RenderManager {
 
   private get(id: string): Job {
     const j = this.jobs.get(id);
-    if (!j) throw new AeToolError("NOT_FOUND", `Unknown render job: ${id}`);
+    if (!j) throw new AeToolError("NOT_FOUND", `Unknown render job: ${id}`, "Jobs are kept only while this MCP server runs (a client restart forgets them; the render itself may have finished): check the output file, or start the render again");
     return j;
   }
 }

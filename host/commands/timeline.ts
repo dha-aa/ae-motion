@@ -215,9 +215,11 @@ C.align_to_markers = function (a: Args["align_to_markers"]) {
 };
 
 C.list_markers = function (a: Args["list_markers"]) {
-  var prop = markerProp(a), out = [], i;
-  for (i = 1; i <= prop.numKeys && i <= 500; i++) out.push(markerInfo(prop, i));
-  return { markers: out, total: prop.numKeys };
+  var prop = markerProp(a), out = [], lim = a.limit || 100, off = a.offset || 0, i, o: Obj;
+  for (i = off + 1; i <= prop.numKeys && out.length < lim; i++) out.push(markerInfo(prop, i));
+  o = { markers: out, total: prop.numKeys };
+  if (off + out.length < prop.numKeys) o.next_offset = off + out.length;
+  return o;
 };
 
 C.delete_marker = function (a: Args["delete_marker"]) {

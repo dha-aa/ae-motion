@@ -85,6 +85,7 @@ function makeWorld() {
       "ADBE Position": pos, "ADBE Position_0": new Prop(0, { matchName: "ADBE Position_0" }), "ADBE Position_1": new Prop(0, { matchName: "ADBE Position_1" }),
       "ADBE Position_2": new Prop(0, { matchName: "ADBE Position_2" }), "ADBE Opacity": new Prop(100, { matchName: "ADBE Opacity" }),
       "ADBE Scale": new Prop([100, 100, 100], { type: PVT.ThreeD, matchName: "ADBE Scale" }),
+      "Fake Marker": new Prop(null, { type: PVT.MARKER, matchName: "Fake Marker" }), "Fake Custom": new Prop(null, { type: PVT.CUSTOM_VALUE, matchName: "Fake Custom" }),
     });
     l.property = (n) => (n === "ADBE Transform Group" ? tg : null);
     layers.set(l.id, l);
@@ -110,6 +111,14 @@ const t = (name, fn) => { try { fn(); results.push([name, true]); } catch (e) { 
 const ok = (r) => { assert.equal(r.ok, true, JSON.stringify(r.error)); return r.result; };
 const fails = (r, code) => { assert.equal(r.ok, false, "should fail"); if (code) assert.equal(r.error.code, code, JSON.stringify(r.error)); return r.error; };
 const threeKeys = (w, l) => ok(w.call("set_keyframes", { layer_id: l.id, path: "position", keys: [{ t: 0, v: [0, 0, 0] }, { t: 1, v: [100, 0, 0] }, { t: 2, v: [200, 0, 0] }] }));
+
+t("marker properties point to the marker tools, other unsettable types to run_jsx", () => {
+  const w = makeWorld(); const l = w.layer("a");
+  const m = fails(w.call("set_property", { layer_id: l.id, path: ["ADBE Transform Group", "Fake Marker"], value: 1 }), "BAD_ARGS");
+  assert.match(m.hint, /add_marker/); assert.doesNotMatch(m.hint, /run_jsx/);
+  const c = fails(w.call("set_property", { layer_id: l.id, path: ["ADBE Transform Group", "Fake Custom"], value: 1 }), "BAD_ARGS");
+  assert.match(c.hint, /run_jsx/);
+});
 
 t("set creates a key with the current value, updates values, and sets motion-path tangents", () => {
   const w = makeWorld(), l = w.layer("A");

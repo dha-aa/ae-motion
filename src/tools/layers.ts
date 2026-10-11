@@ -66,7 +66,7 @@ export function registerLayerTools(r: ToolRegistry): void {
 
   r.bridged(
     "reorder_layer",
-    "Change a layer's stacking order. Pass exactly one of: to (top | bottom | up | down), index (1 = top), before_layer_id, after_layer_id. Before means above in the stack.",
+    "Change a layer's stacking order. Pass exactly one of: to, index (1 = top), before_layer_id, after_layer_id. Before means above in the stack.",
     {
       layer_id: id("Layer"), to: z.enum(["top", "bottom", "up", "down"]).optional(), index: z.number().int().min(1).optional(),
       before_layer_id: z.number().int().optional(), after_layer_id: z.number().int().optional(),

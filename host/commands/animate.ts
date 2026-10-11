@@ -6,7 +6,7 @@ C.set_property = function (a: Args["set_property"]) {
   need(a, ["layer_id", "path", "value"]);
   var l = getLayer(a.layer_id), p = resolvePath(l, a.path), v = coerce(p, a.value), rv;
   if (has(a, "time")) {
-    if (!p.canVaryOverTime) fail("BAD_ARGS", "Property is not keyframable");
+    if (!p.canVaryOverTime) fail("BAD_ARGS", "Property is not keyframable", "Leave out time to set a static value");
     p.setValueAtTime(a.time, v);
   } else {
     if (p.numKeys > 0) fail("BAD_ARGS", "Property is animated; pass time to set a value at a time, or use set_keyframes");
@@ -20,7 +20,7 @@ C.set_keyframes = function (a: Args["set_keyframes"]) {
   need(a, ["layer_id", "path", "keys"]);
   var l = getLayer(a.layer_id), p = resolvePath(l, a.path), keys = [], i, j, k, idx, merge = a.merge === true, replaced = 0,
     tol = l.containingComp.frameDuration / 2, res: Obj;
-  if (!p.canVaryOverTime) fail("BAD_ARGS", "Property is not keyframable");
+  if (!p.canVaryOverTime) fail("BAD_ARGS", "Property is not keyframable", "Set it with set_property (no time); list_properties shows which properties have keys");
   if (!(a.keys instanceof Array) || !a.keys.length) fail("BAD_ARGS", "keys must be a non-empty array");
   if (springList(p) === null) fail("BAD_ARGS", "Property has an active expression", "Clear it with set_expression and an empty expression");
   if (p.expressionEnabled && !merge) p.expression = ""; // a spring expression is rebuilt from the new keys
@@ -183,7 +183,7 @@ C.set_expression = function (a: Args["set_expression"]) {
   if (!(ids instanceof Array) || ids.length === 0) fail("BAD_ARGS", "layer_ids must list at least one layer");
   for (i = 0; i < ids.length; i++) {
     p = resolvePath(getLayer(ids[i]), a.path);
-    if (!p.canSetExpression) fail("BAD_ARGS", "Property does not support expressions" + (many ? " (layer " + ids[i] + ")" : ""));
+    if (!p.canSetExpression) fail("BAD_ARGS", "Property does not support expressions" + (many ? " (layer " + ids[i] + ")" : ""), "Groups and some settings cannot take one; list_properties shows the property tree");
     props.push(p);
   }
   for (i = 0; i < props.length; i++) {
@@ -247,7 +247,7 @@ C.edit_effect = function (a: Args["edit_effect"]) {
 C.apply_preset = function (a: Args["apply_preset"]) {
   need(a, ["layer_id", "ffx_path"]);
   var l = getLayer(a.layer_id), f = new File(a.ffx_path);
-  if (!f.exists) fail("NOT_FOUND", "Preset not found: " + a.ffx_path);
+  if (!f.exists) fail("NOT_FOUND", "Preset not found: " + a.ffx_path, "Pass the full path of an existing .ffx file");
   l.applyPreset(f);
   return layerRef(l);
 };

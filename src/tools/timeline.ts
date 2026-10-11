@@ -59,7 +59,7 @@ export function registerTimelineTools(r: ToolRegistry): void {
     "set_playhead",
     "Move a comp's current-time indicator (playhead) to a time in seconds. Snaps to a whole frame unless snap is false.",
     { comp_id: id("Comp"), time: Time, snap: z.boolean().optional() },
-    { idempotent: true },
+    { destructive: false, idempotent: true },
   );
 
   r.bridged(
@@ -94,14 +94,14 @@ export function registerTimelineTools(r: ToolRegistry): void {
 
   r.bridged(
     "list_markers",
-    "List the markers of a layer (layer_id) or a comp (comp_id): index, time, comment, duration, chapter, url, label.",
-    { ...MarkerTarget },
-    { readOnly: true },
+    "List a layer's (layer_id) or comp's (comp_id) markers: index, time, comment, duration, chapter, url, label. Page: limit (100) / offset.",
+    { ...MarkerTarget, limit: z.number().int().min(1).max(500).optional(), offset: z.number().int().min(0).optional() },
+    { readOnly: true, tooLargeHint: "Lower limit and page with offset" },
   );
 
   r.bridged(
     "delete_marker",
-    "Delete a marker from a layer (layer_id) or a comp (comp_id), by index (1-based, from list_markers) or by time (must be within 0.05 s of a marker).",
+    "Delete a layer's (layer_id) or comp's (comp_id) marker by index (1-based, from list_markers) or time (within 0.05 s).",
     { ...MarkerTarget, index: z.number().int().min(1).optional(), time: Time.optional() },
   );
 }

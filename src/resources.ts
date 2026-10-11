@@ -11,7 +11,9 @@ export function registerResources(server: McpServer, bridge: Bridge): void {
   for (const res of RESOURCES) {
     server.registerResource(res.name, res.uri, { description: res.description, mimeType: "application/json" }, async (uri) => {
       const r = await bridge.run(res.command, {});
-      return { contents: [{ uri: uri.href, mimeType: "application/json", text: JSON.stringify(r.ok ? r.result : r.error, null, 2) }] };
+      // a failed read is a resources/read error, not JSON that looks like the resource
+      if (!r.ok) throw new Error(`${r.error.code}: ${r.error.message}${r.error.hint ? ` (${r.error.hint})` : ""}`);
+      return { contents: [{ uri: uri.href, mimeType: "application/json", text: JSON.stringify(r.result) }] };
     });
   }
 }

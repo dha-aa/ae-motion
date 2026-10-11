@@ -1,22 +1,34 @@
 // Read-only commands: project, comp, layer, property tree, keyframes, effects. (src/tools/inspect.ts)
 
-// Each comp's layers are included (as in get_comp's list) unless the project is big, so a model can go straight from
-// here to the layer it needs (get_project, get_comp, get_layer was the usual start: two turns more).
+// Project items in panel order. On big projects, name / type narrow the list and limit / offset page it (the same
+// fields as get_comp: matched and next_offset only when not everything was returned). The comps on the page include
+// their layers (as in get_comp's list) unless the page holds too many, so a model can go straight from here to the
+// layer it needs (get_project, get_comp, get_layer was the usual start: two turns more).
 var PROJECT_LAYERS_MAX = 300;
-C.get_project = function () {
-  var p = app.project, items: Obj[] = [], i, j, ai = p.activeItem, total = 0, it, o, withLayers;
-  for (i = 1; i <= p.numItems; i++) { it = p.item(i); if (it instanceof CompItem) total += it.numLayers; }
+C.get_project = function (a?: Args["get_project"]) {
+  var p = app.project, page: _ItemClasses[] = [], items: Obj[] = [], i, j, it, ai = p.activeItem, o: Obj, n = 0, q, lim, off, total = 0, withLayers;
+  a = a || {};
+  q = a.name ? String(a.name).toLowerCase() : ""; lim = a.limit || 200; off = a.offset || 0;
+  for (i = 1; i <= p.numItems; i++) {
+    it = p.item(i);
+    if (q && it.name.toLowerCase().indexOf(q) === -1) continue;
+    if (a.type && itemType(it) !== a.type) continue;
+    if (n++ < off || page.length >= lim) continue;
+    page.push(it);
+    if (it instanceof CompItem) total += it.numLayers;
+  }
   withLayers = total <= PROJECT_LAYERS_MAX;
-  for (i = 1; i <= p.numItems && i <= 500; i++) {
-    it = p.item(i); o = itemInfo(it);
+  for (i = 0; i < page.length; i++) {
+    it = page[i]; o = itemInfo(it);
     if (withLayers && it instanceof CompItem) { o.layers = []; for (j = 1; j <= it.numLayers; j++) o.layers.push(layerBrief(it.layer(j) as AVLayer, it)); }
     items.push(o);
   }
-  return {
-    ae_version: app.version, project_path: p.file ? p.file.fsName : null,
-    active_comp_id: (ai instanceof CompItem) ? ai.id : null, num_items: p.numItems, items: items, truncated: p.numItems > 500,
-    layers_listed: withLayers
+  o = {
+    ae_version: app.version, project_path: p.file ? p.file.fsName : null, active_comp_id: (ai instanceof CompItem) ? ai.id : null,
+    num_items: p.numItems, items: items, layers_listed: withLayers
   };
+  if (n !== items.length) { o.matched = n; if (off + items.length < n) o.next_offset = off + items.length; }
+  return o;
 };
 
 // Backs the ae://selection resource (not a tool).

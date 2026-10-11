@@ -13,7 +13,7 @@ const pkg = createRequire(import.meta.url)("../package.json") as { name: string;
 
 export const SERVER_NAME: string = pkg.name;
 export const SERVER_VERSION: string = pkg.version;
-/** The folder the server was installed from (the git checkout users update with git pull). */
+/** The folder the server was installed from (the git checkout scripts/update.ts updates). */
 export const REPO_ROOT: string = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 /** "owner/name" of the GitHub repository, from package.json repository.url. */
 export const REPO_SLUG: string = /github\.com[/:]([^/]+\/[^/.]+)/.exec(pkg.repository?.url ?? "")?.[1] ?? "dha-aa/ae-motion";

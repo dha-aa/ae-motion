@@ -361,7 +361,12 @@ interface Args {
     layer_ids?: number[];
     time?: number;
   };
-  get_project: { [key: string]: unknown };
+  get_project: {
+    name?: string;
+    type?: "comp" | "footage" | "folder";
+    limit?: number;
+    offset?: number;
+  };
   get_text: {
     layer_id: number;
     time?: number;
@@ -392,6 +397,8 @@ interface Args {
   list_markers: {
     layer_id?: number;
     comp_id?: number;
+    limit?: number;
+    offset?: number;
   };
   list_properties: {
     layer_id: number;
