@@ -138,6 +138,7 @@ function makeWorld() {
 const results = [];
 const t = (name, fn) => { try { fn(); results.push([name, true]); } catch (e) { results.push([name, false, e.stack]); } };
 const ok = (r) => { assert.equal(r.ok, true, JSON.stringify(r.error)); return r.result; };
+const err = (r) => { assert.equal(r.ok, false, "expected an error"); return r.error; };
 const fails = (r, code) => { assert.equal(r.ok, false, "should fail"); if (code) assert.equal(r.error.code, code, JSON.stringify(r.error)); return r.error; };
 const near = (a, b, m = "", tol = 1e-6) => assert.ok(Math.abs(a - b) <= tol, `${m}: expected ${b}, got ${a}`);
 const plain = (v) => JSON.parse(JSON.stringify(v));
@@ -162,6 +163,33 @@ t("animate pop: scale springs from 0, overshoots once and lands exactly; opacity
   assert.deepEqual(op.keys.map((k) => +k.t.toFixed(3)), [1, 1.21]);
   assert.equal(op.keys[0].oi, LIN); assert.equal(op.keys[1].ii, BEZ); near(op.keys[1].ie[0].influence, 85);
   assert.equal(op.expression, "");
+});
+
+t("animate push after a pop: starts where the spring lands, keeps that landing, grows by amount to the out point", () => {
+  const w = makeWorld(), a = w.solid("Card");
+  ok(w.call("animate", { layer_ids: [a.id], move: "pop", time: 1 }));
+  const r = ok(w.call("animate", { layer_ids: [a.id], move: "push", amount: 5 }));
+  assert.equal(r.phase, "hold");
+  const sc = P(a, "ADBE Scale"), end = +(a.outPoint - 1 / FPS).toFixed(4);
+  assert.deepEqual(sc.keys.map((k) => [+k.t.toFixed(4), plain(k.v)]), [[1, [0, 0, 0]], [1.6, [100, 100, 100]], [end, [105, 105, 105]]]);
+  near(sc.valueAtTime(1.6)[0], 100, "the spring still lands exactly", 1e-9);
+  let peak = 0;
+  for (let x = 1; x <= 1.6; x += 1 / FPS) peak = Math.max(peak, sc.valueAtTime(x)[0]);
+  assert.ok(peak > 108, "the entrance still overshoots: " + peak);
+  assert.equal(sc.keys[1].ii, LIN, "the landing keeps its incoming (spring) side");
+  assert.equal(sc.keys[1].oi, BEZ); assert.equal(sc.keys[2].ii, BEZ); near(sc.keys[2].ie[0].influence, 45);
+  const mid = sc.valueAtTime((1.6 + end) / 2)[0];
+  assert.ok(mid > 101 && mid < 104, "still moving half way: " + mid);
+});
+
+t("animate drift: floats by distance toward direction through the hold; refuses a hold shorter than 0.25 s", () => {
+  const w = makeWorld(), a = w.solid("Card");
+  const pos0 = plain(P(a, "ADBE Position").value);
+  ok(w.call("animate", { layer_ids: [a.id], move: "drift", direction: "left", distance: 30, time: 2, duration: 3 }));
+  const k = P(a, "ADBE Position").keys;
+  assert.deepEqual(k.map((x) => [+x.t.toFixed(4), plain(x.v)]), [[2, pos0], [5, [pos0[0] - 30, pos0[1], pos0[2]]]]);
+  const e = err(w.call("animate", { layer_ids: [a.id], move: "push", time: a.outPoint - 0.1 }));
+  assert.equal(e.code, "BAD_ARGS");
 });
 
 t("animate slide: offsets against the direction of travel, staggers layers, keeps rest values", () => {
@@ -296,6 +324,30 @@ t("review_motion: flags linear keys, unison starts, holds, pop-ons and small tex
   ok(w.call("animate", { layer_ids: ls.map((l) => l.id), move: "pop", time: 0, stagger: 0.05 }));
   const r2 = ok(w.call("review_motion", { comp_id: 1, max_hold: 10 }));
   assert.equal(r2.issues.filter((i) => i.type === "linear" || i.type === "unison").length, 0, JSON.stringify(r2.issues));
+});
+
+t("review_motion: a late first move, an invisible wobble is still a hold, text across the title-safe margin", () => {
+  const w = makeWorld(), a = w.solid("A"), b = w.solid("B");
+  const op = P(a, "ADBE Opacity"); op.setValueAtTime(0.6, 0); op.setValueAtTime(1, 100);
+  const sc = P(b, "ADBE Scale"); sc.setValueAtTime(1, [100, 100, 100]); sc.setValueAtTime(3, [100.4, 100.4, 100.4]); // 0.4 %: invisible
+  const edge = w.text("Edge", "edge text"); edge.sourceRectAtTime = () => ({ left: 0, top: -50, width: 400, height: 60 });
+  P(edge, "ADBE Position").setValue([30, 540, 0]);
+  const r = ok(w.call("review_motion", { comp_id: 1, all: true }));
+  const of = (type) => r.issues.filter((i) => i.type === type);
+  assert.equal(of("late_start").length, 1, JSON.stringify(r.issues)); assert.ok(Math.abs(of("late_start")[0].duration - 0.6) < 1e-6);
+  assert.ok(of("hold").some((h) => Math.abs(h.t - 1) < 1e-6), "the 0.4 % scale wobble does not count as motion: " + JSON.stringify(of("hold")));
+  assert.deepEqual(of("outside_safe").flatMap((i) => i.layer_ids || [i.layer_id]), [edge.id]);
+});
+
+t("review_motion in a vertical comp: text in the bottom 20% is under the apps' UI; small text is judged on the short side", () => {
+  const w = makeWorld();
+  w.comp.width = 1080; w.comp.height = 1920;
+  const cap = w.text("Caption", "caption", 40); cap.sourceRectAtTime = () => ({ left: -300, top: -40, width: 600, height: 50 });
+  P(cap, "ADBE Position").setValue([540, 1700, 0]); // 1660-1710: in the bottom 20% (from 1536)
+  const r = ok(w.call("review_motion", { comp_id: 1, all: true }));
+  const safe = r.issues.filter((i) => i.type === "outside_safe");
+  assert.equal(safe.length, 1, JSON.stringify(r.issues)); assert.ok(/social apps/.test(safe[0].msg));
+  assert.equal(r.issues.filter((i) => i.type === "small_text").length, 0, "40 px is fine on a 1080 px short side (minimum 32)");
 });
 
 t("review_motion scene checks: a layer hidden behind a closer opaque one, off screen, text under a letterbox bar", () => {

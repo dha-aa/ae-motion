@@ -1,5 +1,5 @@
 // A minimal MCP client for scripts that drive the built server (dist/index.js) over stdio: the live tests
-// (test/live/run.ts) and the evaluations (evals/). Talks to whatever panel the bridge file names (real After Effects).
+// (test/live/run.ts). Talks to whatever panel the bridge file names (real After Effects).
 import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
@@ -8,8 +8,8 @@ import { fileURLToPath } from "node:url";
 export const SERVER = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "dist", "index.js");
 
 export type Tool = { name: string; description?: string; inputSchema?: unknown; annotations?: { readOnlyHint?: boolean } };
-/** A tool result: `value` is the parsed JSON text (or the raw text), `images` the number of image blocks. */
-export type ToolResult = { isError: boolean; value: any; images: number };
+/** A tool result: `value` is the parsed JSON text (or the raw text), `images` the number of image blocks, `imageData` their base64 PNGs. */
+export type ToolResult = { isError: boolean; value: any; images: number; imageData: string[] };
 export type Client = {
   call(tool: string, args?: Record<string, unknown>): Promise<ToolResult>;
   tools(): Promise<Tool[]>;
@@ -42,12 +42,13 @@ export async function startClient(env: Record<string, string> = {}): Promise<Cli
   return {
     async call(tool, args = {}) {
       const r = await request("tools/call", { name: tool, arguments: args });
-      let value: any = null, images = 0;
+      let value: any = null;
+      const imageData: string[] = [];
       for (const c of r.content ?? []) {
         if (c.type === "text") { try { value = JSON.parse(c.text); } catch { value = c.text; } }
-        if (c.type === "image") images++;
+        if (c.type === "image") imageData.push(c.data);
       }
-      return { isError: !!r.isError, value, images };
+      return { isError: !!r.isError, value, images: imageData.length, imageData };
     },
     async tools() { return (await request("tools/list")).tools; },
     close() { p.stdin.end(); setTimeout(() => p.kill(), 2000).unref(); },

@@ -3,15 +3,19 @@
 // The server waits for the PNG afterwards: saveFrameToPng can return before the file is fully written.
 C.preview_frame = function (a: HostArgs["preview_frame"]) {
   need(a, ["comp_id", "time", "output_path"]);
-  var comp = getComp(a.comp_id), f = new File(a.output_path), rf;
+  var comp = getComp(a.comp_id), f = new File(a.output_path), rf, want;
   if (typeof comp.saveFrameToPng !== "function") fail("UNSUPPORTED", "comp.saveFrameToPng is not available in this After Effects version", "Update After Effects");
   if (!f.parent.exists) f.parent.create();
   try { comp.openInViewer(); } catch (e) {}
-  // saveFrameToPng renders at the comp's viewer resolution (After Effects drops it to half or a quarter on heavy
-  // comps), which makes text look broken in the preview: render full resolution and put the setting back
+  // saveFrameToPng renders at the comp's resolution factor, which After Effects itself lowers on heavy comps (text
+  // then looks broken once scaled up). Set it to what the preview needs instead: the coarsest factor (up to 1/4)
+  // that still renders at least max_edge px on the long side, so nothing is upscaled and fewer pixels are rendered
+  // (a 768 px preview of a 1920 px comp renders at half resolution). The factor is read when the call is made, so it
+  // can be put back right away.
+  want = a.max_edge ? Math.max(1, Math.min(4, Math.floor(Math.max(comp.width, comp.height) / a.max_edge))) : 1;
   rf = safe(function () { return comp.resolutionFactor; });
-  if (rf && (rf[0] !== 1 || rf[1] !== 1)) comp.resolutionFactor = [1, 1];
-  try { comp.saveFrameToPng(a.time, f); } finally { if (rf && (rf[0] !== 1 || rf[1] !== 1)) comp.resolutionFactor = rf; }
+  if (rf && (rf[0] !== want || rf[1] !== want)) comp.resolutionFactor = [want, want];
+  try { comp.saveFrameToPng(a.time, f); } finally { if (rf && (rf[0] !== want || rf[1] !== want)) comp.resolutionFactor = rf; }
   return { path: f.fsName, exists: f.exists };
 };
 

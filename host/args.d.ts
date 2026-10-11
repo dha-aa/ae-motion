@@ -156,10 +156,11 @@ interface Args {
   };
   animate: {
     layer_ids: number[];
-    move: "fade" | "pop" | "grow" | "slide" | "drop" | "spin";
+    move: "fade" | "pop" | "grow" | "slide" | "drop" | "spin" | "push" | "drift";
     phase?: "in" | "out";
     time?: number;
     duration?: number;
+    amount?: number;
     style?: "snappy" | "smooth" | "spring" | "bounce" | "linear";
     direction?: "up" | "down" | "left" | "right";
     distance?: number;

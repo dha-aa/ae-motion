@@ -9,6 +9,7 @@ import path from "node:path";
 import { spawn } from "node:child_process";
 import type { AddressInfo } from "node:net";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
+import { PNG } from "pngjs";
 
 /** A JSON-RPC reply from the server; `result` is a CallToolResult for tools/call. */
 type RpcReply = { id?: number; result?: CallToolResult; error?: { code: number; message: string } };
@@ -40,8 +41,11 @@ const bridge = http.createServer((req, res) => {
     if (cmd === "get_selection") return res.end(JSON.stringify({ ok: false, error: { code: "AE_ERROR", message: "boom", hint: "try again" } }));
     if (cmd === "list_properties") return res.end(JSON.stringify({ ok: true, result: { properties: "x".repeat(30000) } })); // over CHARACTER_LIMIT
     if (cmd === "preview_frame") {
-      // After Effects can finish writing the PNG a moment after the command returns, especially for heavy 3D frames.
-      setTimeout(() => fs.writeFileSync(args.output_path, "fake png bytes"), 700);
+      // After Effects writes the PNG after the command returns (a moment for light frames, seconds for heavy 3D ones):
+      // half the file at 300 ms and the rest at 700 ms, so a server that took the half-written file would fail
+      const png = PNG.sync.write(Object.assign(new PNG({ width: 64, height: 36 }), { data: Buffer.alloc(64 * 36 * 4, 200) }));
+      setTimeout(() => fs.writeFileSync(args.output_path, png.subarray(0, png.length >> 1)), 300);
+      setTimeout(() => fs.writeFileSync(args.output_path, png), 700);
       return res.end(JSON.stringify({ ok: true, result: {} }));
     }
     res.end(JSON.stringify({ ok: true, result: {} }));
@@ -243,7 +247,8 @@ const results: [name: string, pass: boolean, detail?: string][] = [];
   const started = Date.now();
   const r = await s.call("tools/call", { name: "preview_frame", arguments: { comp_id: 1, time: 0 } });
   const content = r.result?.content ?? [];
-  results.push(["D: preview_frame waits for a PNG written after the command returns", r.result?.isError !== true && content.some((c) => c.type === "image")]);
+  const waited = Date.now() - started;
+  results.push(["D: preview_frame waits for the whole PNG (written in two parts after the command returns), and no longer than that", r.result?.isError !== true && content.some((c) => c.type === "image") && waited >= 700 && waited < 1500]);
   // the token meter (src/usage.ts): this server's usage file next to the bridge file, for the panel
   await s.call("tools/list", {});
   await sleep(400);

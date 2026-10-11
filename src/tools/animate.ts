@@ -19,7 +19,7 @@ export function registerAnimateTools(r: ToolRegistry): void {
 
   r.bridged(
     "set_keyframes",
-    "Replace all keys on a property (merge: keep keys at other times; replaced: old keys removed). Path properties (ADBE Mask Shape, ADBE Vector Shape) take a shape spec as v; keep the vertex count the same across keys for clean morphs. interp spring/bounce springs the segment to the next key (works on any property). Fails if another expression is active.",
+    "Replace all keys on a property (merge: keep keys at other times; replaced: old keys removed). Path properties (ADBE Mask Shape, ADBE Vector Shape) take a shape spec as v; keep the vertex count the same across keys for clean morphs. interp spring/bounce springs the segment to the next key (works on any property). Fails if another expression is active. Returns the keys as set.",
     {
       layer_id: id("Layer"), path: PropPath,
       keys: z.array(z.strictObject({ t: z.number().min(0), v: ValueOrShape, interp: Interp.optional(), ease_in: Ease.optional(), ease_out: Ease.optional() })).min(1),

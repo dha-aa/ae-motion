@@ -4,14 +4,27 @@ All notable changes. Versions follow [semantic versioning](https://semver.org); 
 
 ## Unreleased
 
+### Added
+- `animate` moves for holds: `push` (a slow scale-up, default 4%) and `drift` (a slow float), from where a layer's animation lands to its out point, keeping the landing's ease (a spring still lands exactly). In review, frozen holds after the build were the most common flaw.
+- Design rules for the model in the server instructions and `motion-guide`, as a senior motion designer and video editor would work: sizes relative to the comp's short side so they fit landscape, vertical (9:16 social) and square; the safe areas social apps cover; copy kept exactly as given; timing (move within 0.2 s, finish the build by 40%), keeping holds alive, polish (soft-edged glows, depth, one accent colour); and for footage: cutting on action or the beat, shot lengths, hooks, trimming dead air, b-roll over jump cuts, framing and reframing for vertical, text over video and captions, sound levels and delivery loudness.
+- `review_motion` checks: a late first move (after 0.3 s); changes too small to see no longer count as motion, so a wobbling layer still shows as a hold; text crossing the 5% title-safe margin, or in vertical comps the top 10% and bottom 20% that social apps cover; small text judged against 3% of the comp's short side (was 2.2% of its height).
+
+### Changed
+- `preview_frame` is 5-7 times faster: about 0.1 s per frame instead of 0.6 s, 0.2 s for a six-frame sheet instead of about 3 s. It returns as soon as the PNG is complete (its IEND chunk) instead of polling the size in 150 ms steps, and renders at the coarsest resolution that still covers the returned image instead of always at full resolution.
+- `get_project` lists each comp's layers (unless the project has over 300), and `set_keyframes` returns the keys as set, so a model needs fewer calls; the server instructions ask it to make independent calls together and not to re-read what a result already shows.
+
 ### Fixed
-- `get_project` works on big projects: it used to stop at 500 items and, past roughly 300 items with real file names, went over the size limit and failed with no way to ask for less. It now takes `name` (substring) and `type` filters and pages with `limit` (default 200) / `offset`, reporting `matched` and `next_offset` like `get_comp` (the `truncated` field is gone).
+- `get_project` works on big projects: it used to stop at 500 items and, past roughly 300 items with real file names, went over the size limit and failed with no way to ask for less. It now takes `name` (substring) and `type` filters and pages with `limit` (default 200) / `offset`, reporting `matched` and `next_offset` like `get_comp` (the `truncated` field is gone). The 300-layer limit for listing each comp's layers now counts the comps on the returned page, so paging also brings layers back on big projects.
 - `list_markers` pages with `limit` (default 100) / `offset` and returns `next_offset`, instead of stopping at 500 markers.
 - `set_playhead` and `set_3d_view` are no longer marked destructive: they only change the viewer.
 - The update instructions `get_project` and `check_for_updates` give for updating by hand said `git pull`, which fails in the state the panel's Update button leaves the repo in (a release tag, not a branch). They now say `node scripts/update.ts`, which checks out the newest release and runs the installer.
 - `set_light`'s `point_of_interest` was described as where a camera looks.
 - Errors that left the model guessing now say what to do: an unknown `blend_mode` lists the valid names, an unknown render job explains that jobs are forgotten when the MCP server restarts, a marker property points to the marker tools (not `run_jsx`), and "not keyframable", "does not support expressions", a missing preset and failed menu commands (`text_to_shapes`, `add_layer_style`) have hints.
 - The `ae://project` and `ae://selection` resources return compact JSON, and a failed read is now a resources/read error (with the code and hint) instead of the error body returned as if it were the resource.
+
+### Removed
+- The evaluations (`evals/`): the question and build-task runs through headless Claude Code. The live tests (`test/live/run.ts`) stay.
+- The hard limit on the size of the tool definitions (`npm test` prints the size instead).
 
 ## 2.16.0 — 2026-10-11
 

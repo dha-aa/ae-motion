@@ -9,7 +9,7 @@ export function registerInspectTools(r: ToolRegistry): void {
 
   r.tool(
     "get_project",
-    "List project items, the active comp id, AE version and project path. Filter by name (substring) or type; page with limit (200) / offset. If a newer ae-motion-mcp is known, an update field says how to update: tell the user.",
+    "List project items with each comp's layers (id, name, kind, timing; left out when the page has over 300 layers: layers_listed false, use get_comp), the active comp id, AE version and project path. Filter by name (substring) or type; page with limit (200) / offset. If a newer ae-motion-mcp is known, an update field says how to update: tell the user.",
     {
       name: z.string().optional(), type: z.enum(["comp", "footage", "folder"]).optional(),
       limit: z.number().int().min(1).max(500).optional(), offset: z.number().int().min(0).optional(),

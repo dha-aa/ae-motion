@@ -221,6 +221,12 @@ t("get_project filters by name and type and pages with limit / offset", () => {
   r = w.call("get_project", { type: "comp", limit: 2, offset: 1 });
   assert.deepEqual(r.result.items.map((x) => x.name), ["Shot 1", "Shot 2"]); assert.equal(r.result.matched, 4); assert.equal(r.result.next_offset, 3); assert.equal(r.result.num_items, 5);
   r = w.call("get_project", { name: "LOGO" }); assert.deepEqual(r.result.items.map((x) => x.type), ["footage"]); assert.equal(r.result.matched, undefined);
+  // comps on the page carry their layers unless the page holds over 300; a smaller page brings them back
+  w.layer(w.world.items[0], "bg", 0, 5);
+  r = w.call("get_project", { type: "comp", limit: 1 }); assert.equal(r.result.layers_listed, true); assert.deepEqual(r.result.items[0].layers.map((l) => l.name), ["bg"]);
+  for (let i = 0; i < 300; i++) w.layer(w.world.items[1], "l" + i, 0, 5);
+  r = w.call("get_project", { type: "comp" }); assert.equal(r.result.layers_listed, false); assert.equal(r.result.items[0].layers, undefined);
+  r = w.call("get_project", { type: "comp", limit: 1 }); assert.equal(r.result.layers_listed, true); assert.equal(r.result.items[0].layers.length, 1);
   ok(w.call("open_project", { new: true }));
 });
 
