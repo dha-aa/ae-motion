@@ -339,6 +339,15 @@ t("review_motion: a late first move, an invisible wobble is still a hold, text a
   assert.deepEqual(of("outside_safe").flatMap((i) => i.layer_ids || [i.layer_id]), [edge.id]);
 });
 
+t("review_motion: text inside the safe area mid-way but carried out of it by its last frame is reported at that frame", () => {
+  const w = makeWorld();
+  const drift = w.text("Drift", "drifting title"); drift.sourceRectAtTime = () => ({ left: -200, top: -50, width: 400, height: 60 });
+  const pos = P(drift, "ADBE Position"); pos.setValueAtTime(0, [960, 540, 0]); pos.setValueAtTime(drift.outPoint, [960, 20, 0]);
+  const r = ok(w.call("review_motion", { comp_id: 1, all: true }));
+  const safe = r.issues.filter((i) => i.type === "outside_safe" && (i.layer_id === drift.id || (i.layer_ids || []).includes(drift.id)));
+  assert.equal(safe.length, 1, JSON.stringify(r.issues)); assert.ok(/by the end/.test(safe[0].msg), safe[0].msg);
+});
+
 t("review_motion in a vertical comp: text in the bottom 20% is under the apps' UI; small text is judged on the short side", () => {
   const w = makeWorld();
   w.comp.width = 1080; w.comp.height = 1920;

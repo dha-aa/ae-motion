@@ -1,18 +1,48 @@
 /** Project and composition tools. Host side: host/commands/project.jsx. */
+import fs from "node:fs";
+import path from "node:path";
 import { z } from "zod";
-import type { ToolRegistry } from "./registry.js";
+import { AeToolError } from "../errors.js";
+import { assertAllowed, toAe } from "../sandbox.js";
+import { fromBridge, json, type ToolRegistry } from "./registry.js";
 import { Color, id } from "./schemas.js";
 
 // Factories rather than shared instances: a zod schema reused within one object is emitted as a JSON Schema $ref.
 const dimension = () => z.number().int().min(1).max(30000);
 const fps = () => z.number().min(1).max(120);
 
+/** Copy the saved project to snapshots/<name>_NNN[_note].aep next to it; the number counts up from the last copy. */
+export function snapshot(proj: string, note?: string): { snapshot: string; snapshots: number } {
+  const dir = path.join(path.dirname(proj), "snapshots");
+  fs.mkdirSync(dir, { recursive: true });
+  const ext = path.extname(proj), base = path.basename(proj, ext);
+  const nums = fs.readdirSync(dir)
+    .filter((f) => f.startsWith(base + "_"))
+    .map((f) => Number(/^(\d+)/.exec(f.slice(base.length + 1))?.[1] ?? NaN))
+    .filter((x) => Number.isFinite(x));
+  const n = (nums.length ? Math.max(...nums) : 0) + 1;
+  const slug = note ? "_" + note.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40) : "";
+  const dest = assertAllowed(path.join(dir, `${base}_${String(n).padStart(3, "0")}${slug}${ext}`));
+  fs.copyFileSync(proj, dest);
+  return { snapshot: dest, snapshots: nums.length + 1 };
+}
+
 export function registerProjectTools(r: ToolRegistry): void {
-  r.bridged(
+  r.tool(
     "save_project",
-    "Save the project. With path it does Save As (.aep or .aepx, inside the allowed folders; pass overwrite to replace an existing file). Without path it saves in place, which needs a project that has been saved once. render_start needs a saved project.",
-    { path: z.string().optional(), overwrite: z.boolean().optional() },
-    { paths: ["path"], idempotent: true },
+    "Save the project. With path it does Save As (.aep or .aepx, inside the allowed folders; pass overwrite to replace an existing file). Without path it saves in place, which needs a project that has been saved once. render_start needs a saved project. snapshot: true also keeps a numbered copy in snapshots/ next to the project (note labels it); open_project on that copy goes back to it exactly.",
+    { path: z.string().optional(), overwrite: z.boolean().optional(), snapshot: z.boolean().optional(), note: z.string().max(60).optional() },
+    async (a) => {
+      const args: Record<string, unknown> = {};
+      if (a.path !== undefined) args.path = toAe(assertAllowed(a.path));
+      if (a.overwrite !== undefined) args.overwrite = a.overwrite;
+      const res = await r.deps.bridge.run("save_project", args);
+      if (!res.ok || a.snapshot !== true) return fromBridge(res);
+      const proj = (res.result as { project_path: string | null }).project_path;
+      if (!proj || !fs.existsSync(proj)) throw new AeToolError("AE_ERROR", "The project was saved but its file was not found", "Save it with a path first");
+      return json({ ...(res.result as object), ...snapshot(proj, a.note) });
+    },
+    { idempotent: false },
   );
 
   r.bridged(

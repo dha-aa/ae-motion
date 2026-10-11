@@ -466,8 +466,19 @@ function shapeHasFill(g: any): boolean {
   return false;
 }
 
+// Why a text box (screen px) is outside the title-safe area, or "" when it is inside. Vertical (9:16-ish) comps are
+// social video: the apps' UI covers the top ~10% and bottom ~20%.
+function outsideSafe(c: CompItem, O: ScreenBox): string {
+  if (c.height > c.width * 1.3) {
+    if (O.x0 < c.width * 0.05 || O.x1 > c.width * 0.95 || O.y0 < c.height * 0.1 || O.y1 > c.height * 0.8) return "Text is where social apps put their UI (vertical: keep it below the top 10%, above the bottom 20%, 5% from the sides)";
+    return "";
+  }
+  if (O.x0 < c.width * 0.05 || O.x1 > c.width * 0.95 || O.y0 < c.height * 0.05 || O.y1 > c.height * 0.95) return "Text crosses the title-safe margin (5% of the frame on each side)";
+  return "";
+}
+
 function sceneChecks(c: CompItem, issue: (o: Obj) => void): void {
-  var ls: SceneItem[] = [], views: { [t: number]: CamView } = {}, boxes: { [key: string]: ScreenBox | null } = {}, i, j, l, kind, t: number, L: SceneItem, O, X, front, tt;
+  var ls: SceneItem[] = [], views: { [t: number]: CamView } = {}, boxes: { [key: string]: ScreenBox | null } = {}, i, j, l, kind, t: number, L: SceneItem, O, X, front, tt, E: string, tEnd: number, Oe;
   if (c.numLayers > 400) return;
   function boxOf(x: SceneItem, at: number): ScreenBox | null {
     var k = x.l.id + "@" + at;
@@ -487,11 +498,14 @@ function sceneChecks(c: CompItem, issue: (o: Obj) => void): void {
       issue({ type: "off_screen", severity: "warn", layer_id: L.l.id, layer: L.l.name, t: tt, msg: "Entirely outside the frame (as the camera sees it)" });
       continue;
     }
-    // vertical (9:16-ish) comps are social video: the apps' UI covers the top ~10% and bottom ~20%
-    if (L.kind === "text" && c.height > c.width * 1.3 && (O.x0 < c.width * 0.05 || O.x1 > c.width * 0.95 || O.y0 < c.height * 0.1 || O.y1 > c.height * 0.8)) {
-      issue({ type: "outside_safe", severity: "warn", layer_id: L.l.id, layer: L.l.name, t: tt, msg: "Text is where social apps put their UI (vertical: keep it below the top 10%, above the bottom 20%, 5% from the sides)" });
-    } else if (L.kind === "text" && (O.x0 < c.width * 0.05 || O.x1 > c.width * 0.95 || O.y0 < c.height * 0.05 || O.y1 > c.height * 0.95)) {
-      issue({ type: "outside_safe", severity: "warn", layer_id: L.l.id, layer: L.l.name, t: tt, msg: "Text crosses the title-safe margin (5% of the frame on each side)" });
+    // text is checked mid-way and again on its last frame: a camera push often carries a title out of the frame
+    // only by the end (seen: titles clipped at the top as the camera moved in, fine at the midpoint)
+    if (L.kind === "text") {
+      E = outsideSafe(c, O);
+      tEnd = Math.round(Math.max(0, Math.min(c.duration, L.l.outPoint) - c.frameDuration) / c.frameDuration) * c.frameDuration;
+      if (!E && tEnd > t + 1e-6) { Oe = boxOf(L, tEnd); if (Oe && (E = outsideSafe(c, Oe))) { tt = Math.round(tEnd * 1000) / 1000; E += " by the end of its time on screen"; } }
+      if (E) issue({ type: "outside_safe", severity: "warn", layer_id: L.l.id, layer: L.l.name, t: tt, msg: E });
+      tt = Math.round(t * 1000) / 1000;
     }
     for (j = 0; j < ls.length; j++) {
       if (j === i || ls[j].l.inPoint > t || ls[j].l.outPoint <= t || !opaqueAt(ls[j].l, ls[j].kind, t)) continue;

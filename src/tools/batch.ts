@@ -91,7 +91,8 @@ function refPaths(v: unknown, at: Path = [], out: Path[] = []): Path[] {
   return out;
 }
 
-const startsWith = (p: Path, prefix: Path): boolean => prefix.length <= p.length && prefix.every((k, i) => p[i] === k);
+// compared as strings: zod reports array indexes as numbers, and a path may come from either side
+const startsWith = (p: Path, prefix: Path): boolean => prefix.length <= p.length && prefix.every((k, i) => String(p[i]) === String(k));
 
 /** The schema batch validates a step's args with, if the tool can run in a batch. */
 function schemaOf(r: Pick<ToolRegistry, "bridgedTools" | "serverTools">, tool: string): z.ZodTypeAny | undefined {

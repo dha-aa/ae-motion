@@ -448,6 +448,8 @@ interface Args {
   save_project: {
     path?: string;
     overwrite?: boolean;
+    snapshot?: boolean;
+    note?: string;
   };
   sequence_layers: {
     layer_ids: number[];
@@ -632,7 +634,8 @@ interface Args {
     snap?: boolean;
   };
   set_property: {
-    layer_id: number;
+    layer_id?: number;
+    layer_ids?: number[];
     path: string | (string | number)[];
     value: number | string | boolean | number[] | { [key: string]: unknown };
     time?: number;

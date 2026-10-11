@@ -49,7 +49,7 @@ export function registerOutputTools(r: ToolRegistry): void {
 
   r.tool(
     "preview_frame",
-    "Render comp frames and return them as one image (several times are tiled left to right, top to bottom). Images cost tokens by size: keep the default size, and pass several times in one call rather than calling once per time.",
+    "Render comp frames and return them as one image (several times are tiled left to right, top to bottom). Images cost tokens by size: keep the default size, and pass several times in one call rather than calling once per time. In an edit, scene / scenes name the precomp each frame shows.",
     {
       comp_id: id("Comp"),
       time: z.union([z.number().min(0), z.array(z.number().min(0)).min(1).max(9)]).describe("Seconds, or up to 9 times for a contact sheet"),
@@ -61,10 +61,12 @@ export function registerOutputTools(r: ToolRegistry): void {
       const files: string[] = [];
       // the long side each frame needs in the returned image: the host renders no finer than that
       const edge = times.length === 1 ? (a.size ?? 768) : Math.ceil((a.size ?? 1152) / Math.ceil(Math.sqrt(times.length)));
+      const scenes: (string | null)[] = [];
       for (const t of times) {
         const out = path.join(PREVIEW_DIR, `preview_${a.comp_id}_${String(t).replace(".", "_")}_${Date.now()}.png`);
         const res = await bridge.run("preview_frame", { comp_id: a.comp_id, time: t, output_path: toAe(out), max_edge: edge }, TIMEOUTS.preview);
         if (!res.ok) return fromBridge(res);
+        scenes.push((res.result as { scene?: string }).scene ?? null);
         if (!(await waitForFile(out, TIMEOUTS.previewFile))) {
           return errorResult({
             code: "AE_ERROR",
@@ -77,7 +79,10 @@ export function registerOutputTools(r: ToolRegistry): void {
       const pngs = files.map((f) => fs.readFileSync(f));
       // the files on disk stay full size; only the copy sent to the model is shrunk
       const img = pngs.length === 1 ? shrinkPng(pngs[0], a.size ?? 768) : contactSheet(pngs, a.size ?? 1152);
-      const info = pngs.length === 1 ? { path: files[0] } : { times, dir: PREVIEW_DIR };
+      const info: Record<string, unknown> = pngs.length === 1 ? { path: files[0] } : { times, dir: PREVIEW_DIR };
+      // in an edit (a comp of precomps), which scene each frame shows: "S09b Cairo Street" rather than a guess
+      if (pngs.length === 1) { if (scenes[0]) info.scene = scenes[0]; }
+      else if (scenes.some((s) => s)) info.scenes = scenes;
       return {
         content: [
           { type: "text", text: JSON.stringify(info) },
@@ -90,10 +95,11 @@ export function registerOutputTools(r: ToolRegistry): void {
 
   r.tool(
     "render_start",
-    "Save the project (saved once before) and start a background aerender job; poll render_status with the job_id. om_template / rs_template: output-module / render-settings template names (the output module picks the file extension). software: Mercury Software Only (fixes GPU failures). With ffmpeg the result is checked (black/frozen/silent spans, loudness; verify false skips); deliver: H.264 MP4 at loudness (-14 LUFS); audio_only: the mix.",
+    "Save the project (saved once before) and start a background aerender job; poll render_status with the job_id. om_template / rs_template: output-module / render-settings template names (the output module picks the file extension). software: Mercury Software Only (fixes GPU failures). With ffmpeg the result is checked (black/frozen/silent spans, loudness; verify false skips); deliver: H.264 MP4 at loudness (-14 LUFS); audio_only: the mix. Renders the whole comp (not the work area); start / end (s) a part, draft: true a fast low-quality look at the motion.",
     {
       comp_id: id("Comp"), output_path: z.string(), om_template: z.string().optional(), rs_template: z.string().optional(), overwrite: z.boolean().optional(), software: z.boolean().optional(),
       verify: z.boolean().optional(), deliver: z.boolean().optional(), loudness: z.number().min(-40).max(-5).optional(), audio_only: z.boolean().optional(),
+      start: z.number().min(0).optional(), end: z.number().positive().optional(), draft: z.boolean().optional(),
     },
     async (a) => json(await renders.start(a)),
   );

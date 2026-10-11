@@ -12,8 +12,8 @@ const Interp = z.enum(["linear", "bezier", "hold", "spring", "bounce"]);
 export function registerAnimateTools(r: ToolRegistry): void {
   r.bridged(
     "set_property",
-    "Set a static value, or a value at `time` (creates/updates a keyframe). Animated properties need `time`. Use set_text for text.",
-    { layer_id: id("Layer"), path: PropPath, value: ValueOrShape, time: z.number().min(0).optional() },
+    "Set a static value, or a value at `time` (creates/updates a keyframe). Animated properties need `time`. Use set_text for text. layer_ids sets the same property on many layers in one call (all checked first).",
+    { layer_id: id("Layer").optional(), layer_ids: LayerIds.optional(), path: PropPath, value: ValueOrShape, time: z.number().min(0).optional() },
     { idempotent: true },
   );
 

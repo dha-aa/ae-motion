@@ -147,6 +147,19 @@ C.text_to_shapes = function (a: Args["text_to_shapes"]) {
   return { shape_layer: layerRef(made), groups: group(made, "ADBE Root Vectors Group").numProperties, text_layer: layerRef(l) };
 };
 
+// The Layer Style panel's labels for parameters whose match names differ (Size is "blur" on shadows and glows).
+var STYLE_ALIAS: { [label: string]: string } = {
+  size: "blur", spread: "chokeMatte", choke: "chokeMatte", angle: "localLightingAngle", altitude: "localLightingAltitude",
+  blend_mode: "mode2", range: "inputRange", technique: "glowTechnique"
+};
+
+// A layer that has ever had a layer style, even one switched off since (the group can then be enabled). After
+// Effects draws such a layer, when it is 3D, in stacking order instead of by depth, and ignores its track matte.
+function hasLayerStyles(l: Layer): boolean {
+  return safe(function () { return (l as AVLayer).property("ADBE Layer Styles").canSetEnabled; }) === true;
+}
+var STYLED_3D_NOTE = "This 3D layer has layer styles (even switched off): After Effects draws it in stacking order, not by depth, and ignores its track matte. Use a 2D layer (set_layer three_d: false) or a separate layer without styles; styles cannot be removed by script";
+
 // Turn on a layer style and set its parameters (property names without the style prefix, e.g. distance, color).
 C.add_layer_style = function (a: Args["add_layer_style"]) {
   need(a, ["layer_id", "style"]);
@@ -156,10 +169,15 @@ C.add_layer_style = function (a: Args["add_layer_style"]) {
   if (!ls) fail("BAD_ARGS", "This layer cannot have layer styles");
   let g = group(ls, s[1] + "/enabled");
   for (let i = 1; i <= g.numProperties; i++) names.push(g.property(i).matchName.replace(s[1] + "/", ""));
-  // check parameter names first (the style's properties exist even while it is off), so a typo changes nothing
+  // check parameter names first (the style's properties exist even while it is off), so a typo changes nothing;
+  // a panel label (size, spread, angle) is taken for its match name when the style has no parameter of that name
+  const keys: { [given: string]: string } = {};
   if (a.params) {
     for (const key in a.params) {
-      if (a.params.hasOwnProperty(key) && !safe(() => g.property(s[1] + "/" + key))) errs.push(key);
+      if (!a.params.hasOwnProperty(key)) continue;
+      if (safe(() => g.property(s[1] + "/" + key))) keys[key] = key;
+      else if (STYLE_ALIAS.hasOwnProperty(key) && safe(() => g.property(s[1] + "/" + STYLE_ALIAS[key]))) keys[key] = STYLE_ALIAS[key];
+      else errs.push(key);
     }
     if (errs.length) fail("BAD_ARGS", "Unknown " + a.style + " parameter(s): " + errs.join(", "), "Valid names: " + names.join(", "));
   }
@@ -172,11 +190,13 @@ C.add_layer_style = function (a: Args["add_layer_style"]) {
   if (a.params) {
     for (const key in a.params) {
       if (!a.params.hasOwnProperty(key)) continue;
-      const p = prop(g, s[1] + "/" + key);
+      const p = prop(g, s[1] + "/" + keys[key]);
       try { p.setValue(coerce(p, a.params[key])); } catch (e) { errs.push(key + ": " + ((e as { message?: string }).message || String(e))); }
     }
     if (errs.length) fail("BAD_ARGS", "Style params failed: " + errs.join("; "), "Valid names: " + names.join(", "));
   }
   if (a.enabled === false) g.enabled = false;
-  return { style: a.style, enabled: g.enabled, path: ["ADBE Layer Styles", s[1] + "/enabled"], parameters: names };
+  const out: Obj = { style: a.style, enabled: g.enabled, path: ["ADBE Layer Styles", s[1] + "/enabled"], parameters: names };
+  if ((l as AVLayer).threeDLayer) out.warning = STYLED_3D_NOTE;
+  return out;
 };

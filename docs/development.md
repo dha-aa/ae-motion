@@ -136,6 +136,9 @@ Found in live testing; the code relies on all of these.
 - "Leave all attributes" precompose needs a single layer with a source (not text or shape layers).
 - In mock tests, arrays passed into the vm context must be created there: the host's `v instanceof Array` is false for arrays from another realm (see `inner()` in `test/mock-design.test.ts`).
 - Setting a key's temporal ease switches it to bezier, so `restoreKey` sets the ease first and the interpolation type last.
+- A new text layer takes the Character panel's current settings, i.e. whatever the last text was styled with (tracking 400 made every later title wide-spaced). `add_layer` applies `NEUTRAL_TEXT` before any `text_style`.
+- A 3D layer that has ever had a layer style ignores its track matte and is composited in stacking order instead of by depth, even when every style is switched off (the Layer Styles group then has `canSetEnabled` true). 2D layers are fine. Scripts can't remove styles, so `set_track_matte` and `add_layer_style` return a `warning`.
+- `aerender` takes the time span from its render settings template unless `-s`/`-e` are given; one render stopped at 54 of 2,422 frames with exit code 0. `render_start` passes the comp's range (or `start`/`end`) and fails a file shorter than expected.
 - Roving keys re-time themselves whenever any other key changes, so code that rewrites keys (`replaceKeys`) turns roving off first and restores it at the end. After Effects may also rescale a roving key's tangents.
 
 `test/mock-host.test.ts` models the first two; keep the mocks in sync when you find another.
