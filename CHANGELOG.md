@@ -2,7 +2,7 @@
 
 All notable changes. Versions follow [semantic versioning](https://semver.org); each release is a git tag `vX.Y.Z`, which is what the update check looks for.
 
-## Unreleased
+## 2.20.1 — 2026-10-12
 
 ### Fixed
 - `preview_frame` images show the comp's background in its own colour. After Effects writes the background as transparent pixels, which clients drew white, so light text on a dark comp looked invisible or washed out and a model could "fix" a design that was fine. The returned image is now opaque and matches the comp exactly (the edges were already blended).
