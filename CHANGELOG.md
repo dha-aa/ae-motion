@@ -2,40 +2,30 @@
 
 All notable changes. Versions follow [semantic versioning](https://semver.org); each release is a git tag `vX.Y.Z`, which is what the update check looks for.
 
-## Unreleased
+## 2.20.0 — 2026-10-12
 
 ### Added
+- `set_text` `ranges` style part of a text in the same call (After Effects 24.3+): a word in the accent colour, a bold name, one outlined line. Each range is `match` (every occurrence of a string) or `start` / `end` character indexes, with font, size, color, stroke, faux styles, caps, tracking, scale or baseline shift. This used to take a text animator built through several `add_property` calls. Every range is checked against the text before anything changes.
+- `get_text` lists the parts styled differently from the first character (`ranges`, only the fields that differ), so a model sees part styling before it changes the text.
+- `import_footage` imports several files at once (`paths`), a layered PSD or Illustrator file as a comp of its layers (`as: comp` / `comp_cropped`), and sets the footage's interpretation as it imports: `fps` (image sequences come in at 30 fps whatever they were rendered at, so a 24 fps render played too fast), `loop` and `alpha`. `folder` files the imports in a project folder (made if missing). Every file is checked before any is imported.
+- `set_item`, a new tool: rename a project item, set its comment or label, move it into a folder or back to the top level, change a footage item's `fps` / `loop` / `alpha`, or swap its file (or image sequence) for every layer that uses it.
+- Footage in `get_project` shows its `fps`, and items inside a folder show `folder_id`.
+- `save_project` `clean: true` removes footage no comp uses before saving (imports never placed, sources left behind by `replace_source`), and says how many (`removed_footage`).
+- A wrong argument name now says which one was meant: `Unrecognized key: "stagger" (did you mean stagger -> stagger_seconds?)`. The suggestion is a known synonym (the timing tools name the same idea `stagger`, `stagger_seconds` and `offset_seconds`) or a near spelling, so a model fixes the call on the first retry. It costs nothing in the tool definitions.
 - `find_sound_cues` `events`: the model says what moments mean (importance 0-1, a label, optionally the sound) and the tool keeps the timing: the nearest motion cue takes the importance and keeps its frame-exact time; an event with no motion becomes its own cue; importance 0 keeps a moment quiet. The meaning comes from the model and the timing from the rules, which a music and sound-effects planner needs.
 - `duck_music` `dips`: stretches of near-silence, e.g. 0.35 s before a reveal (measured live: -100 dB through the pause, then the impact). A dips-only call keeps the ducks as they are.
 - `set_layer` `audio_fade` (in / out seconds) and `sequence_layers` `audio_crossfade`: equal-power fades, so one music cue crossfades into the next without a dip in level (measured live: within 0.4 dB through a 2 s crossfade).
 
 ### Changed
+- `stagger` and `shift_layers` say which one moves keys and which moves whole layers, and point to `sequence_layers`.
 - `duck_music` ducks by -6 dB by default (was -10): the usual range under narration is 4-8 dB.
 - `find_sound_cues` ranks cuts low on their own, so a hit on every cut is no longer the default; story events raise the cuts that matter.
 - Volume keys can be set under the ducking expression (`set_keyframes` refused them, and its hint said to clear the expression, which removed the ducking). Springs are still refused there, since they would replace it.
 
 ### Fixed
+- `set_text` with new text now says when it removed part styling (`ranges_cleared: true`): After Effects gives every character the first one's style when the text changes. Passing the same text no longer reassigns it, so part styling survives.
 - `find_sound_cues` cues a scale pop when the layer arrives (97% of the way), not at its last key: with a spring or snappy ease the last key is where it only settles, up to 15 frames after the hit. An entrance that pops and fades in is now one cue instead of two competing ones. Found by building a 12-second documentary reveal and checking where the impact belongs.
 - The after-render check no longer calls a dark title card with a line of text a black picture (and no longer suggests a GPU failure for it): a frame now counts as black only when 99.9% of it is dark.
-
-## 2.19.0 — 2026-10-12
-
-### Added
-- `set_text` `ranges` style part of a text in the same call (After Effects 24.3+): a word in the accent colour, a bold name, one outlined line. Each range is `match` (every occurrence of a string) or `start` / `end` character indexes, with font, size, color, stroke, faux styles, caps, tracking, scale or baseline shift. This used to take a text animator built through several `add_property` calls. Every range is checked against the text before anything changes.
-- `get_text` lists the parts styled differently from the first character (`ranges`, only the fields that differ), so a model sees part styling before it changes the text.
-
-- `import_footage` imports several files at once (`paths`), a layered PSD or Illustrator file as a comp of its layers (`as: comp` / `comp_cropped`), and sets the footage's interpretation as it imports: `fps` (image sequences come in at 30 fps whatever they were rendered at, so a 24 fps render played too fast), `loop` and `alpha`. `folder` files the imports in a project folder (made if missing). Every file is checked before any is imported.
-- `set_item`, a new tool: rename a project item, set its comment or label, move it into a folder or back to the top level, change a footage item's `fps` / `loop` / `alpha`, or swap its file (or image sequence) for every layer that uses it.
-- Footage in `get_project` shows its `fps`, and items inside a folder show `folder_id`.
-
-- `save_project` `clean: true` removes footage no comp uses before saving (imports never placed, sources left behind by `replace_source`), and says how many (`removed_footage`).
-- A wrong argument name now says which one was meant: `Unrecognized key: "stagger" (did you mean stagger -> stagger_seconds?)`. The suggestion is a known synonym (the timing tools name the same idea `stagger`, `stagger_seconds` and `offset_seconds`) or a near spelling, so a model fixes the call on the first retry. It costs nothing in the tool definitions.
-
-### Changed
-- `stagger` and `shift_layers` say which one moves keys and which moves whole layers, and point to `sequence_layers`.
-
-### Fixed
-- `set_text` with new text now says when it removed part styling (`ranges_cleared: true`): After Effects gives every character the first one's style when the text changes. Passing the same text no longer reassigns it, so part styling survives.
 
 ## 2.18.0 — 2026-10-11
 
