@@ -57,7 +57,7 @@ function readText(doc: any): Obj {
 
 function textProp(a: { layer_id: number }): Prop {
   var l = getLayer(a.layer_id);
-  if (!(l instanceof TextLayer)) fail("BAD_ARGS", "Layer is not a text layer");
+  if (!(l instanceof TextLayer)) fail("BAD_ARGS", "Layer is not a text layer", "get_comp lists the layers with their kind");
   return l.property("ADBE Text Properties").property("ADBE Text Document");
 }
 

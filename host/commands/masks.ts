@@ -3,7 +3,7 @@
 C.add_mask = function (a: Args["add_mask"]) {
   need(a, ["layer_id", "shape"]);
   var l = getLayer(a.layer_id), masks = l.property("ADBE Mask Parade"), m, shp, mode;
-  if (!masks) fail("BAD_ARGS", "Layer does not support masks");
+  if (!masks) fail("BAD_ARGS", "Layer does not support masks", "Masks go on solid, footage, text, shape and precomp layers (not cameras or lights)");
   shp = shapeFromSpec(a.shape, l.width || l.containingComp.width, l.height || l.containingComp.height);
   if (has(a, "mode")) { mode = MASKMODES[a.mode]; if (!mode) fail("BAD_ARGS", "Unknown mask mode: " + a.mode); }
   m = masks.addProperty("ADBE Mask Atom");
@@ -28,7 +28,7 @@ C.set_track_matte = function (a: Args["set_track_matte"]) {
     return { layer: layerRef(l), matte_layer_id: null };
   }
   matte = getLayer(a.matte_layer_id);
-  if (matte.containingComp.id !== comp.id) fail("BAD_ARGS", "Matte layer is in a different comp");
+  if (matte.containingComp.id !== comp.id) fail("BAD_ARGS", "Matte layer is in a different comp", "Use a matte layer from the same comp (get_comp lists them)");
   if (matte.id === l.id) fail("BAD_ARGS", "A layer cannot be its own matte");
   if (typeof l.setTrackMatte === "function") {
     l.setTrackMatte(matte, (TrackMatteType as any)[tm]); // After Effects 23+

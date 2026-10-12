@@ -37,11 +37,21 @@ t("token meter: image tokens from the PNG size (w * h / 750), text at ~3.6 chars
   assert.deepEqual(s.tools.preview_frame, { calls: 1, text: 10, image: 443 });
 });
 
-t("small images and non-PNG bytes are returned unchanged", () => {
-  const small = png(300, 200, [0, 0, 0]);
-  assert.equal(shrinkPng(small, 768), small);
+t("small images keep their size and pixels; non-PNG bytes are returned unchanged", () => {
+  const small = read(shrinkPng(png(300, 200, [9, 8, 7]), 768));
+  assert.deepEqual([small.width, small.height, ...px(small, 10, 10)], [300, 200, 9, 8, 7, 255]);
   const junk = Buffer.from("not a png");
   assert.equal(shrinkPng(junk, 768), junk);
+});
+
+t("the comp background comes out opaque in its own colour, edges as blended (not white where alpha was 0)", () => {
+  // as saveFrameToPng writes a light-text frame on a navy comp: background RGB with alpha 0, edges blended with alpha
+  const p = new PNG({ width: 4, height: 1 });
+  p.data.set([20, 26, 41, 0, 66, 71, 83, 51, 235, 235, 240, 255, 20, 26, 41, 0]);
+  const one = read(shrinkPng(PNG.sync.write(p), 768));
+  assert.deepEqual([px(one, 0, 0), px(one, 1, 0), px(one, 2, 0)], [[20, 26, 41, 255], [66, 71, 83, 255], [235, 235, 240, 255]]);
+  const sheet = read(contactSheet([PNG.sync.write(p), PNG.sync.write(p)], 1152));
+  assert.deepEqual(px(sheet, 0, 0), [20, 26, 41, 255], "contact sheets too");
 });
 
 t("a contact sheet tiles frames left to right, top to bottom, within the size", () => {

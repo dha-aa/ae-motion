@@ -11,7 +11,7 @@ function vdot(a: Vec, b: Vec): number { return a[0] * b[0] + a[1] * b[1] + a[2] 
 function vlen(a: Vec): number { return Math.sqrt(vdot(a, a)); }
 function vnorm(a: Vec): Vec {
   var n = vlen(a);
-  if (n < 1e-9) fail("BAD_ARGS", "The camera and its point of interest are at the same position");
+  if (n < 1e-9) fail("BAD_ARGS", "The camera and its point of interest are at the same position", "Move the point of interest away from the camera (set_camera point_of_interest)");
   return vmul(a, 1 / n);
 }
 function rad(d: number): number { return d * Math.PI / 180; }

@@ -6,7 +6,7 @@ C.split_layer = function (a: Args["split_layer"]) {
   var ls = pickLayers(a.layer_ids), comp = sameComp(ls), t = a.snap === false ? a.time : snapT(comp, a.time), out = [], i, d;
   assertUnlocked(ls);
   for (i = 0; i < ls.length; i++) {
-    if (!(t > ls[i].inPoint + EPS && t < ls[i].outPoint - EPS)) fail("BAD_ARGS", "Time " + t + " is not inside layer " + ls[i].id + " (" + ls[i].inPoint + " to " + ls[i].outPoint + ")");
+    if (!(t > ls[i].inPoint + EPS && t < ls[i].outPoint - EPS)) fail("BAD_ARGS", "Time " + t + " is not inside layer " + ls[i].id + " (" + ls[i].inPoint + " to " + ls[i].outPoint + ")", "Pass a time between the layer's in and out points");
   }
   for (i = 0; i < ls.length; i++) { d = splitAt(ls[i], t); out.push({ first: layerTiming(ls[i]), second: layerTiming(d as AVLayer) }); }
   return { time: t, splits: out };
@@ -27,7 +27,7 @@ C.sequence_layers = function (a: Args["sequence_layers"]) {
   if (ls.length < 2) fail("BAD_ARGS", "Need at least two layers");
   if (ov < 0) fail("BAD_ARGS", "overlap must be 0 or more");
   if (xf && !(ov > 0)) fail("BAD_ARGS", "audio_crossfade needs an overlap (the seconds the music cues share)");
-  if (xf) { for (i = 0; i < ls.length; i++) { needAudio(ls[i]); if (ls[i].outPoint - ls[i].inPoint < ov * (i === 0 || i === ls.length - 1 ? 1 : 2) - EPS) fail("BAD_ARGS", "Layer " + ls[i].id + " is shorter than its crossfades"); } }
+  if (xf) { for (i = 0; i < ls.length; i++) { needAudio(ls[i]); if (ls[i].outPoint - ls[i].inPoint < ov * (i === 0 || i === ls.length - 1 ? 1 : 2) - EPS) fail("BAD_ARGS", "Layer " + ls[i].id + " is shorter than its crossfades", "Use a shorter overlap"); } }
   sameComp(ls);
   assertUnlocked(ls);
   t = has(a, "start") ? a.start : ls[0].inPoint;
@@ -106,7 +106,7 @@ C.trim_comp = function (a: Args["trim_comp"]) {
     s = ls[0].inPoint; e = ls[0].outPoint;
     for (i = 1; i < ls.length; i++) { s = Math.min(s, ls[i].inPoint); e = Math.max(e, ls[i].outPoint); }
   } else fail("BAD_ARGS", "to must be work_area or layers");
-  if (!(e - s > EPS)) fail("BAD_ARGS", "Nothing to trim to (empty range)");
+  if (!(e - s > EPS)) fail("BAD_ARGS", "Nothing to trim to (empty range)", "Set a work area (set_comp work_area) or add layers first");
   // shifting needs unlocked layers; locks are put back afterwards
   for (i = 0; i < ls.length; i++) if (ls[i].locked) { ls[i].locked = false; locked.push(ls[i]); }
   for (i = 0; i < ls.length; i++) shiftLayer(ls[i], -s);
@@ -192,7 +192,7 @@ C.update_marker = function (a: Args["update_marker"]) {
   if (has(a, "label")) v.label = a.label;
   nt = has(a, "to_time") ? a.to_time : t;
   if (Math.abs(nt - t) > EPS) {
-    if (prop.numKeys > 1 && Math.abs(prop.keyTime(prop.nearestKeyIndex(nt)) - nt) < EPS) fail("EXISTS", "There is already a marker at " + nt);
+    if (prop.numKeys > 1 && Math.abs(prop.keyTime(prop.nearestKeyIndex(nt)) - nt) < EPS) fail("EXISTS", "There is already a marker at " + nt, "Change that marker with update_marker, or pick another time");
     prop.removeKey(idx);
   }
   prop.setValueAtTime(nt, v); // a MarkerValue is a copy: write it back

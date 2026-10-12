@@ -9,13 +9,13 @@ C.open_project = function (a: Args["open_project"]) {
   if (!fresh) {
     f = new File(a.path);
     if (!/\.(aep|aepx)$/i.test(a.path!)) fail("BAD_ARGS", "Project path must end in .aep or .aepx");
-    if (!f.exists) fail("NOT_FOUND", "Project file not found: " + a.path);
+    if (!f.exists) fail("NOT_FOUND", "Project file not found: " + a.path, "Check the path; paths must be inside the allowed folders (AE_MCP_ALLOWED_DIRS)");
   }
   if (p && p.dirty && a.discard_unsaved !== true) fail("BAD_ARGS", "The open project has unsaved changes", "Save them with save_project first, or pass discard_unsaved: true to throw them away");
   // closing first keeps After Effects from asking about unsaved changes in a dialog
   if (p && p.dirty) p.close(CloseOptions.DO_NOT_SAVE_CHANGES);
   if (fresh) { if (!app.newProject()) fail("AE_ERROR", "After Effects did not create a new project"); }
-  else if (!app.open(f)) fail("AE_ERROR", "After Effects could not open " + a.path);
+  else if (!app.open(f)) fail("AE_ERROR", "After Effects could not open " + a.path, "The file may be damaged or from a newer After Effects; try opening it by hand");
   return C.get_project();
 };
 
@@ -62,7 +62,7 @@ C.set_comp = function (a: Args["set_comp"]) {
   if (wa) {
     ws = has(wa, "start") ? wa.start : c.workAreaStart;
     wd = has(wa, "duration") ? wa.duration : c.workAreaDuration;
-    if (ws < 0 || wd <= 0 || ws + wd > c.duration + EPS) fail("BAD_ARGS", "work_area must fit inside the comp (0 to " + c.duration + " s)");
+    if (ws < 0 || wd <= 0 || ws + wd > c.duration + EPS) fail("BAD_ARGS", "work_area must fit inside the comp (0 to " + c.duration + " s)", "Lengthen the comp first (set_comp duration) or shorten the work area");
     setWorkArea(c, ws, wd);
   }
   return compInfo(c, false);
@@ -105,7 +105,7 @@ function folderFor(ref: number | string): FolderItem {
 }
 
 C.import_footage = function (a: Args["import_footage"]) {
-  var list: string[] = [], opts: any[] = [], out: Obj[] = [], skipped: Obj[] = [], missing: string[] = [], i, f, io, it, type, folder: FolderItem | null = null, res: Obj;
+  var list: string[] = [], opts: any[] = [], out: Obj[] = [], skipped: Obj[] = [], missing: string[] = [], i, f, io, it: any, type, folder: FolderItem | null = null, res: Obj, lf: any;
   if (has(a, "path") === has(a, "paths")) fail("BAD_ARGS", "Pass path or paths");
   if (has(a, "name") && has(a, "paths")) fail("BAD_ARGS", "name needs a single path", "Rename the others with set_item");
   if (hasInterp(a) && (a.as === "comp" || a.as === "comp_cropped")) fail("BAD_ARGS", "fps, loop and alpha are footage settings; a comp import has none", "Set them on the layers' footage items with set_item");
@@ -113,7 +113,12 @@ C.import_footage = function (a: Args["import_footage"]) {
   type = a.as === "comp" ? ImportAsType.COMP : (a.as === "comp_cropped" ? ImportAsType.COMP_CROPPED_LAYERS : ImportAsType.FOOTAGE);
   // check every file before importing any
   for (i = 0; i < list.length; i++) { f = new File(list[i]); if (!f.exists) missing.push(list[i]); }
-  if (missing.length) fail("NOT_FOUND", "File not found: " + missing.join(", "));
+  if (missing.length) fail("NOT_FOUND", "File not found: " + missing.join(", "), "Check the path; paths must be inside the allowed folders (AE_MCP_ALLOWED_DIRS)");
+  // After Effects finds a sequence by the frame number in the name; given an unnumbered file it took every image in
+  // the folder as one sequence named after the folder (seen in AE 26.3)
+  if (a.as === "sequence") {
+    for (i = 0; i < list.length; i++) { if (!/[0-9]+\.[A-Za-z0-9]+$/.test(list[i])) fail("BAD_ARGS", "as: sequence needs a numbered frame (e.g. shot_0001.png): " + list[i], "Pass the first frame of the sequence, or leave out as to import a single image"); }
+  }
   for (i = 0; i < list.length; i++) {
     io = new ImportOptions(new File(list[i]));
     if (a.as === "sequence") io.sequence = true;
@@ -126,11 +131,18 @@ C.import_footage = function (a: Args["import_footage"]) {
     it = app.project.importFile(opts[i]);
     if (has(a, "name")) it.name = a.name;
     interpret(it, a, skipped);
-    if (folder) it.parentFolder = folder;
+    if (folder) {
+      it.parentFolder = folder;
+      // a layered import also adds a "<name> Layers" folder with one item per layer: it goes along
+      lf = it instanceof CompItem && it.numLayers > 0 ? safe(function () { return ((it as CompItem).layer(1) as AVLayer).source.parentFolder; }) : null;
+      if (lf && lf !== app.project.rootFolder && lf !== folder) lf.parentFolder = folder;
+    }
     out.push(itemInfo(it));
   }
   res = has(a, "paths") ? { items: out } : out[0];
   if (skipped.length) res.skipped = skipped;
+  // a layered still's comp takes After Effects' still-footage duration preference (it was 102.9 s), not anything in the file
+  if (a.as === "comp" || a.as === "comp_cropped") res.note = "The comp's duration comes from After Effects' still-footage preference; set it with set_comp duration";
   return res;
 };
 
@@ -141,7 +153,7 @@ C.set_item = function (a: Args["set_item"]) {
   if (has(a, "file")) {
     if (!(it instanceof FootageItem) || it.mainSource instanceof SolidSource) fail("BAD_ARGS", "file swaps a footage item's file; item " + a.item_id + " is not file footage", "Use replace_source to swap a layer's source for another item");
     f = new File(a.file);
-    if (!f.exists) fail("NOT_FOUND", "File not found: " + a.file);
+    if (!f.exists) fail("NOT_FOUND", "File not found: " + a.file, "Check the path; paths must be inside the allowed folders (AE_MCP_ALLOWED_DIRS)");
     if (a.sequence === true) it.replaceWithSequence(f, false); else it.replace(f);
   } else if (has(a, "sequence")) fail("BAD_ARGS", "sequence goes with file");
   if (has(a, "name")) it.name = a.name;

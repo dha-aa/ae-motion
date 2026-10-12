@@ -42,7 +42,7 @@ C.align_layers = function (a: Args["align_layers"]) {
   if (!al && !dist) fail("BAD_ARGS", "Pass align and/or distribute");
   if (al && ALIGNS.indexOf(" " + al + " ") === -1) fail("BAD_ARGS", "align must be left, h_center, right, top, v_center, bottom or center");
   if (dist && dist !== "horizontal" && dist !== "vertical") fail("BAD_ARGS", "distribute must be horizontal or vertical");
-  if (dist && ls.length < 3) fail("BAD_ARGS", "distribute needs at least 3 layers");
+  if (dist && ls.length < 3) fail("BAD_ARGS", "distribute needs at least 3 layers", "Pass 3 or more layers, or align only");
   assertUnlocked(ls);
   const b: LayerBounds[] = [];
   for (let i = 0; i < ls.length; i++) {
@@ -97,7 +97,7 @@ C.set_anchor = function (a: Args["set_anchor"]) {
   need(a, ["layer_id"]);
   const l = getLayer(a.layer_id), t = has(a, "time") ? a.time! : 0, an = tp(l, "ADBE Anchor Point");
   if (!is2D(l) && !(l as AVLayer).threeDLayer) fail("BAD_ARGS", "Cameras and lights have no anchor point");
-  if (an.numKeys > 0 || an.expressionEnabled) fail("BAD_ARGS", "The anchor point is animated or driven by an expression");
+  if (an.numKeys > 0 || an.expressionEnabled) fail("BAD_ARGS", "The anchor point is animated or driven by an expression", "Clear its keys (set_keyframes) or expression (set_expression) first");
   let na: [number, number];
   if (a.point) na = [a.point[0], a.point[1]];
   else {
@@ -166,7 +166,7 @@ C.add_layer_style = function (a: Args["add_layer_style"]) {
   const l = getLayer(a.layer_id), s = LAYER_STYLES[a.style], names: string[] = [], errs: string[] = [];
   if (!s) fail("BAD_ARGS", "style must be one of drop_shadow, inner_shadow, outer_glow, inner_glow, bevel_emboss, satin, color_overlay, gradient_overlay, stroke");
   let ls = group(l, "ADBE Layer Styles");
-  if (!ls) fail("BAD_ARGS", "This layer cannot have layer styles");
+  if (!ls) fail("BAD_ARGS", "This layer cannot have layer styles", "Layer styles go on solid, text, shape, footage and precomp layers");
   let g = group(ls, s[1] + "/enabled");
   for (let i = 1; i <= g.numProperties; i++) names.push(g.property(i).matchName.replace(s[1] + "/", ""));
   // check parameter names first (the style's properties exist even while it is off), so a typo changes nothing;

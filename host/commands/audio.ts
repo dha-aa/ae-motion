@@ -26,7 +26,7 @@ function amplitudeNull(audio: AVLayer, reuse: boolean): AVLayer {
     ws = c.workAreaStart, wd = c.workAreaDuration, s = Math.max(0, audio.inPoint), e = Math.min(c.duration, audio.outPoint), i, l: AVLayer;
   if (reuse) for (i = 1; i <= c.numLayers; i++) { if (c.layer(i).name === name && channelSlider(c.layer(i), 3)) return c.layer(i) as AVLayer; }
   if (!safe(function () { return audio.hasAudio === true; })) fail("BAD_ARGS", "Layer " + audio.name + " has no audio", "Pass an audio (or video with sound) layer");
-  if (e - s < c.frameDuration) fail("BAD_ARGS", "The audio layer is not inside the comp's duration");
+  if (e - s < c.frameDuration) fail("BAD_ARGS", "The audio layer is not inside the comp's duration", "Move it into the comp (shift_layers) or lengthen the comp (set_comp duration)");
   for (i = 1; i <= c.numLayers; i++) {
     l = c.layer(i) as AVLayer;
     before[l.id] = true;
@@ -149,7 +149,7 @@ C.audio_react = function (a: Args["audio_react"]) {
   vs = keySeries(channelSlider(amp, ch)!).v;
   // the quiet floor and loud ceiling of this track, so from/to span what the music actually does
   lo = quantile(vs, 0.05); hi = quantile(vs, 0.97);
-  if (hi - lo < 1e-6) fail("BAD_ARGS", "The track is (almost) silent: nothing to react to");
+  if (hi - lo < 1e-6) fail("BAD_ARGS", "The track is (almost) silent: nothing to react to", "Check the layer is not muted (set_layer audio) and its volume is up");
   ex = "// ae-motion audio\n" +
     "var a = thisComp.layer(" + JSON.stringify(amp.name) + ").effect(" + ch + ")(1), n = " + n + ", s = 0;\n" +
     "for (var i = 0; i < n; i++) s += a.valueAtTime(time - i * thisComp.frameDuration);\n" +
@@ -166,13 +166,13 @@ var SFX_PEAKS: { [path: string]: number } = {}; // file path -> seconds from the
 // The footage item for a sound file: an existing import of the same file is reused.
 function soundItem(path: string): FootageItem {
   var f = new File(path), i, it: _ItemClasses, io;
-  if (!f.exists) fail("NOT_FOUND", "Sound file not found: " + path);
+  if (!f.exists) fail("NOT_FOUND", "Sound file not found: " + path, "Check the path; paths must be inside the allowed folders (AE_MCP_ALLOWED_DIRS)");
   for (i = 1; i <= app.project.numItems; i++) {
     it = app.project.item(i);
     if (it instanceof FootageItem && safe(function () { return (it as FootageItem).file && (it as FootageItem).file!.fsName === f.fsName; })) return it;
   }
   io = new ImportOptions(f);
-  if (!io.canImportAs(ImportAsType.FOOTAGE)) fail("BAD_ARGS", "File cannot be imported: " + path);
+  if (!io.canImportAs(ImportAsType.FOOTAGE)) fail("BAD_ARGS", "File cannot be imported: " + path, "Use WAV, AIFF, MP3 or another format After Effects imports");
   io.importAs = ImportAsType.FOOTAGE;
   it = app.project.importFile(io);
   if (!(it as FootageItem).hasAudio) { it.remove(); fail("BAD_ARGS", "File has no audio: " + path); }
@@ -209,7 +209,7 @@ C.add_sfx = function (a: Args["add_sfx"]) {
   }
   if (has(a, "max_duration")) l.outPoint = Math.min(l.outPoint, (align === "peak" ? hit : l.inPoint) + a.max_duration);
   s = l.inPoint; e = l.outPoint;
-  if (fi + fo > e - s) fail("BAD_ARGS", "fade_in + fade_out is longer than the sound");
+  if (fi + fo > e - s) fail("BAD_ARGS", "fade_in + fade_out is longer than the sound", "Shorten fade_in / fade_out, or raise max_duration");
   lv = l.property("ADBE Audio Group").property("ADBE Audio Levels");
   if (fi > 0 || fo > 0) {
     lv.setValueAtTime(fi > 0 ? s + fi : s, [vol, vol]);
@@ -507,7 +507,7 @@ C.duck_music = function (a: Args["duck_music"]) {
     dips: number[][] = [], dp, dipsRemoved = 0;
   if (amount >= 0) fail("BAD_ARGS", "amount is the drop in dB and must be negative (e.g. -6)");
   if (mode !== "auto" && mode !== "span" && mode !== "loudness") fail("BAD_ARGS", "mode must be auto, span or loudness");
-  if (!safe(function () { return music.hasAudio === true; })) fail("BAD_ARGS", "The music layer has no audio");
+  if (!safe(function () { return music.hasAudio === true; })) fail("BAD_ARGS", "The music layer has no audio", "Pass the music's layer id (get_comp lists the layers)");
   // dips: a stretch of near-silence (a dramatic pause before a reveal), checked before anything changes
   if (has(a, "dips")) {
     for (i = 0; i < a.dips.length; i++) {

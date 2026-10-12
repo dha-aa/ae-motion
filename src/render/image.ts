@@ -45,7 +45,18 @@ function resize(src: Img, w: number, h: number): Img {
 /** Scale factor that fits w × h inside maxEdge on its longest side (never enlarges). */
 const fit = (w: number, h: number, maxEdge: number): number => Math.min(1, maxEdge / Math.max(w, h));
 
-/** One PNG, shrunk so its longest edge is at most maxEdge. Input that is not a decodable PNG is returned as is. */
+/**
+ * Make every pixel opaque. saveFrameToPng writes the comp's background as alpha 0 but with its colour already in RGB,
+ * and edges already blended over it (white text at 20% coverage on navy is stored as the blend, alpha 51; checked in
+ * After Effects 26.3). Shown as is, a client draws the background white, so light text on a dark comp looked
+ * invisible to the model; opaque, the image is what the comp shows.
+ */
+function opaque(img: Img): Img {
+  for (let i = 3; i < img.data.length; i += 4) img.data[i] = 255;
+  return img;
+}
+
+/** One PNG, opaque and shrunk so its longest edge is at most maxEdge. Input that is not a decodable PNG is returned as is. */
 export function shrinkPng(buf: Buffer, maxEdge: number): Buffer {
   let img: Img;
   try {
@@ -54,8 +65,7 @@ export function shrinkPng(buf: Buffer, maxEdge: number): Buffer {
     return buf;
   }
   const s = fit(img.width, img.height, maxEdge);
-  if (s === 1) return buf;
-  return encode(resize(img, Math.max(1, Math.round(img.width * s)), Math.max(1, Math.round(img.height * s))));
+  return encode(opaque(s === 1 ? img : resize(img, Math.max(1, Math.round(img.width * s)), Math.max(1, Math.round(img.height * s)))));
 }
 
 /**
@@ -63,7 +73,7 @@ export function shrinkPng(buf: Buffer, maxEdge: number): Buffer {
  * maxEdge on its longest side.
  */
 export function contactSheet(bufs: Buffer[], maxEdge: number): Buffer {
-  const imgs = bufs.map(decode);
+  const imgs = bufs.map((b) => opaque(decode(b)));
   const cols = Math.ceil(Math.sqrt(imgs.length)), rows = Math.ceil(imgs.length / cols), gap = 4;
   const fw = imgs[0].width, fh = imgs[0].height;
   const s = fit(cols * fw, rows * fh, maxEdge - gap * (cols - 1));
