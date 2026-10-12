@@ -21,7 +21,7 @@ function mApply(m: Affine, x: number, y: number): Vec2 { return [m[0] * x + m[2]
 function mApplyLinear(m: Affine, x: number, y: number): Vec2 { return [m[0] * x + m[2] * y, m[1] * x + m[3] * y]; }
 function mInvertLinear(m: Affine): Affine {
   const det = m[0] * m[3] - m[1] * m[2];
-  if (Math.abs(det) < 1e-12) fail("BAD_ARGS", "The layer or a parent has zero scale");
+  if (Math.abs(det) < 1e-12) fail("BAD_ARGS", "The layer or a parent has zero scale", "Give the layer and its parents a scale above 0 (set_property scale)");
   return [m[3] / det, -m[1] / det, -m[2] / det, m[0] / det, 0, 0];
 }
 
@@ -96,7 +96,7 @@ function moveOnScreen(l: Layer, dx: number, dy: number, t: number): void {
   let d: Vec2 = [dx, dy];
   if (l.parent) {
     const pm = toCompMatrix(l.parent, t);
-    if (!pm) fail("UNSUPPORTED", "Layer " + l.id + " has a 3D parent");
+    if (!pm) fail("UNSUPPORTED", "Layer " + l.id + " has a 3D parent", "Unparent it (set_layer parent_id null) or place it with set_3d");
     d = mApplyLinear(mInvertLinear(pm), dx, dy);
   }
   offsetPosition(l, d[0], d[1]);

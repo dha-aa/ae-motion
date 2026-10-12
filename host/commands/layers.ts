@@ -38,7 +38,7 @@ C.add_layer = function (a: Args["add_layer"]) {
   need(a, ["comp_id", "kind"]);
   var comp = getComp(a.comp_id), o = a.options || {}, kind = a.kind, dur = has(o, "duration") ? o.duration : comp.duration,
     center = o.center || [comp.width / 2, comp.height / 2], l, item, col, size, lt, styled = null, styleArgs: Obj, k, kept, out, fit: AVLayer | null = null;
-  if (o.text_style && kind !== "text") fail("BAD_ARGS", "text_style is for text layers");
+  if (o.text_style && kind !== "text") fail("BAD_ARGS", "text_style is for text layers", "Use kind: text, or leave text_style out");
   if (o.text_style && o.text_style.font) checkFont(o.text_style.font as string); // before the layer exists
   if (kind === "shape" && o.shape && o.shape.type && " rect ellipse star polygon path ".indexOf(" " + o.shape.type + " ") === -1) fail("BAD_ARGS", "shape.type must be rect, ellipse, star, polygon or path");
   if (kind === "light" && o.light_type) {
@@ -50,7 +50,7 @@ C.add_layer = function (a: Args["add_layer"]) {
   if (o.fit_to) {
     if (kind !== "shape" || (o.shape && o.shape.type && o.shape.type !== "rect")) fail("BAD_ARGS", "fit_to makes a rect shape layer (kind shape, shape type rect)");
     fit = getLayer(o.fit_to.layer_id);
-    if (fit.containingComp !== comp) fail("BAD_ARGS", "fit_to must be a layer in the same comp");
+    if (fit.containingComp !== comp) fail("BAD_ARGS", "fit_to must be a layer in the same comp", "get_comp lists the comp's layers");
     if (typeof fit.sourceRectAtTime !== "function") fail("BAD_ARGS", "fit_to needs a layer with content bounds (text, shape, footage)");
   }
   if (kind === "solid" || kind === "adjustment") {
@@ -123,13 +123,13 @@ C.set_layer = function (a: Args["set_layer"]) {
   // unlock first and lock last, so the other edits in the same call can be applied
   if (a.locked === false) l.locked = false;
   if (has(a, "name")) l.name = a.name;
-  if (has(a, "stretch")) { if (!a.stretch) fail("BAD_ARGS", "stretch cannot be 0"); l.stretch = a.stretch; }
+  if (has(a, "stretch")) { if (!a.stretch) fail("BAD_ARGS", "stretch cannot be 0", "100 is normal speed, 200 half speed, -100 reversed"); l.stretch = a.stretch; }
   if (has(a, "three_d")) l.threeDLayer = a.three_d;
   if (has(a, "shy")) l.shy = a.shy;
   if (has(a, "solo")) l.solo = a.solo;
   if (has(a, "label")) l.label = a.label;
   if (has(a, "motion_blur")) l.motionBlur = a.motion_blur;
-  if (has(a, "time_remap")) { if (!l.canSetTimeRemapEnabled) fail("BAD_ARGS", "This layer cannot use time remapping"); l.timeRemapEnabled = a.time_remap; }
+  if (has(a, "time_remap")) { if (!l.canSetTimeRemapEnabled) fail("BAD_ARGS", "This layer cannot use time remapping", "Only footage and precomp layers can be time-remapped"); l.timeRemapEnabled = a.time_remap; }
   if (has(a, "start")) l.startTime = a.start;
   if (has(a, "in")) setIn(l, a["in"]);
   if (has(a, "out")) l.outPoint = a.out;
@@ -144,7 +144,7 @@ C.set_layer = function (a: Args["set_layer"]) {
   if (has(a, "guide")) l.guideLayer = a.guide;
   if (has(a, "adjustment")) l.adjustmentLayer = a.adjustment;
   if (has(a, "effects")) l.effectsActive = a.effects;
-  if (has(a, "audio")) { try { l.audioEnabled = a.audio; } catch (e3) { fail("BAD_ARGS", "This layer has no audio"); } }
+  if (has(a, "audio")) { try { l.audioEnabled = a.audio; } catch (e3) { fail("BAD_ARGS", "This layer has no audio", "Only footage and precomp layers with sound have audio"); } }
   if (has(a, "preserve_transparency")) l.preserveTransparency = a.preserve_transparency;
   // a solid's color and size live on its source item, so every layer using that solid changes
   if (has(a, "solid_color")) l.source.mainSource.color = [a.solid_color[0], a.solid_color[1], a.solid_color[2]];
@@ -155,7 +155,7 @@ C.set_layer = function (a: Args["set_layer"]) {
   // fades last, on the final in / out points
   if (a.audio_fade) {
     fd = a.audio_fade; len = l.outPoint - l.inPoint;
-    if ((has(fd, "in") ? fd["in"]! : 0) + (has(fd, "out") ? fd.out! : 0) > len + EPS) fail("BAD_ARGS", "audio_fade in + out (" + ((fd["in"] || 0) + (fd.out || 0)) + " s) is longer than the layer (" + len + " s)");
+    if ((has(fd, "in") ? fd["in"]! : 0) + (has(fd, "out") ? fd.out! : 0) > len + EPS) fail("BAD_ARGS", "audio_fade in + out (" + ((fd["in"] || 0) + (fd.out || 0)) + " s) is longer than the layer (" + len + " s)", "Shorten the fades, or lengthen the layer (set_layer out)");
     if (has(fd, "in") && fd["in"]! > 0) replaced += audioFade(l as AVLayer, l.inPoint, fd["in"]!, false);
     if (has(fd, "out") && fd.out! > 0) replaced += audioFade(l as AVLayer, l.outPoint - fd.out!, fd.out!, true);
   }
@@ -185,10 +185,10 @@ C.link_layers = function (a: Args["link_layers"]) {
   // validate everything before changing anything
   if (byId) {
     par = getLayer(a.parent_id as number);
-    if (par.containingComp.id !== comp!.id) fail("BAD_ARGS", "The parent is in a different composition");
+    if (par.containingComp.id !== comp!.id) fail("BAD_ARGS", "The parent is in a different composition", "Parent to a layer in the same comp (get_comp lists them)");
     if (seen[par.id]) fail("BAD_ARGS", "A layer cannot be its own parent");
     for (anc = par.parent; anc; anc = anc.parent) {
-      if (seen[anc.id]) fail("BAD_ARGS", "That would link " + anc.name + " to its own child " + par.name);
+      if (seen[anc.id]) fail("BAD_ARGS", "That would link " + anc.name + " to its own child " + par.name, "Unlink the child first (link_layers parent_id null)");
     }
   }
   if (nn) {
@@ -223,7 +223,7 @@ C.replace_source = function (a: Args["replace_source"]) {
   var l = getLayer(a.layer_id), it = getItem(a.item_id);
   if (!l.source || l instanceof TextLayer || l instanceof ShapeLayer) fail("BAD_ARGS", "Layer " + l.id + " has no source to replace (only footage, precomp, solid and null layers do)");
   if (!(it instanceof FootageItem || it instanceof CompItem)) fail("BAD_ARGS", "Item " + it.id + " is not footage or a composition");
-  if (it === l.containingComp) fail("BAD_ARGS", "A comp cannot contain itself");
+  if (it === l.containingComp) fail("BAD_ARGS", "A comp cannot contain itself", "Pick another comp");
   try { l.replaceSource(it, a.fix_expressions !== false); }
   catch (e: any) { fail("BAD_ARGS", "After Effects refused the replacement: " + (e.message || e), "A precomp cannot contain the comp it is placed in"); }
   return layerRef(l);

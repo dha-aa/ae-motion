@@ -122,7 +122,7 @@ C.animate = function (a: Args["animate"]) {
   // check every property before changing anything: another expression on it would fight the keys
   for (i = 0; i < order.length; i++) {
     l = order[i];
-    if (!l.property("ADBE Transform Group")) fail("BAD_ARGS", "Layer " + l.id + " has no transform");
+    if (!l.property("ADBE Transform Group")) fail("BAD_ARGS", "Layer " + l.id + " has no transform", "For cameras use camera_move; for lights set_light");
     plan = movePlan(l, move, a.direction || (move === "drop" ? "down" : "up"), has(a, "distance") ? a.distance : (move === "drop" ? c.height * 0.25 : c.height * 0.08));
     for (j = 0; j < plan.length; j++) {
       p = moveProp(l, plan[j][0], plan[j][1]);
@@ -130,7 +130,7 @@ C.animate = function (a: Args["animate"]) {
     }
     t0 = has(a, "time") ? a.time : (phase === "in" ? l.inPoint : l.outPoint - dur);
     t0 = snapT(c, t0 + i * (a.stagger || 0));
-    if (t0 < 0) fail("BAD_ARGS", "The move would start before 0 s");
+    if (t0 < 0) fail("BAD_ARGS", "The move would start before 0 s", "Pass a later time or a shorter duration");
     list.push({ l: l, plan: plan, t0: t0 });
   }
   for (i = 0; i < list.length; i++) {
@@ -156,7 +156,7 @@ function animateContinuous(a: Args["animate"], ls: AVLayer[], c: CompItem): Obj 
     if (t1 - t0 < 0.25) fail("BAD_ARGS", "Layer " + l.id + ": less than 0.25 s left for the " + a.move + " (from " + t0 + " s)", "Pass time and duration");
     if (a.move === "push") {
       p = tp(l, "ADBE Scale");
-      if (springList(p) === null) fail("BAD_ARGS", "Layer " + l.id + ": Scale has an expression");
+      if (springList(p) === null) fail("BAD_ARGS", "Layer " + l.id + ": Scale has an expression", "Clear it with set_expression and an empty expression, or pick another move");
       keyContinuous(p, t0, t1, function (v: number[]) { var o: number[] = [], k; for (k = 0; k < v.length; k++) o.push(v[k] * (1 + amt)); return o; }, curve, fd);
     } else {
       p = tp(l, "ADBE Position");
@@ -164,7 +164,7 @@ function animateContinuous(a: Args["animate"], ls: AVLayer[], c: CompItem): Obj 
         if (dx) keyContinuous(tp(l, "ADBE Position_0"), t0, t1, function (v: number) { return v + dx; }, curve, fd);
         if (dy) keyContinuous(tp(l, "ADBE Position_1"), t0, t1, function (v: number) { return v + dy; }, curve, fd);
       } else {
-        if (springList(p) === null) fail("BAD_ARGS", "Layer " + l.id + ": Position has an expression");
+        if (springList(p) === null) fail("BAD_ARGS", "Layer " + l.id + ": Position has an expression", "Clear it with set_expression and an empty expression, or pick another move");
         keyContinuous(p, t0, t1, function (v: number[]) { var o = copyArr(v); o[0] += dx; o[1] += dy; return o; }, curve, fd);
       }
     }
@@ -209,7 +209,7 @@ C.text_reveal = function (a: Args["text_reveal"]) {
   need(a, ["layer_id"]);
   var l = getLayer(a.layer_id), c = l.containingComp, style = a.style || "rise", by = a.by || "chars", phase = a.phase || "in",
     curve = a.ease || (style === "pop" ? "spring" : (phase === "in" ? "snappy" : "accelerate")), d, st, t0, n, an, props, sel: any, dist, r, m, pad, ms, amount, end;
-  if (!(l instanceof TextLayer)) fail("BAD_ARGS", "Layer " + l.id + " is not a text layer");
+  if (!(l instanceof TextLayer)) fail("BAD_ARGS", "Layer " + l.id + " is not a text layer", "text_reveal works on text layers; animate moves any layer");
   if (!REVEAL_BASED[by]) fail("BAD_ARGS", "by must be chars, words or lines");
   if (!REVEAL_CURVES[curve]) fail("BAD_ARGS", "ease must be snappy, smooth, spring, bounce or linear");
   if (" rise drop fade pop blur typewriter ".indexOf(" " + style + " ") === -1) fail("BAD_ARGS", "style must be rise, drop, fade, pop, blur or typewriter");
@@ -218,7 +218,7 @@ C.text_reveal = function (a: Args["text_reveal"]) {
   st = has(a, "stagger") ? a.stagger : (style === "typewriter" ? 0.05 : { chars: 0.03, words: 0.08, lines: 0.15 }[by]);
   n = unitCount(l.property("ADBE Text Properties").property("ADBE Text Document").value.text, by);
   t0 = has(a, "time") ? a.time : (phase === "in" ? l.inPoint : l.outPoint - d - Math.max(0, n - 1) * st);
-  if (t0 < 0) fail("BAD_ARGS", "The reveal would start before 0 s");
+  if (t0 < 0) fail("BAD_ARGS", "The reveal would start before 0 s", "Pass a later time, or a shorter duration or stagger");
   dist = has(a, "distance") ? a.distance : Math.round(c.height * 0.05);
   an = l.property("ADBE Text Properties").property("ADBE Text Animators").addProperty("ADBE Text Animator");
   an.name = "Reveal (" + style + ")";

@@ -68,7 +68,7 @@ function checkShapeSpec(s: LayerShapeSpec): void {
   if (has(s, "line_cap") && !LINE_CAPS[s.line_cap!]) fail("BAD_ARGS", "line_cap must be butt, round or square");
   if (has(s, "line_join") && !LINE_JOINS[s.line_join!]) fail("BAD_ARGS", "line_join must be miter, round or bevel");
   if (has(s, "dashes") && (!(s.dashes instanceof Array) || s.dashes.length < 1 || s.dashes.length > 6)) fail("BAD_ARGS", "dashes must be 1 to 6 numbers: dash, gap, dash, gap and so on");
-  if ((has(s, "dashes") || has(s, "line_cap") || has(s, "line_join") || has(s, "stroke_width") || has(s, "stroke_opacity")) && !s.stroke) fail("BAD_ARGS", "Stroke options need a stroke color");
+  if ((has(s, "dashes") || has(s, "line_cap") || has(s, "line_join") || has(s, "stroke_width") || has(s, "stroke_opacity")) && !s.stroke) fail("BAD_ARGS", "Stroke options need a stroke color", "Add stroke_color (and stroke_width)");
 }
 
 // Add one shape group (rect | ellipse | star | polygon | path) with optional fill and stroke to a shape layer and

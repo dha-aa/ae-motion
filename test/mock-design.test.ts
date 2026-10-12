@@ -228,7 +228,9 @@ t("set_anchor moves the anchor to the content center without moving the layer", 
 t("set_layer switches and solid color / size", () => {
   const w = makeWorld();
   const s = w.make(null, { solid: true });
-  ok(w.call("set_layer", { layer_id: s.id, guide: true, adjustment: true, effects: false, audio: false, preserve_transparency: true, solid_color: [0.1, 0.2, 0.3], solid_size: [700, 400] }));
+  const r = ok(w.call("set_layer", { layer_id: s.id, guide: true, adjustment: true, effects: false, audio: false, preserve_transparency: true, solid_color: [0.1, 0.2, 0.3], solid_size: [700, 400] }));
+  // every field set is read back (these were left out of the result)
+  assert.deepEqual(plain({ ...r, id: undefined, index: undefined, name: undefined }), { guide: true, adjustment: true, effects: false, audio: false, preserve_transparency: true, solid_color: [0.1, 0.2, 0.3], solid_size: [700, 400] });
   assert.deepEqual([s.guideLayer, s.adjustmentLayer, s.effectsActive, s.audioEnabled, s.preserveTransparency], [true, true, false, false, true]);
   assert.deepEqual(plain(s.source.mainSource.color), [0.1, 0.2, 0.3]);
   assert.deepEqual([s.source.width, s.source.height], [700, 400]);

@@ -172,8 +172,8 @@ C.copy_animation = function (a: Args["copy_animation"]) {
     if (l.locked) fail("BAD_ARGS", "Layer " + l.id + " is locked", "Unlock it with set_layer locked:false");
     dst = resolvePath(l, toPath);
     if (dst === src) fail("BAD_ARGS", "A layer cannot copy onto its own property");
-    if (dst.propertyValueType !== src.propertyValueType) fail("BAD_ARGS", "Layer " + l.id + ": the target property has a different value type (" + vt(dst) + " vs " + vt(src) + ")");
-    if (src.numKeys && src.keyTime(1) + dt + i * step < 0) fail("BAD_ARGS", "The offset would move keys before 0 s");
+    if (dst.propertyValueType !== src.propertyValueType) fail("BAD_ARGS", "Layer " + l.id + ": the target property has a different value type (" + vt(dst) + " vs " + vt(src) + ")", "Pick a to_path of the same type (list_properties shows value_type)");
+    if (src.numKeys && src.keyTime(1) + dt + i * step < 0) fail("BAD_ARGS", "The offset would move keys before 0 s", "Use a later offset_seconds");
     targets.push({ layer: l, prop: dst });
   }
   for (i = 0; i < targets.length; i++) {
@@ -234,7 +234,7 @@ function setParams(owner: PropertyBase, params: { [name: string]: any }, what: s
 C.apply_effect = function (a: Args["apply_effect"]) {
   need(a, ["layer_id", "match_name"]);
   var l = getLayer(a.layer_id), parade = l.property("ADBE Effect Parade"), fx;
-  if (!parade) fail("BAD_ARGS", "Layer does not support effects");
+  if (!parade) fail("BAD_ARGS", "Layer does not support effects", "Effects go on solid, footage, text, shape, adjustment and precomp layers");
   if (!parade.canAddProperty(a.match_name)) fail("NOT_FOUND", "Unknown effect match name: " + a.match_name, "Use find_effects");
   fx = parade.addProperty(a.match_name);
   if (a.name) fx.name = a.name;
@@ -269,7 +269,7 @@ C.stagger = function (a: Args["stagger"]) {
   if (a.order === "reverse") ids.reverse();
   for (i = 0; i < ids.length; i++) {
     p = resolvePath(getLayer(ids[i]), a.path);
-    if (!p.numKeys) fail("BAD_ARGS", "Layer " + ids[i] + " has no keyframes on that property");
+    if (!p.numKeys) fail("BAD_ARGS", "Layer " + ids[i] + " has no keyframes on that property", "stagger offsets existing keys: animate the property first (set_keyframes or animate)");
     props.push(p);
   }
   for (i = 1; i < props.length; i++) shiftKeys(props[i], i * a.offset_seconds);
@@ -280,7 +280,7 @@ C.add_shape_modifier = function (a: Args["add_shape_modifier"]) {
   need(a, ["layer_id", "modifier"]);
   var l = getLayer(a.layer_id), mn = MODIFIERS[a.modifier], gi = has(a, "group_index") ? a.group_index : 1, root, m, props = [], i;
   if (!mn) fail("BAD_ARGS", "modifier must be trim_paths, repeater or round_corners");
-  if (!(l instanceof ShapeLayer)) fail("BAD_ARGS", "Layer is not a shape layer");
+  if (!(l instanceof ShapeLayer)) fail("BAD_ARGS", "Layer is not a shape layer", "Shape modifiers go on shape layers (add_layer kind shape)");
   root = l.property("ADBE Root Vectors Group");
   if (gi < 1 || gi > root.numProperties) fail("NOT_FOUND", "Shape group " + gi + " not found", "Add a shape with add_layer first");
   m = root.property(gi).property("ADBE Vectors Group").addProperty(mn);

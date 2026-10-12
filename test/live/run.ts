@@ -184,6 +184,7 @@ check("import_footage: a sequence conforms to fps into a folder; a still refuses
     expect(seq.fps === 20 && near(seq.duration, 1) && typeof seq.folder_id === "number", "10 frames at 20 fps looped twice = 1 s, in a folder", seq);
     const still = await call("import_footage", { path: path.join(dir, "still", "logo.png"), fps: 12, folder: "Live imports" });
     expect(still.folder_id === seq.folder_id && still.skipped?.[0]?.field === "fps", "still: same folder, fps skipped", still);
+    expect((await callError("import_footage", { path: path.join(dir, "still", "logo.png"), as: "sequence" })).code === "BAD_ARGS", "an unnumbered file is not taken as a sequence");
     const moved = await call("set_item", { item_id: seq.id, name: "Seq", folder: null, label: 2 });
     expect(moved.name === "Seq" && moved.folder_id === undefined && moved.label === 2, "renamed, at the top level", moved);
     expect((await callError("set_item", { item_id: comp, fps: 24 })).code === "BAD_ARGS", "fps on a comp is refused");
@@ -209,6 +210,35 @@ check("audio: duck_music dips, audio_fade and volume keys all live under the duc
     const k = await call("get_keyframes", { layer_id: m, path: "volume" });
     expect(k.num_keys === 11 && /^\/\/ ae-motion duck/.test(k.expression ?? ""), "5 + 5 fade keys and the new one, under the duck expression", k);
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+check("blend modes and adjustment layers render as defined; previews show the comp's background, opaque", async () => {
+  const vc = await newComp("Visual", { width: 640, height: 360, bg_color: [0.05, 0.06, 0.09] });
+  const add = async (name: string, color: number[], x: number) => (await call("add_layer", { comp_id: vc, kind: "solid", options: { name, color, size: [300, 200], position: [x, 180] } })).id;
+  await add("Blue", [0, 0, 1], 260);
+  const red = await add("Red", [1, 0, 0], 380);
+  const shot = async () => {
+    const r = await c.call("preview_frame", { comp_id: vc, time: 0.5, size: 640 });
+    const p = PNG.sync.read(Buffer.from(r.imageData[0], "base64"));
+    return (x: number, y: number): number[] => [...p.data.subarray((y * p.width + x) * 4, (y * p.width + x) * 4 + 4)];
+  };
+  let px = await shot();
+  expect(JSON.stringify(px(20, 20)) === "[13,15,23,255]", "the comp background, opaque (it was alpha 0: shown white)", px(20, 20));
+  // red over blue where they overlap (x 230-410)
+  const want: Record<string, number[]> = { NORMAL: [255, 0, 0], ADD: [255, 0, 255], MULTIPLY: [0, 0, 0], SCREEN: [255, 0, 255], DIFFERENCE: [255, 0, 255] };
+  for (const [mode, rgb] of Object.entries(want)) {
+    const r = await call("set_layer", { layer_id: red, blend_mode: mode });
+    px = await shot();
+    expect(r.blend_mode === mode && JSON.stringify(px(320, 180).slice(0, 3)) === JSON.stringify(rgb), mode + " overlap " + JSON.stringify(rgb), [r.blend_mode, px(320, 180)]);
+  }
+  await call("set_layer", { layer_id: red, blend_mode: "NORMAL" });
+  const adj = (await call("add_layer", { comp_id: vc, kind: "adjustment", options: { name: "Adj" } })).id;
+  await call("apply_effect", { layer_id: adj, match_name: "ADBE Invert" });
+  px = await shot();
+  expect(JSON.stringify(px(500, 180).slice(0, 3)) === "[0,255,255]" && JSON.stringify(px(20, 20).slice(0, 3)) === "[13,15,23]", "an adjustment layer inverts the layers under it (red -> cyan), not the empty background", [px(500, 180), px(20, 20)]);
+  const off = await call("set_layer", { layer_id: adj, adjustment: false });
+  px = await shot();
+  expect(off.adjustment === false && JSON.stringify(px(20, 20).slice(0, 3)) === "[0,0,0]", "adjustment off: a plain (white) solid, inverted to black; read back", [off, px(20, 20)]);
 });
 
 check("effects apply with parameters and can be removed", async () => {

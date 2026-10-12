@@ -95,7 +95,13 @@ function makeWorld({ startShiftsInOut = true, inKeepsDuration = true } = {}) {
       importFile(io) {
         const p = io.file.path, layered = /\.(psd|ai)$/.test(p);
         let it;
-        if (io.importAs === ImportAsType.COMP || io.importAs === ImportAsType.COMP_CROPPED_LAYERS) { it = new CompItem(p.split("/").pop()); it.croppedLayers = io.importAs === ImportAsType.COMP_CROPPED_LAYERS; }
+        if (io.importAs === ImportAsType.COMP || io.importAs === ImportAsType.COMP_CROPPED_LAYERS) {
+          // as After Effects: a comp, plus a "<name> Layers" folder holding one footage item per layer
+          it = new CompItem(p.split("/").pop()); it.croppedLayers = io.importAs === ImportAsType.COMP_CROPPED_LAYERS;
+          const lf = new FolderItem(); lf.name = it.name + " Layers"; world.items.push(lf);
+          const src = new FootageItem(p, { still: true }); src.parentFolder = lf; world.items.push(src);
+          it.addLayer("Layer 1", 0, 10).source = src;
+        }
         else it = new FootageItem(p, { still: !io.sequence && /\.(png|jpg|psd)$/.test(p), alpha: /\.png$/.test(p) || layered });
         world.items.push(it); return it;
       },
@@ -282,7 +288,10 @@ const res = (r) => { ok(r); return r.result; };
 
 t("import_footage: several files into a folder, sequence fps and loop, stills skipped, all checked first", () => {
   const w = makeWorld();
-  let r = res(w.call("import_footage", { paths: ["/m/seq/f_001.png", "/m/still.png"], as: "sequence", fps: 20, loop: 2, folder: "Imports" }));
+  const none = w.world.items.length;
+  fails(w.call("import_footage", { paths: ["/m/seq/f_001.png", "/m/still.png"], as: "sequence" }), "BAD_ARGS"); // AE would take the whole folder
+  assert.equal(w.world.items.length, none, "an unnumbered file is refused before anything is imported");
+  let r = res(w.call("import_footage", { paths: ["/m/seq/f_001.png", "/m/seq2/g_0001.png"], as: "sequence", fps: 20, loop: 2, folder: "Imports" }));
   const folder = w.world.items.find((i) => i instanceof w.FolderItem && i.name === "Imports");
   assert.ok(folder, "folder created");
   assert.equal(r.items.length, 2); assert.equal(r.items[0].fps, 20); near(r.items[0].duration, 1, "10 frames at 20 fps, looped twice");
@@ -294,11 +303,13 @@ t("import_footage: several files into a folder, sequence fps and loop, stills sk
   assert.equal(w.world.items.filter((i) => i instanceof w.FolderItem).length, 1, "the folder is reused by name");
   const before = w.world.items.length;
   const e = w.call("import_footage", { paths: ["/m/a.mov", "/m/missing.mov"] }); fails(e, "NOT_FOUND");
-  assert.match(e.error.message, /missing\.mov/); assert.equal(w.world.items.length, before, "nothing imported");
+  assert.match(e.error.message, /missing\.mov/); assert.match(e.error.hint, /AE_MCP_ALLOWED_DIRS/, "a missing file says where files may be"); assert.equal(w.world.items.length, before, "nothing imported");
   fails(w.call("import_footage", { paths: ["/m/a.mov", "/m/b.mov"], as: "comp" }), "BAD_ARGS");
   assert.equal(w.world.items.length, before, "nothing imported when one cannot be a comp");
-  r = res(w.call("import_footage", { path: "/m/board.psd", as: "comp_cropped" }));
-  assert.equal(r.type, "comp");
+  r = res(w.call("import_footage", { path: "/m/board.psd", as: "comp_cropped", folder: "Boards" }));
+  assert.equal(r.type, "comp"); assert.match(r.note, /set_comp duration/);
+  const boards = w.world.items.find((i) => i instanceof w.FolderItem && i.name === "Boards");
+  assert.equal(w.world.items.find((i) => i.name === "board.psd Layers").parentFolder, boards, "the layers folder goes along");
   fails(w.call("import_footage", { paths: ["/m/a.mov"], name: "x" }), "BAD_ARGS");
   fails(w.call("import_footage", { path: "/m/board.psd", as: "comp", fps: 24 }), "BAD_ARGS");
   fails(w.call("import_footage", {}), "BAD_ARGS");

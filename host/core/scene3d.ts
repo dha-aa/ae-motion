@@ -117,7 +117,7 @@ function axisDistance(l: Layer, other: Layer, t: number): number {
   } else {
     r = vlen(d);
   }
-  if (!(r > 0)) fail("BAD_ARGS", "That layer is behind the camera");
+  if (!(r > 0)) fail("BAD_ARGS", "That layer is behind the camera", "Pick a layer in front of the camera, or move the camera (camera_move)");
   return r;
 }
 

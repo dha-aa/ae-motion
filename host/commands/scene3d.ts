@@ -136,7 +136,7 @@ C.camera_move = function (a: Args["camera_move"]) {
     if (has(a, "factor")) { if (!(a.factor > 0)) fail("BAD_ARGS", "factor must be greater than 0"); z1 = d * a.factor; }
     else if (has(a, "distance")) z1 = d - a.distance;
     else fail("BAD_ARGS", "dolly needs distance (px toward the point of interest) or factor (new distance as a multiple of the current one)");
-    if (z1 < 1) fail("BAD_ARGS", "The dolly would reach the point of interest (it is " + Math.round(d) + " px away)");
+    if (z1 < 1) fail("BAD_ARGS", "The dolly would reach the point of interest (it is " + Math.round(d) + " px away)", "Use a shorter distance, or a factor");
     planPos = [{ t: t0, v: st.P }, { t: t1, v: vsub(st.T, vmul(vnorm(f), z1)) }];
   } else if (type === "truck" || type === "pedestal") {
     need(a, ["distance"]); needTwoNode(l); st = stateAt(l, t0);
@@ -162,7 +162,7 @@ C.camera_move = function (a: Args["camera_move"]) {
     deg = has(a, "degrees") ? a.degrees : 0; vdeg = has(a, "vertical_degrees") ? a.vertical_degrees : 0;
     if (deg === 0 && vdeg === 0) fail("BAD_ARGS", "orbit needs degrees (left/right) or vertical_degrees (up/down)");
     target = has(a, "target") ? v3(a.target) : st.T; v = vsub(st.P, target);
-    if (vlen(v) < 1) fail("BAD_ARGS", "The camera is at the orbit target");
+    if (vlen(v) < 1) fail("BAD_ARGS", "The camera is at the orbit target", "Move the camera or its target apart first (set_camera)");
     n = sampleCount(Math.max(Math.abs(deg), Math.abs(vdeg)), a.step_degrees); planPos = []; posSampled = true;
     for (i = 0; i <= n; i++) {
       u = i / n; e = easeU(easing, u);
@@ -293,7 +293,7 @@ C.camera_rig = function (a: Args["camera_rig"]) {
         if (a.delete_controls !== false) ctrl.remove();
       }
     }
-    if (!info.controls.length) fail("BAD_ARGS", "This camera has no rig");
+    if (!info.controls.length) fail("BAD_ARGS", "This camera has no rig", "Create one with camera_rig action: create");
     info.controls_deleted = a.delete_controls !== false;
     return info;
   }
@@ -347,7 +347,7 @@ C.set_light = function (a: Args["set_light"]) {
     l.lightType = (LightType as any)[lt];
   }
   g = l.property("ADBE Light Options Group");
-  if ((has(a, "cone_angle") || has(a, "cone_feather")) && l.lightType !== LightType.SPOT) fail("BAD_ARGS", "cone_angle and cone_feather need a spot light");
+  if ((has(a, "cone_angle") || has(a, "cone_feather")) && l.lightType !== LightType.SPOT) fail("BAD_ARGS", "cone_angle and cone_feather need a spot light", "Set light_type: spot in the same call");
   if (has(a, "intensity")) setAt(g.property("ADBE Light Intensity"), a.intensity, t);
   if (a.color) setAt(g.property("ADBE Light Color"), rgba(a.color), t);
   if (has(a, "cone_angle")) setAt(g.property("ADBE Light Cone Angle"), a.cone_angle, t);

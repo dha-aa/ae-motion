@@ -2,6 +2,18 @@
 
 All notable changes. Versions follow [semantic versioning](https://semver.org); each release is a git tag `vX.Y.Z`, which is what the update check looks for.
 
+## Unreleased
+
+### Fixed
+- `preview_frame` images show the comp's background in its own colour. After Effects writes the background as transparent pixels, which clients drew white, so light text on a dark comp looked invisible or washed out and a model could "fix" a design that was fine. The returned image is now opaque and matches the comp exactly (the edges were already blended).
+- `set_layer` reads back every field it sets: `adjustment`, `guide`, `effects`, `audio`, `quality`, `sampling`, `collapse`, `time_remap`, `frame_blending`, `auto_orient`, `separate_dimensions`, `preserve_transparency`, `solid_color` and `solid_size` were left out of its result.
+- `import_footage` `as: sequence` refuses a file whose name has no frame number. After Effects took every image in that folder as one sequence named after the folder.
+- A layered PSD or Illustrator comp import says its duration comes from After Effects' still-footage preference (it was 102.9 s), and its `<name> Layers` folder moves into `folder` with the comp.
+- About 50 errors now say what to do next (a missing file names the allowed folders, a move starting before 0 s says to start later, stagger on a property with no keys says to animate it first, and so on).
+
+### Verified
+- Blend modes and adjustment layers, from preview pixels in After Effects 26.3, now part of the live tests.
+
 ## 2.20.0 — 2026-10-12
 
 ### Added

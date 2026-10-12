@@ -65,8 +65,26 @@ var LAYER_FIELDS: { [field: string]: (l: AVLayer) => any } = {
   out: function (l) { return l.outPoint; }, stretch: function (l) { return l.stretch; }, parent_id: function (l) { return l.parent ? l.parent.id : null; },
   enabled: function (l) { return l.enabled; }, locked: function (l) { return l.locked; }, shy: function (l) { return l.shy; },
   solo: function (l) { return l.solo; }, label: function (l) { return l.label; }, three_d: function (l) { return l.threeDLayer; },
-  blend_mode: function (l) { return blendModeName(l.blendingMode); }, motion_blur: function (l) { return l.motionBlur; }
+  blend_mode: function (l) { return blendModeName(l.blendingMode); }, motion_blur: function (l) { return l.motionBlur; },
+  // the rest of set_layer's fields, so every field it sets is read back (they were left out of its result)
+  time_remap: function (l) { return l.timeRemapEnabled; }, separate_dimensions: function (l) { return tp(l, "ADBE Position").dimensionsSeparated; },
+  auto_orient: function (l) { return l.autoOrient === AutoOrientType.ALONG_PATH ? "path" : "off"; },
+  frame_blending: function (l) { return enumName(FRAMEBLEND, FrameBlendingType, l.frameBlendingType); },
+  quality: function (l) { return enumName(QUALITY, LayerQuality, l.quality); },
+  sampling: function (l) { return l.samplingQuality === LayerSamplingQuality.BICUBIC ? "bicubic" : "bilinear"; },
+  collapse: function (l) { return l.collapseTransformation; }, guide: function (l) { return l.guideLayer; },
+  adjustment: function (l) { return l.adjustmentLayer; }, effects: function (l) { return l.effectsActive; }, audio: function (l) { return l.audioEnabled; },
+  preserve_transparency: function (l) { return l.preserveTransparency; },
+  solid_color: function (l) { var c = (l.source as any).mainSource.color; return [c[0], c[1], c[2]]; },
+  solid_size: function (l) { return [l.source.width, l.source.height]; }
 };
+
+// The tool's name for an After Effects enum value, from a tool name -> member name table (QUALITY, FRAMEBLEND).
+function enumName(table: { [name: string]: string }, E: any, v: number): string | null {
+  var k: string;
+  for (k in table) { if (table.hasOwnProperty(k) && E[table[k]] === v) return k; }
+  return null;
+}
 
 // layerRef plus the layer fields named in args, read back (set_layer). Changing any timing field reports all three
 // (setting in moves out, and so on).

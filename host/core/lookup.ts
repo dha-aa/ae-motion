@@ -23,7 +23,7 @@ function getItem(id: number): _ItemClasses {
 
 function getComp(id: number): CompItem {
   var it = getItem(id);
-  if (!(it instanceof CompItem)) fail("BAD_ARGS", "Item " + id + " is not a composition");
+  if (!(it instanceof CompItem)) fail("BAD_ARGS", "Item " + id + " is not a composition", "get_project with type: comp lists the comp ids");
   return it as CompItem;
 }
 
@@ -60,7 +60,7 @@ function pickLayers(ids: number[], comp?: CompItem): AVLayer[] {
   if (!(ids instanceof Array) || !ids.length) fail("BAD_ARGS", "layer_ids must be a non-empty array");
   for (i = 0; i < ids.length; i++) {
     l = getLayer(ids[i]);
-    if (comp && l.containingComp.id !== comp.id) fail("BAD_ARGS", "Layer " + ids[i] + " is not in comp " + comp.id);
+    if (comp && l.containingComp.id !== comp.id) fail("BAD_ARGS", "Layer " + ids[i] + " is not in comp " + comp.id, "get_comp lists the comp's layers");
     out.push(l);
   }
   return out;
@@ -69,7 +69,7 @@ function pickLayers(ids: number[], comp?: CompItem): AVLayer[] {
 // Return the comp shared by all layers, or fail.
 function sameComp(layers: Layer[]): CompItem {
   var comp = layers[0].containingComp, i;
-  for (i = 1; i < layers.length; i++) if (layers[i].containingComp.id !== comp.id) fail("BAD_ARGS", "All layers must be in the same composition");
+  for (i = 1; i < layers.length; i++) if (layers[i].containingComp.id !== comp.id) fail("BAD_ARGS", "All layers must be in the same composition", "Make one call per comp");
   return comp;
 }
 

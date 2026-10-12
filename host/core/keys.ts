@@ -247,7 +247,7 @@ function easeList(arr: KeyframeEase[]): { speed: number; influence: number }[] {
 // Set a static value (time null/undefined) or a keyframe at time.
 function setAt(p: Prop, v: any, t?: number | null): void {
   if (t !== null && t !== undefined) {
-    if (!p.canVaryOverTime) fail("BAD_ARGS", "Property is not keyframable");
+    if (!p.canVaryOverTime) fail("BAD_ARGS", "Property is not keyframable", "Set it with set_property (no time); list_properties shows which properties take keys");
     p.setValueAtTime(t, v);
   } else {
     if (p.numKeys > 0) fail("BAD_ARGS", "Property is animated; pass time to set a keyframe", "Use camera_move or set_keyframes to change animation");
