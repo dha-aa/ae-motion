@@ -133,6 +133,8 @@ export class ToolRegistry {
   readonly serverTools = new Map<string, ServerSpec>();
   /** Every tool registered so far, in order (load_tools reports what it added). */
   readonly names: string[] = [];
+  /** Each tool's top-level argument names, for "did you mean" hints on unknown keys (toolInputErrors). */
+  readonly argNames = new Map<string, string[]>();
 
   constructor(
     private readonly server: McpServer,
@@ -151,6 +153,7 @@ export class ToolRegistry {
       return out;
     };
     this.names.push(name);
+    this.argNames.set(name, Object.keys(shape));
     const config = { title: opts.title ?? titleFromName(name), description, inputSchema: z.strictObject(shape), annotations: annotationsFor(opts) };
     if (!this.bridgedTools.has(name)) this.serverTools.set(name, { schema: config.inputSchema, run: run as ServerSpec["run"] });
     // The SDK's generic callback type does not line up with zod's inferred output type; the shape is the same.
@@ -230,7 +233,7 @@ export function slimSchema(root: Record<string, unknown>): Record<string, unknow
  * schema, and no "execution" block (task support, unused here). The SDK builds tools/list itself, so this wraps its
  * handler; if the SDK's internals change, it does nothing (test/static-checks.ts fails if "$schema" comes back).
  */
-type CallHandler = (request: { params: { name: string } }, extra: unknown) => Promise<CallToolResult>;
+type CallHandler = (request: { params: { name: string; arguments?: Record<string, unknown> } }, extra: unknown) => Promise<CallToolResult>;
 const INPUT_ERROR = /^MCP error -32602: Input validation error: Invalid arguments for tool \S+: /;
 
 /**
@@ -238,7 +241,36 @@ const INPUT_ERROR = /^MCP error -32602: Input validation error: Invalid argument
  * its own words ("MCP error -32602: Input validation error: ..."), without a hint, before any tool handler runs. This
  * rewrites it as {error: {code: BAD_ARGS, message, hint}} like every other error, and counts it in the token meter.
  */
-export function toolInputErrors(server: McpServer): void {
+// Argument names a model mixes up across tools; a key in one group suggests the tool's own name from it.
+const SAME_ARG: string[][] = [
+  ["stagger", "stagger_seconds", "offset_seconds", "offset", "delay"],
+  ["layer_ids", "layers", "ids"], ["layer_id", "layer", "id"], ["comp_id", "comp"], ["item_id", "item"],
+  ["path", "property", "prop"], ["color", "colour", "fill_color"], ["size", "font_size"], ["duration", "length"],
+  ["expression", "expr"], ["text", "content"], ["time", "t", "at"],
+];
+
+function editDistance(a: string, b: string): number {
+  const d = Array.from({ length: a.length + 1 }, (_, i) => [i, ...Array<number>(b.length).fill(0)]);
+  for (let j = 1; j <= b.length; j++) d[0][j] = j;
+  for (let i = 1; i <= a.length; i++) {
+    for (let j = 1; j <= b.length; j++) d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+  }
+  return d[a.length][b.length];
+}
+
+/** The tool's argument an unknown key most likely meant: a known synonym, else a near spelling; only keys not passed. */
+export function suggestArg(key: string, valid: string[], passed: string[]): string | undefined {
+  const free = valid.filter((v) => !passed.includes(v));
+  const group = SAME_ARG.find((g) => g.includes(key));
+  const closest = (list: string[]): string | undefined => list.reduce<string | undefined>((b, v) => (b === undefined || editDistance(key, v) < editDistance(key, b) ? v : b), undefined);
+  // a synonym the tool has (the closest one when it has several: copy_animation has offset_ and stagger_seconds)
+  const syn = group && closest(free.filter((v) => group.includes(v)));
+  if (syn) return syn;
+  const near = closest(free);
+  return near !== undefined && editDistance(key, near) <= Math.max(2, Math.floor(near.length / 3)) ? near : undefined;
+}
+
+export function toolInputErrors(server: McpServer, argNames?: Map<string, string[]>): void {
   const handlers = (server.server as unknown as { _requestHandlers?: Map<string, CallHandler> })._requestHandlers;
   const original = handlers?.get("tools/call");
   if (!handlers || !original) return;
@@ -246,7 +278,14 @@ export function toolInputErrors(server: McpServer): void {
     const res = await original(request, extra);
     const text = res.isError && res.content?.[0]?.type === "text" ? res.content[0].text : "";
     if (!INPUT_ERROR.test(text)) return res;
-    const issues = text.replace(INPUT_ERROR, "").split("\n").map((x) => x.trim()).filter(Boolean).join("; ");
+    const valid = argNames?.get(request.params.name) ?? [], passed = Object.keys(request.params.arguments ?? {});
+    const issues = text.replace(INPUT_ERROR, "").split("\n").map((x) => x.trim()).filter(Boolean)
+      // a top-level unknown key gets the likely intended name (nested ones carry an "at" path and are left as they are)
+      .map((x) => (/ at /.test(x) ? x : x.replace(/^Unrecognized keys?: (.+)$/, (line, list: string) => {
+        const hints = [...list.matchAll(/"([^"]+)"/g)].map((m) => [m[1], suggestArg(m[1], valid, passed)]).filter((h) => h[1]);
+        return hints.length ? `${line} (did you mean ${hints.map((h) => `${h[0]} -> ${h[1]}`).join(", ")}?)` : line;
+      })))
+      .join("; ");
     const out = errorResult({ code: "BAD_ARGS", message: `Invalid arguments for ${request.params.name}: ${issues}`, hint: "Fix the listed arguments (unknown keys are rejected; the tool's input schema lists the valid ones)" });
     usage.record(request.params.name, out);
     return out;

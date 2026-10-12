@@ -12,6 +12,12 @@ All notable changes. Versions follow [semantic versioning](https://semver.org); 
 - `set_item`, a new tool: rename a project item, set its comment or label, move it into a folder or back to the top level, change a footage item's `fps` / `loop` / `alpha`, or swap its file (or image sequence) for every layer that uses it.
 - Footage in `get_project` shows its `fps`, and items inside a folder show `folder_id`.
 
+- `save_project` `clean: true` removes footage no comp uses before saving (imports never placed, sources left behind by `replace_source`), and says how many (`removed_footage`).
+- A wrong argument name now says which one was meant: `Unrecognized key: "stagger" (did you mean stagger -> stagger_seconds?)`. The suggestion is a known synonym (the timing tools name the same idea `stagger`, `stagger_seconds` and `offset_seconds`) or a near spelling, so a model fixes the call on the first retry. It costs nothing in the tool definitions.
+
+### Changed
+- `stagger` and `shift_layers` say which one moves keys and which moves whole layers, and point to `sequence_layers`.
+
 ### Fixed
 - `set_text` with new text now says when it removed part styling (`ranges_cleared: true`): After Effects gives every character the first one's style when the text changes. Passing the same text no longer reassigns it, so part styling survives.
 

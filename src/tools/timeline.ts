@@ -17,7 +17,7 @@ export function registerTimelineTools(r: ToolRegistry): void {
 
   r.bridged(
     "shift_layers",
-    "Move layers in time by offset_seconds (positive = later). Keyframes and in/out points move with the layer.",
+    "Move layers in time, all by offset_seconds (positive = later). Keyframes and in/out points move with the layer. One after another: sequence_layers; keys only: stagger.",
     { layer_ids: LayerIds, offset_seconds: z.number() },
   );
 

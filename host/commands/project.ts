@@ -20,18 +20,19 @@ C.open_project = function (a: Args["open_project"]) {
 };
 
 C.save_project = function (a: Args["save_project"]) {
-  var p = app.project, f;
+  var p = app.project, f, removed = 0, out: Obj;
   if (has(a, "path")) {
     if (!/\.aepx?$/i.test(a.path)) fail("BAD_ARGS", "Project path must end in .aep or .aepx");
     f = new File(a.path);
     if (f.exists && !a.overwrite) fail("EXISTS", "File already exists: " + a.path, "Pass overwrite: true or choose another path");
     if (!f.parent.exists) f.parent.create();
-    p.save(f);
-  } else {
-    if (!p.file) fail("BAD_ARGS", "Project has never been saved", "Pass a path to Save As");
-    p.save();
-  }
-  return { project_path: p.file ? p.file.fsName : null };
+  } else if (!p.file) fail("BAD_ARGS", "Project has never been saved", "Pass a path to Save As");
+  // footage no comp uses (imports never placed, sources left behind by replace_source); folders stay
+  if (a.clean === true) removed = p.removeUnusedFootage();
+  if (f) p.save(f); else p.save();
+  out = { project_path: p.file ? p.file.fsName : null };
+  if (a.clean === true) out.removed_footage = removed;
+  return out;
 };
 
 C.create_comp = function (a: Args["create_comp"]) {

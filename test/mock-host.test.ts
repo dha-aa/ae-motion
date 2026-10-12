@@ -100,6 +100,9 @@ function makeWorld({ startShiftsInOut = true, inKeepsDuration = true } = {}) {
         world.items.push(it); return it;
       },
       close(opt) { this.closed = opt; },
+      saves: [], save(f) { if (f) this.file = { fsName: f.path }; this.saves.push(world.items.length); },
+      // as After Effects: removes footage no comp uses and returns how many items went (folders stay)
+      removeUnusedFootage() { const unused = world.items.filter((i) => i instanceof FootageItem && i.usedIn.length === 0); world.items = world.items.filter((i) => !unused.includes(i)); return unused.length; },
     },
     beginUndoGroup() {}, endUndoGroup() {},
     opened: [], open(f) { this.opened.push(f.path); return {}; },
@@ -114,7 +117,7 @@ function makeWorld({ startShiftsInOut = true, inKeepsDuration = true } = {}) {
   const ctx = { app, CompItem, FolderItem, FootageItem, TextLayer: Stub, ShapeLayer: Stub, CameraLayer: Stub, LightLayer: Stub, SolidSource: Stub, MarkerValue, console, ImportOptions, ImportAsType, AlphaMode: { STRAIGHT: 5412, IGNORE: 5413, PREMULTIPLIED: 5414 },
     FrameBlendingType: { NO_FRAME_BLEND: 1, FRAME_MIX: 2, PIXEL_MOTION: 3 }, LayerQuality: { BEST: 1, DRAFT: 2, WIREFRAME: 3 },
     BlendingMode: { NORMAL: 5212, ADD: 5220, SCREEN: 5232 }, CloseOptions: { DO_NOT_SAVE_CHANGES: 1, SAVE_CHANGES: 2 },
-    File: class { constructor(p) { this.path = p; this.exists = !/missing/.test(p); } } };
+    File: class { constructor(p) { this.path = p; this.exists = !/missing/.test(p); this.parent = { exists: true }; } } };
   vm.createContext(ctx);
   vm.runInContext(SRC, ctx);
   const call = (cmd, args = {}) => JSON.parse(ctx.AEM.dispatch(JSON.stringify({ cmd, args })));
@@ -453,6 +456,18 @@ t("layer info reports blend mode by name and the motion blur switch", () => {
   assert.equal(info.blend_mode, "ADD"); assert.equal(info.motion_blur, true);
   ok(w.call("set_layer", { layer_id: l.id, blend_mode: "screen" }));
   assert.equal(l.blendingMode, 5232, "set_layer accepts the same names (any case)");
+});
+
+t("save_project clean removes unused footage before saving and says how much", () => {
+  const w = makeWorld(); const c = w.comp();
+  const used = new w.FootageItem("/m/used.mov"); used.usedIn = [c]; const spare = new w.FootageItem("/m/spare.mov");
+  w.world.items.push(used, spare);
+  fails(w.call("save_project", { clean: true }), "BAD_ARGS"); // never saved: nothing removed either
+  assert.equal(w.world.items.length, 3);
+  const r = res(w.call("save_project", { path: "/m/missing_new.aep", clean: true }));
+  assert.equal(r.removed_footage, 1); assert.ok(!w.world.items.includes(spare)); assert.ok(w.world.items.includes(used));
+  assert.deepEqual(w.app.project.saves, [2], "saved after cleaning");
+  assert.equal(res(w.call("save_project", {})).removed_footage, undefined);
 });
 
 t("open_project protects unsaved work and closes without a save dialog when discarding", () => {

@@ -117,7 +117,7 @@ export function registerAnimateTools(r: ToolRegistry): void {
 
   r.bridged(
     "stagger",
-    "Offset existing keyframes of one property across layers: layer i is shifted by i * offset_seconds. Every key setting (easing, motion-path tangents) is kept.",
+    "Offset existing keyframes of one property across layers: layer i is shifted by i * offset_seconds. Every key setting (easing, motion-path tangents) is kept. Moves keys, not layers (whole layers: shift_layers / sequence_layers).",
     { layer_ids: z.array(z.number().int()).min(2), path: PropPath, offset_seconds: z.number(), order: z.enum(["forward", "reverse"]).optional() },
   );
 

@@ -449,6 +449,17 @@ const results: [name: string, pass: boolean, detail?: string][] = [];
     badArgsErr && badArgs.error?.code === "BAD_ARGS" && /layer_id/.test(badArgs.error.message) && /colour/.test(badArgs.error.message) && !/MCP error/.test(badArgs.error.message) && typeof badArgs.error.hint === "string" && calls.length === 0,
     JSON.stringify(badArgs)]);
 
+  // an unknown key names the argument it most likely meant: a synonym (the closest when there are several), a near
+  // spelling, never a key already passed, and nothing for a nested key or a key like no argument
+  const [syn] = await body("copy_animation", { from_layer_id: 1, path: "opacity", to_layer_ids: [2], stagger: 0.1 });
+  const [typo] = await body("set_text", { layer_id: 1, colr: [1, 1, 1], font_size: 20, ranges: [{ match: "a", sise: 2 }] });
+  const [none] = await body("set_layer", { layer_id: 1, zzz: 1 });
+  const [taken] = await body("get_layer", { layer_id: 1, layer: 2 });
+  results.push(["H: unknown keys suggest the intended argument",
+    /stagger -> stagger_seconds/.test(syn.error?.message) && /colr -> color/.test(typo.error?.message) && /font_size -> size/.test(typo.error?.message) &&
+    !/sise ->/.test(typo.error?.message) && !/did you mean/.test(none.error?.message) && !/did you mean/.test(taken.error?.message) && calls.length === 0,
+    JSON.stringify([syn, typo, none, taken])]);
+
   // get_project passes its filter and paging to the host; a failed resource read is a resources/read error, not JSON
   await body("get_project", { name: "logo", type: "footage", limit: 5, offset: 10 });
   const [, projBadErr] = await body("get_project", { limit: 0 });

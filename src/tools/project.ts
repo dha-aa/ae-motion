@@ -30,12 +30,13 @@ export function snapshot(proj: string, note?: string): { snapshot: string; snaps
 export function registerProjectTools(r: ToolRegistry): void {
   r.tool(
     "save_project",
-    "Save the project. With path it does Save As (.aep or .aepx, inside the allowed folders; pass overwrite to replace an existing file). Without path it saves in place, which needs a project that has been saved once. render_start needs a saved project. snapshot: true also keeps a numbered copy in snapshots/ next to the project (note labels it); open_project on that copy goes back to it exactly.",
-    { path: z.string().optional(), overwrite: z.boolean().optional(), snapshot: z.boolean().optional(), note: z.string().max(60).optional() },
+    "Save the project. With path it does Save As (.aep or .aepx, inside the allowed folders; pass overwrite to replace an existing file). Without path it saves in place, which needs a project that has been saved once. render_start needs a saved project. clean: true first removes footage no comp uses (removed_footage counts it). snapshot: true also keeps a numbered copy in snapshots/ next to the project (note labels it); open_project on that copy goes back to it exactly.",
+    { path: z.string().optional(), overwrite: z.boolean().optional(), clean: z.boolean().optional(), snapshot: z.boolean().optional(), note: z.string().max(60).optional() },
     async (a) => {
       const args: Record<string, unknown> = {};
       if (a.path !== undefined) args.path = toAe(assertAllowed(a.path));
       if (a.overwrite !== undefined) args.overwrite = a.overwrite;
+      if (a.clean !== undefined) args.clean = a.clean;
       const res = await r.deps.bridge.run("save_project", args);
       if (!res.ok || a.snapshot !== true) return fromBridge(res);
       const proj = (res.result as { project_path: string | null }).project_path;

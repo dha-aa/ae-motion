@@ -454,6 +454,7 @@ interface Args {
   save_project: {
     path?: string;
     overwrite?: boolean;
+    clean?: boolean;
     snapshot?: boolean;
     note?: string;
   };

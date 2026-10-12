@@ -24,7 +24,7 @@
 | | `get_keyframes` | Read a property's keyframes: values, interpolation, temporal ease (only on bezier sides; one `{speed, influence}` when every dimension shares it, or `"easy"`, the same forms `set_keyframes` takes), expression. A property without keys gives its `value` (before any expression) |
 | | `find_effects` | Search installed effects by name, match name or category |
 | Project | `open_project` | Open a project file, refusing to drop unsaved changes unless `discard_unsaved` ; `new: true` starts an empty project instead |
-| | `save_project` | Save, or Save As to a path (needed before `render_start`); `snapshot: true` (+ `note`) keeps a numbered copy in `snapshots/` to go back to with `open_project` |
+| | `save_project` | Save, or Save As to a path (needed before `render_start`); `snapshot: true` (+ `note`) keeps a numbered copy in `snapshots/` to go back to with `open_project`; `clean: true` first removes footage no comp uses (`removed_footage`) |
 | | `create_comp` | Create a composition and open it |
 | | `set_comp` | Change a comp's name, size, fps, duration, background, pixel aspect, work area, or motion blur (switch, shutter angle, phase) |
 | | `import_footage` | Import a file, several (`paths`), an image sequence (`as: sequence`, path = first frame) or a layered PSD / Illustrator file as a comp of its layers (`as: comp`, or `comp_cropped` for layers cropped to their content). `fps` (conform frame rate), `loop` and `alpha` (straight, premultiplied, ignore) set the footage's interpretation; `folder` (a folder id, or a top-level folder name, created if missing) files the imports; `name` renames a single import. Every file is checked before any is imported |
@@ -100,7 +100,7 @@ Every tool has a title and the four MCP annotations: `readOnlyHint` (inspection,
 
 ## Input and output rules
 
-- **Unknown arguments are rejected**, at any depth: `set_layer` with `colour` fails with `Unrecognized key(s) in object: 'colour'` instead of silently ignoring it. Schema errors come back as plain text (`MCP error -32602: Input validation error: ...`) and never reach After Effects.
+- **Unknown arguments are rejected**, at any depth, instead of being silently ignored. Schema errors come back as `BAD_ARGS` errors and never reach After Effects. A top-level unknown key names the argument it most likely meant: `copy_animation` with `stagger` says `(did you mean stagger -> stagger_seconds?)`, `set_text` with `colr` says `colr -> color`. It suggests a known synonym, else a near spelling, and never a key the call already passed.
 - **Results are compact JSON** (no indentation).
 - **Responses are capped at 25,000 characters.** A bigger result is replaced by a `BAD_ARGS` error that says how to ask for less; for `list_properties`, pass `group_path` and/or a smaller `depth`.
 
