@@ -673,6 +673,26 @@ interface Args {
     space_before?: number;
     space_after?: number;
     box_size?: number[];
+    ranges?: {
+      start?: number;
+      end?: number;
+      match?: string;
+      font?: string;
+      size?: number;
+      color?: number[];
+      tracking?: number;
+      baseline_shift?: number;
+      horizontal_scale?: number;
+      vertical_scale?: number;
+      faux_bold?: boolean;
+      faux_italic?: boolean;
+      all_caps?: boolean;
+      small_caps?: boolean;
+      stroke_color?: number[];
+      stroke_width?: number;
+      stroke?: boolean;
+      fill?: boolean;
+    }[];
   };
   set_track_matte: {
     layer_id: number;

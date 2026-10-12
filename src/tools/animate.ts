@@ -4,7 +4,7 @@
  */
 import { z } from "zod";
 import type { ToolRegistry } from "./registry.js";
-import { Ease, id, LayerIds, PropPath, Size, TextStyleShape, Value, ValueOrShape } from "./schemas.js";
+import { Ease, id, LayerIds, PropPath, Size, TextRange, TextStyleShape, Value, ValueOrShape } from "./schemas.js";
 
 // spring / bounce: the segment to the next key is a spring (an expression on linear keys)
 const Interp = z.enum(["linear", "bezier", "hold", "spring", "bounce"]);
@@ -93,10 +93,10 @@ export function registerAnimateTools(r: ToolRegistry): void {
 
   r.bridged(
     "set_text",
-    "Set text and styling on a whole text layer; only the fields you pass change, read back in the result (skipped: what After Effects refused). font: PostScript name (find_fonts). leading turns auto leading off; stroke_color turns the stroke on; horizontal/vertical_scale in percent. box_size resizes box text (point text cannot become box text: add_layer options.box_size). time sets a keyframe. Per-character styling: text animators (add_property).",
+    "Set text and styling on a whole text layer; only the fields you pass change, read back in the result (skipped: what After Effects refused). font: PostScript name (find_fonts). leading turns auto leading off; stroke_color turns the stroke on; horizontal/vertical_scale in percent. box_size resizes box text (point text cannot become box text: add_layer options.box_size). time sets a keyframe. ranges style part of the text after the whole-layer fields (AE 24.3+): match (every occurrence of a string) or start/end (character indexes from 0, end exclusive, default the end). New text clears earlier part styling (ranges_cleared): pass ranges in the same call.",
     {
       layer_id: id("Layer"), time: z.number().min(0).optional(), text: z.string().optional(), ...TextStyleShape,
-      box_size: Size.optional(),
+      box_size: Size.optional(), ranges: z.array(TextRange).min(1).optional(),
     },
     { idempotent: true },
   );
@@ -110,7 +110,7 @@ export function registerAnimateTools(r: ToolRegistry): void {
 
   r.bridged(
     "get_text",
-    "Read a text layer's content and styling (font, size, colors, stroke, leading, tracking, scale, caps, indents, justification, box size), at `time` (default: now).",
+    "Read a text layer's content and styling (font, size, colors, stroke, leading, tracking, scale, caps, indents, justification, box size), at `time` (default: now). The layer fields are the first character's; ranges lists parts styled differently (fields that differ from them).",
     { layer_id: id("Layer"), time: z.number().min(0).optional() },
     { readOnly: true },
   );

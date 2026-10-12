@@ -62,8 +62,8 @@
 | | `apply_effect` | Add an effect by match name and set its parameters |
 | | `edit_effect` | Remove, enable or disable an effect |
 | | `apply_preset` | Apply an `.ffx` animation preset |
-| | `set_text` | Text content and full styling: font, size, fill and stroke, leading, tracking, scale, caps, super/subscript, indents, spacing, justification, box size; reads values back |
-| | `get_text` | Read a text layer's content and styling |
+| | `set_text` | Text content and full styling: font, size, fill and stroke, leading, tracking, scale, caps, super/subscript, indents, spacing, justification, box size; reads values back. `ranges` style part of the text (After Effects 24.3+): each is `match` (every occurrence of a string, case-sensitive) or `start` / `end` (character indexes from 0, end exclusive, default the end) with font, size, color, stroke, faux styles, caps, tracking, scale or baseline shift |
+| | `get_text` | Read a text layer's content and styling (the first character's), plus `ranges`: the parts styled differently, each with only the fields that differ |
 | | `find_fonts` | Search installed fonts by family, style or PostScript name (every word must match); returns the PostScript names `set_text` takes. After Effects 24.0+ |
 | | `stagger` | Offset existing keyframes across layers (keeps easing and path curves) |
 | | `add_shape_modifier` | Add Trim Paths, Repeater or Round Corners to a shape group |
@@ -170,6 +170,7 @@ The camera tools use After Effects' coordinates: x to the right, y **down**, z i
 - Camera rigs, shake and look-at are expressions with a marker comment on the first line (`// ae-motion rig`, `// ae-motion shake`, `// ae-motion look-at`). `camera_move` keys a rig's controls, works underneath a shake, and refuses any other expression on position or point of interest. Do not rename a rig's control layers.
 - Focal length assumes a 36 mm film width, so `focal_length` and `fov` are converted to zoom pixels using the comp width.
 - `set_text` styling applies to the whole layer; anything After Effects refuses is listed in `skipped` instead of failing the call. A font that is not installed is refused (`NOT_FOUND`, before anything changes) on After Effects 24.0+, where it can be checked; earlier versions keep the old font silently. Point text cannot be turned into box text after creation (create it with `add_layer` `options.box_size`).
+- `ranges` apply after the whole-layer fields, which set that attribute on every character. Every range is checked against the final text before anything changes (a `match` that is not there is `NOT_FOUND`). New text drops all part styling (After Effects gives every character the first one's style): the result says `ranges_cleared: true`, so pass `text` and `ranges` in one call. Unchanged text keeps it. Superscript and subscript cannot be set on part of a text; use a text animator (`add_property`) for those, and on After Effects before 24.3.
 
 ## Errors
 

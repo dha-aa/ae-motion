@@ -159,6 +159,17 @@ check("text layers: size and text read back", async () => {
   expect(g.text === "WORLD" && g.size === 50, "text and size", g);
 });
 
+check("text ranges: part styling sticks (stroke too), reads back, and new text clears it", async () => {
+  const t = (await call("add_layer", { comp_id: comp, kind: "text", options: { name: "R", text: "Make every frame count", text_style: { size: 60 } } })).id;
+  await call("set_text", { layer_id: t, ranges: [{ match: "every", color: [1, 0.5, 0], size: 80 }, { start: 17, stroke_color: [0, 0, 1], stroke_width: 3 }] });
+  const g = await call("get_text", { layer_id: t });
+  const every = g.ranges?.find((r: { text: string }) => r.text === "every"), count = g.ranges?.find((r: { text: string }) => r.text === "count");
+  expect(g.size === 60 && every?.size === 80 && JSON.stringify(every?.color) === "[1,0.5,0]", "every: size 80, orange; layer size 60", g);
+  expect(count?.stroke === true && count?.stroke_width === 3, "count: stroke on (needs applyStroke set explicitly)", g);
+  const r = await call("set_text", { layer_id: t, text: "Make every second count" });
+  expect(r.ranges_cleared === true && (await call("get_text", { layer_id: t })).ranges === undefined, "new text clears part styling", r);
+});
+
 check("effects apply with parameters and can be removed", async () => {
   const l = await solid("L");
   await call("apply_effect", { layer_id: l, match_name: "ADBE Gaussian Blur 2", params: { "ADBE Gaussian Blur 2-0001": 12 } });

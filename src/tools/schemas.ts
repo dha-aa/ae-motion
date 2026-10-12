@@ -78,6 +78,13 @@ export const TextStyleShape = {
   first_line_indent: z.number().optional(), left_indent: z.number().optional(), right_indent: z.number().optional(),
   space_before: z.number().optional(), space_after: z.number().optional(),
 };
+/** set_text ranges: character styling for part of the text (AE 24.3+ characterRange). */
+const { font, size, color, tracking, baseline_shift, horizontal_scale, vertical_scale, faux_bold, faux_italic, all_caps, small_caps, stroke_color, stroke_width, stroke, fill } = TextStyleShape;
+export const TextRange = z.strictObject({
+  start: z.number().int().min(0).optional(), end: z.number().int().min(0).optional(),
+  match: z.string().min(1).optional(),
+  font, size, color, tracking, baseline_shift, horizontal_scale, vertical_scale, faux_bold, faux_italic, all_caps, small_caps, stroke_color, stroke_width, stroke, fill,
+});
 // Advertised by reference to set_text (writing the fields out again would cost ~1,200 characters in add_layer) but
 // validated strictly against them, like ShapeRef.
 const TextStyleStrict = z.strictObject(TextStyleShape);
