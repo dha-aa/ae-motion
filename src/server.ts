@@ -20,11 +20,12 @@ export function createServer(bridge: Bridge): AeMotionServer {
   const instructions = SERVER_INSTRUCTIONS + (lazy ? "\nSome tool groups are not loaded yet: if no tool fits, load_tools adds them (3D, timeline, masks and so on)." : "");
   const server = new McpServer({ name: SERVER_NAME, version: SERVER_VERSION }, { instructions });
   const renders = new RenderManager(bridge);
-  registerAllTools(new ToolRegistry(server, { bridge, renders }), on);
+  const registry = new ToolRegistry(server, { bridge, renders });
+  registerAllTools(registry, on);
   registerResources(server, bridge);
   registerPrompts(server);
   slimToolList(server);
-  toolInputErrors(server);
+  toolInputErrors(server, registry.argNames);
   usage.clientName = () => server.server.getClientVersion()?.name ?? null;
   return { server, renders };
 }

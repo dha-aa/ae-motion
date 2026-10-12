@@ -32,6 +32,39 @@ class Prop {
   }
 }
 
+// A TextDocument with per-character styling, as After Effects 24.3+ (verified in AE 26.3): a whole-document setter
+// styles every character, a getter reads the first one; characterRange(start, end) reads undefined where the range is
+// mixed and throws outside the text; new text takes the first character's style everywhere (part styling is lost);
+// superscript is read-only on a range.
+const CHAR_ATTRS = ["font", "fontSize", "fillColor", "applyFill", "strokeColor", "strokeWidth", "applyStroke", "fauxBold", "fauxItalic", "tracking", "baselineShift", "horizontalScale", "verticalScale", "fontCapsOption"];
+function makeDoc(text, style) {
+  const base = { fontCapsOption: 0, horizontalScale: 1, verticalScale: 1, baselineShift: 0, fauxItalic: false, applyStroke: false, strokeWidth: 1, fillColor: [1, 1, 1], ...style };
+  const doc = { _chars: [], _text: "" };
+  const fill = (n, st) => { doc._chars = Array.from({ length: n }, () => ({ ...st })); };
+  Object.defineProperty(doc, "text", { enumerable: true, get: () => doc._text, set(v) { const first = { ...(doc._chars[0] || base) }; doc._text = v; fill(v.length, first); } });
+  for (const k of CHAR_ATTRS) {
+    Object.defineProperty(doc, k, { enumerable: true, get: () => (doc._chars[0] || base)[k], set(v) { base[k] = v; for (const c of doc._chars) c[k] = v; } });
+  }
+  doc.text = text;
+  // TextDocument values are copies: changes reach the layer only through setValue
+  doc._clone = () => { const c = makeDoc("", base); c._text = doc._text; c._chars = doc._chars.map((x) => ({ ...x })); return c; };
+  doc.characterRange = (s, e) => {
+    if (e === -1) e = doc._text.length;
+    if (s < 0 || e > doc._text.length || s > e) throw new Error("Character index range is outside of TextDocument bounds.");
+    const r = { characterStart: s, characterEnd: e };
+    for (const k of CHAR_ATTRS) {
+      Object.defineProperty(r, k, {
+        get() { const vals = doc._chars.slice(s, e).map((c) => JSON.stringify(c[k])); return vals.length && vals.every((v) => v === vals[0]) ? doc._chars[s][k] : undefined; },
+        set(v) { for (let i = s; i < e; i++) doc._chars[i][k] = v; },
+      });
+    }
+    Object.defineProperty(r, "superscript", { get: () => false, set() { throw new Error("Unable to set \u201csuperscript\u201d. It is a readOnly attribute."); } });
+    Object.defineProperty(r, "text", { get: () => doc._text.slice(s, e) });
+    return r;
+  };
+  return doc;
+}
+
 function makeWorld() {
   let nextId = 10;
   class CompItem {}
@@ -60,13 +93,13 @@ function makeWorld() {
   comp.layers = {
     // as After Effects: a new text layer takes the Character panel's current settings, i.e. the last ones used
     addText(text) {
-      const doc = { text, font: "ArialMT", fontSize: 50, applyFill: true, tracking: carry.tracking, fauxBold: carry.fauxBold };
+      let doc = makeDoc(text, { font: "ArialMT", fontSize: 50, applyFill: true, tracking: carry.tracking, fauxBold: carry.fauxBold });
       const l = make(TextLayer, { name: text });
-      const docProp = { get value() { return doc; }, numKeys: 0, setValue(d) { Object.assign(doc, d); carry.tracking = doc.tracking; carry.fauxBold = doc.fauxBold; } };
+      const docProp = { get value() { return doc._clone(); }, numKeys: 0, setValue(d) { doc = d._clone(); carry.tracking = doc.tracking; carry.fauxBold = doc.fauxBold; } };
       const tgProp = l.property;
       l.property = (n) => (n === "ADBE Text Properties" ? { property: () => docProp } : tgProp(n));
       l.sourceRectAtTime = () => { const k = doc.fontSize / 50; return { left: 0, top: -40 * k, width: 200 * k, height: 50 * k }; };
-      l.doc = doc;
+      Object.defineProperty(l, "doc", { get: () => doc });
       return l;
     },
   };
@@ -75,7 +108,8 @@ function makeWorld() {
   const fonts = { allFonts: families, getFontsByPostScriptName: (n) => families.flat().filter((f) => f.postScriptName === n) };
   const app = { project: { itemByID: (id) => (id === 1 ? comp : null), layerByID: (id) => layers.get(id) || null }, fonts, beginUndoGroup() {}, endUndoGroup() {}, executeCommand() {}, findMenuCommandId: () => 0 };
   const ParagraphJustification = { LEFT_JUSTIFY: 1, CENTER_JUSTIFY: 2, RIGHT_JUSTIFY: 3, FULL_JUSTIFY_LASTLINE_LEFT: 4, FULL_JUSTIFY_LASTLINE_CENTER: 5, FULL_JUSTIFY_LASTLINE_RIGHT: 6, FULL_JUSTIFY_LASTLINE_FULL: 7 };
-  const ctx = { app, ParagraphJustification, TextLayer, ShapeLayer, CameraLayer, LightLayer, SolidSource, CompItem, FolderItem: Stub, FootageItem: Stub, PropertyValueType: {}, PropertyType: {} };
+  const FontCapsOption = { FONT_NORMAL_CAPS: 0, FONT_SMALL_CAPS: 1, FONT_ALL_CAPS: 2 };
+  const ctx = { app, ParagraphJustification, FontCapsOption, TextLayer, ShapeLayer, CameraLayer, LightLayer, SolidSource, CompItem, FolderItem: Stub, FootageItem: Stub, PropertyValueType: {}, PropertyType: {} };
   vm.createContext(ctx);
   const toInner = vm.runInContext("(function (v) { return Array.prototype.slice.call(v); })", ctx);
   inner = (v) => (Array.isArray(v) ? toInner(v) : v);
@@ -281,6 +315,65 @@ t("set_expression on many layers: checked first, set on all, errors reported per
   fails(w.call("set_expression", { layer_ids: [a.id, 999], path: "position", expression: "value" }), "NOT_FOUND");
   assert.equal(w.tp(a, "ADBE Position").expression, "syntax error", "nothing set when a layer is missing");
   fails(w.call("set_expression", { layer_id: a.id, layer_ids: [b.id], path: "position", expression: "value" }), "BAD_ARGS");
+});
+
+t("set_text ranges style every match and a start/end span after the whole-layer fields", () => {
+  const w = makeWorld();
+  const id = ok(w.call("add_layer", { comp_id: 1, kind: "text", options: { text: "go big, go bold" } })).id;
+  const r = ok(w.call("set_text", { layer_id: id, size: 60, ranges: [
+    { match: "go", color: [1, 0.5, 0], font: "Arial-BoldMT" },
+    { start: 8, stroke_color: [0, 0, 1], stroke_width: 2, all_caps: true },
+  ] }));
+  assert.deepEqual(plain(r.ranges), [{ start: 0, end: 2, text: "go" }, { start: 8, end: 10, text: "go" }, { start: 8, end: 15, text: "go bold" }]);
+  const doc = w.comp._layers.find((x) => x.id === id).doc, ch = (i) => doc._chars[i];
+  assert.equal(ch(3).fontSize, 60, "whole-layer size reaches every character");
+  assert.deepEqual(plain(ch(0).fillColor), [1, 0.5, 0]); assert.equal(ch(0).font, "Arial-BoldMT");
+  assert.equal(ch(3).font, "ArialMT", "unmatched text keeps its font");
+  assert.equal(ch(9).fontSize, 60, "a range keeps what it does not set");
+  assert.equal(ch(12).applyStroke, true, "a stroke colour turns the stroke on explicitly");
+  assert.deepEqual(plain(ch(12).strokeColor), [0, 0, 1]); assert.equal(ch(12).fontCapsOption, 2);
+  assert.equal(ch(7).applyStroke, false, "before start: untouched");
+});
+
+t("get_text lists part styling as runs that differ from the first character", () => {
+  const w = makeWorld();
+  const id = ok(w.call("add_layer", { comp_id: 1, kind: "text", options: { text: "plain HOT plain" } })).id;
+  assert.equal(ok(w.call("get_text", { layer_id: id })).ranges, undefined, "uniform text: no ranges");
+  ok(w.call("set_text", { layer_id: id, ranges: [{ match: "HOT", color: [1, 0, 0], faux_italic: true }] }));
+  const g = ok(w.call("get_text", { layer_id: id }));
+  assert.deepEqual(plain(g.ranges), [{ start: 6, end: 9, text: "HOT", color: [1, 0, 0], faux_italic: true }]);
+});
+
+t("set_text ranges fail before anything changes; new text reports ranges_cleared", () => {
+  const w = makeWorld();
+  const id = ok(w.call("add_layer", { comp_id: 1, kind: "text", options: { text: "one two" } })).id;
+  const layer = w.comp._layers.find((x) => x.id === id);
+  let e = fails(w.call("set_text", { layer_id: id, text: "changed", size: 99, ranges: [{ match: "three", size: 10 }] }), "NOT_FOUND");
+  assert.match(e.message, /three/);
+  assert.equal(layer.doc.text, "one two", "text unchanged"); assert.equal(layer.doc.fontSize, 50, "size unchanged");
+  fails(w.call("set_text", { layer_id: id, ranges: [{ start: 2, end: 40, size: 10 }] }), "BAD_ARGS");
+  fails(w.call("set_text", { layer_id: id, ranges: [{ match: "one", start: 0 }] }), "BAD_ARGS");
+  fails(w.call("set_text", { layer_id: id, ranges: [{ match: "one", font: "Nope-Bold" }] }), "NOT_FOUND");
+  ok(w.call("set_text", { layer_id: id, ranges: [{ match: "two", size: 80 }] }));
+  assert.equal(ok(w.call("set_text", { layer_id: id, text: "one two" })).ranges_cleared, undefined, "same text keeps part styling");
+  assert.equal(layer.doc._chars[4].fontSize, 80);
+  const r = ok(w.call("set_text", { layer_id: id, text: "one three" }));
+  assert.equal(r.ranges_cleared, true);
+  assert.equal(layer.doc._chars[4].fontSize, 50, "new text takes the first character's style");
+  assert.equal(ok(w.call("set_text", { layer_id: id, text: "four" })).ranges_cleared, undefined, "nothing to clear");
+});
+
+t("set_text ranges need characterRange (After Effects 24.3+)", () => {
+  const w = makeWorld();
+  const id = ok(w.call("add_layer", { comp_id: 1, kind: "text", options: { text: "old" } })).id;
+  const layer = w.comp._layers.find((x) => x.id === id);
+  delete layer.doc.characterRange;
+  const docProp = layer.property("ADBE Text Properties").property();
+  const real = Object.getOwnPropertyDescriptor(docProp, "value").get;
+  Object.defineProperty(docProp, "value", { get() { const d = real(); delete d.characterRange; return d; } });
+  const e = fails(w.call("set_text", { layer_id: id, ranges: [{ match: "old", size: 10 }] }), "UNSUPPORTED");
+  assert.match(e.hint, /animator/);
+  assert.equal(ok(w.call("get_text", { layer_id: id })).ranges, undefined, "get_text still works");
 });
 
 for (const [name, pass, msg] of results) console.log((pass ? "PASS" : "FAIL") + "  " + name + (pass ? "" : "\n      " + msg));

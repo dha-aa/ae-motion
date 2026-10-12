@@ -63,6 +63,14 @@ export const ShapeLayerSpec = z.strictObject({
   rotation: z.number().optional(), opacity: z.number().min(0).max(100).optional(),
 });
 
+/** Footage interpretation, shared by import_footage and set_item (stills refuse fps and loop: reported in skipped). */
+export const InterpretShape = {
+  fps: z.number().min(1).max(120).optional().describe("Conform frame rate (image sequences import at 30)"),
+  loop: z.number().int().min(1).max(1000).optional(), alpha: z.enum(["straight", "premultiplied", "ignore"]).optional(),
+};
+/** A project folder: its id, or the name of a top-level folder (created if missing). */
+export const FolderRef = z.union([z.number().int(), z.string().min(1)]);
+
 /** Anchor positions on a layer's content (set_anchor, add_layer options.anchor). */
 export const Anchor = z.enum(["center", "top_left", "top", "top_right", "left", "right", "bottom_left", "bottom", "bottom_right"]);
 
@@ -78,6 +86,13 @@ export const TextStyleShape = {
   first_line_indent: z.number().optional(), left_indent: z.number().optional(), right_indent: z.number().optional(),
   space_before: z.number().optional(), space_after: z.number().optional(),
 };
+/** set_text ranges: character styling for part of the text (AE 24.3+ characterRange). */
+const { font, size, color, tracking, baseline_shift, horizontal_scale, vertical_scale, faux_bold, faux_italic, all_caps, small_caps, stroke_color, stroke_width, stroke, fill } = TextStyleShape;
+export const TextRange = z.strictObject({
+  start: z.number().int().min(0).optional(), end: z.number().int().min(0).optional(),
+  match: z.string().min(1).optional(),
+  font, size, color, tracking, baseline_shift, horizontal_scale, vertical_scale, faux_bold, faux_italic, all_caps, small_caps, stroke_color, stroke_width, stroke, fill,
+});
 // Advertised by reference to set_text (writing the fields out again would cost ~1,200 characters in add_layer) but
 // validated strictly against them, like ShapeRef.
 const TextStyleStrict = z.strictObject(TextStyleShape);

@@ -420,6 +420,15 @@ const results: [name: string, pass: boolean, detail?: string][] = [];
   const [, openErr] = await body("batch", { steps: [{ tool: "open_project", args: { path: path.join(DIR, "x.aep") } }] });
   results.push(["H: paths are sandboxed, forward references, run_jsx and open_project are refused", sandboxed && outsideErr && refErr && jsxErr && openErr && calls.length === 0]);
 
+  // a path array (import_footage paths) is sandboxed element by element, directly and inside a batch
+  calls.length = 0;
+  const [arrOut, arrOutErr] = await body("import_footage", { paths: [path.join(DIR, "a.png"), "/etc/passwd"] });
+  const [bArrOut, bArrOutErr] = await body("batch", { steps: [{ tool: "import_footage", args: { paths: ["/etc/hosts"] } }] });
+  const refusedBoth = arrOutErr && arrOut.error?.code === "FORBIDDEN" && bArrOutErr && bArrOut.error?.code === "FORBIDDEN" && calls.length === 0;
+  await body("import_footage", { paths: [path.join(DIR, "a.png"), path.join(DIR, "b.png")] });
+  const sent = received.import_footage?.paths as string[] | undefined;
+  results.push(["H: path arrays are sandboxed per element and slash-normalised", refusedBoth && calls.length === 1 && sent?.length === 2 && sent.every((p) => !p.includes("\\"))]);
+
   // snapshot: true keeps numbered copies next to the project, named by the note; a plain save makes none
   await body("save_project", {});
   const [s1] = await body("save_project", { snapshot: true, note: "Before S01 change!" });
@@ -439,6 +448,17 @@ const results: [name: string, pass: boolean, detail?: string][] = [];
   results.push(["H: bad arguments come back as isError {error: {code: BAD_ARGS, message, hint}} without reaching the host",
     badArgsErr && badArgs.error?.code === "BAD_ARGS" && /layer_id/.test(badArgs.error.message) && /colour/.test(badArgs.error.message) && !/MCP error/.test(badArgs.error.message) && typeof badArgs.error.hint === "string" && calls.length === 0,
     JSON.stringify(badArgs)]);
+
+  // an unknown key names the argument it most likely meant: a synonym (the closest when there are several), a near
+  // spelling, never a key already passed, and nothing for a nested key or a key like no argument
+  const [syn] = await body("copy_animation", { from_layer_id: 1, path: "opacity", to_layer_ids: [2], stagger: 0.1 });
+  const [typo] = await body("set_text", { layer_id: 1, colr: [1, 1, 1], font_size: 20, ranges: [{ match: "a", sise: 2 }] });
+  const [none] = await body("set_layer", { layer_id: 1, zzz: 1 });
+  const [taken] = await body("get_layer", { layer_id: 1, layer: 2 });
+  results.push(["H: unknown keys suggest the intended argument",
+    /stagger -> stagger_seconds/.test(syn.error?.message) && /colr -> color/.test(typo.error?.message) && /font_size -> size/.test(typo.error?.message) &&
+    !/sise ->/.test(typo.error?.message) && !/did you mean/.test(none.error?.message) && !/did you mean/.test(taken.error?.message) && calls.length === 0,
+    JSON.stringify([syn, typo, none, taken])]);
 
   // get_project passes its filter and paging to the host; a failed resource read is a resources/read error, not JSON
   await body("get_project", { name: "logo", type: "footage", limit: 5, offset: 10 });

@@ -120,6 +120,10 @@ function itemInfo(it: _ItemClasses): Obj {
     if (it.width) { o.width = it.width; o.height = it.height; } // audio has no frame size
     o.duration = it.duration;
   }
+  // footage frame rate (image sequences import at 30, whatever they were made at); stills have none
+  if (it instanceof FootageItem && it.duration > 0 && it.frameRate > 0) o.fps = it.frameRate;
+  // left out at the top level of the project
+  if (it.parentFolder && it.parentFolder !== app.project.rootFolder) o.folder_id = it.parentFolder.id;
   return o;
 }
 

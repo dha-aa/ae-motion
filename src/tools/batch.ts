@@ -16,8 +16,7 @@ import { z } from "zod";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { CHARACTER_LIMIT } from "../config.js";
 import { AeToolError, type ErrorCode } from "../errors.js";
-import { assertAllowed, toAe } from "../sandbox.js";
-import { json, type ToolExtra, type ToolRegistry } from "./registry.js";
+import { json, sandboxPaths, type ToolExtra, type ToolRegistry } from "./registry.js";
 
 const MAX_STEPS = 50;
 const REF = /^\$(\d+)((?:\.[\w-]+)*)$/;
@@ -209,7 +208,7 @@ export function registerBatchTool(r: ToolRegistry): void {
         let res: ReturnType<typeof unwrap>;
         try {
           if (bridged) {
-            for (const k of bridged.paths) if (typeof sent[k] === "string") sent[k] = toAe(assertAllowed(sent[k] as string));
+            sandboxPaths(sent, bridged.paths);
             res = await r.deps.bridge.run(tool, sent);
           } else {
             res = unwrap(await server!.run(sent));

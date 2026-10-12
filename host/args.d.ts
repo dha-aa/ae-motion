@@ -372,8 +372,14 @@ interface Args {
     time?: number;
   };
   import_footage: {
-    path: string;
-    as?: "footage" | "sequence";
+    path?: string;
+    paths?: string[];
+    as?: "footage" | "sequence" | "comp" | "comp_cropped";
+    fps?: number;
+    loop?: number;
+    alpha?: "straight" | "premultiplied" | "ignore";
+    folder?: number | string;
+    name?: string;
   };
   insert_time: {
     comp_id: number;
@@ -448,6 +454,7 @@ interface Args {
   save_project: {
     path?: string;
     overwrite?: boolean;
+    clean?: boolean;
     snapshot?: boolean;
     note?: string;
   };
@@ -554,6 +561,18 @@ interface Args {
     layer_ids?: number[];
     path: string | (string | number)[];
     expression: string;
+  };
+  set_item: {
+    item_id: number;
+    name?: string;
+    comment?: string;
+    label?: number;
+    folder?: number | string | null;
+    fps?: number;
+    loop?: number;
+    alpha?: "straight" | "premultiplied" | "ignore";
+    file?: string;
+    sequence?: boolean;
   };
   set_keyframes: {
     layer_id: number;
@@ -673,6 +692,26 @@ interface Args {
     space_before?: number;
     space_after?: number;
     box_size?: number[];
+    ranges?: {
+      start?: number;
+      end?: number;
+      match?: string;
+      font?: string;
+      size?: number;
+      color?: number[];
+      tracking?: number;
+      baseline_shift?: number;
+      horizontal_scale?: number;
+      vertical_scale?: number;
+      faux_bold?: boolean;
+      faux_italic?: boolean;
+      all_caps?: boolean;
+      small_caps?: boolean;
+      stroke_color?: number[];
+      stroke_width?: number;
+      stroke?: boolean;
+      fill?: boolean;
+    }[];
   };
   set_track_matte: {
     layer_id: number;

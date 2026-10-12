@@ -1,6 +1,6 @@
 # Tool reference
 
-73 tools, grouped the same way as the source (`src/tools/<group>.ts` on the server, `host/commands/<group>.ts` in After Effects). Every tool's full argument schema and description is served by the MCP `tools/list` call, so your client always sees the current details. This page gives the overview and the behavior you can't read off a schema.
+78 tools, grouped the same way as the source (`src/tools/<group>.ts` on the server, `host/commands/<group>.ts` in After Effects). Every tool's full argument schema and description is served by the MCP `tools/list` call, so your client always sees the current details. This page gives the overview and the behavior you can't read off a schema.
 
 ## Conventions
 
@@ -24,10 +24,11 @@
 | | `get_keyframes` | Read a property's keyframes: values, interpolation, temporal ease (only on bezier sides; one `{speed, influence}` when every dimension shares it, or `"easy"`, the same forms `set_keyframes` takes), expression. A property without keys gives its `value` (before any expression) |
 | | `find_effects` | Search installed effects by name, match name or category |
 | Project | `open_project` | Open a project file, refusing to drop unsaved changes unless `discard_unsaved` ; `new: true` starts an empty project instead |
-| | `save_project` | Save, or Save As to a path (needed before `render_start`); `snapshot: true` (+ `note`) keeps a numbered copy in `snapshots/` to go back to with `open_project` |
+| | `save_project` | Save, or Save As to a path (needed before `render_start`); `snapshot: true` (+ `note`) keeps a numbered copy in `snapshots/` to go back to with `open_project`; `clean: true` first removes footage no comp uses (`removed_footage`) |
 | | `create_comp` | Create a composition and open it |
 | | `set_comp` | Change a comp's name, size, fps, duration, background, pixel aspect, work area, or motion blur (switch, shutter angle, phase) |
-| | `import_footage` | Import a file or image sequence |
+| | `import_footage` | Import a file, several (`paths`), an image sequence (`as: sequence`, path = first frame) or a layered PSD / Illustrator file as a comp of its layers (`as: comp`, or `comp_cropped` for layers cropped to their content). `fps` (conform frame rate), `loop` and `alpha` (straight, premultiplied, ignore) set the footage's interpretation; `folder` (a folder id, or a top-level folder name, created if missing) files the imports; `name` renames a single import. Every file is checked before any is imported |
+| | `set_item` | Change a project item: `name`, `comment`, `label` (0-16), `folder` (`null`: top level); footage `fps`, `loop`, `alpha`; `file` swaps a footage item's file for every layer that uses it (`sequence: true` for an image sequence's first frame) |
 | | `delete_item` | Delete a comp, footage item or folder (refuses used items unless `force`) |
 | Layers | `add_layer` | Add a solid, text (point or box), shape (rect, ellipse, star, polygon, path), null, adjustment, footage, precomp, camera or light layer; optional `position` and `three_d` place it as it is created. Text layers also take `text_style` (any of `set_text`'s styling fields) and any layer with content takes `anchor` (as `set_anchor`); they apply in that order, then `position`, so `{text_style: {...}, anchor: "center", position: [x, y]}` creates styled text centered on a point in one call `fit_to: {layer_id, padding}` (shape kind) makes a rect that keeps fitting that layer's content plus padding (a highlight, pill or button behind text): its size and position follow the target's bounds by expressions, it is parented to the target and sits just under it, so it follows text changes, moves and 3D. |
 | | `set_layer` | Name, timing, time stretch, parent, blend mode, visibility, 3D, shy, solo, lock, label, motion blur, time remap, separate dimensions, auto-orient along path, frame blending, quality, collapse transformations, guide, adjustment, effects / audio on-off, preserve transparency, solid color and size `sampling: bicubic` keeps scaled-up images and screenshots sharp (bilinear softens text in them). |
@@ -62,8 +63,8 @@
 | | `apply_effect` | Add an effect by match name and set its parameters |
 | | `edit_effect` | Remove, enable or disable an effect |
 | | `apply_preset` | Apply an `.ffx` animation preset |
-| | `set_text` | Text content and full styling: font, size, fill and stroke, leading, tracking, scale, caps, super/subscript, indents, spacing, justification, box size; reads values back |
-| | `get_text` | Read a text layer's content and styling |
+| | `set_text` | Text content and full styling: font, size, fill and stroke, leading, tracking, scale, caps, super/subscript, indents, spacing, justification, box size; reads values back. `ranges` style part of the text (After Effects 24.3+): each is `match` (every occurrence of a string, case-sensitive) or `start` / `end` (character indexes from 0, end exclusive, default the end) with font, size, color, stroke, faux styles, caps, tracking, scale or baseline shift |
+| | `get_text` | Read a text layer's content and styling (the first character's), plus `ranges`: the parts styled differently, each with only the fields that differ |
 | | `find_fonts` | Search installed fonts by family, style or PostScript name (every word must match); returns the PostScript names `set_text` takes. After Effects 24.0+ |
 | | `stagger` | Offset existing keyframes across layers (keeps easing and path curves) |
 | | `add_shape_modifier` | Add Trim Paths, Repeater or Round Corners to a shape group |
@@ -99,7 +100,7 @@ Every tool has a title and the four MCP annotations: `readOnlyHint` (inspection,
 
 ## Input and output rules
 
-- **Unknown arguments are rejected**, at any depth: `set_layer` with `colour` fails with `Unrecognized key(s) in object: 'colour'` instead of silently ignoring it. Schema errors come back as plain text (`MCP error -32602: Input validation error: ...`) and never reach After Effects.
+- **Unknown arguments are rejected**, at any depth, instead of being silently ignored. Schema errors come back as `BAD_ARGS` errors and never reach After Effects. A top-level unknown key names the argument it most likely meant: `copy_animation` with `stagger` says `(did you mean stagger -> stagger_seconds?)`, `set_text` with `colr` says `colr -> color`. It suggests a known synonym, else a near spelling, and never a key the call already passed.
 - **Results are compact JSON** (no indentation).
 - **Responses are capped at 25,000 characters.** A bigger result is replaced by a `BAD_ARGS` error that says how to ask for less; for `list_properties`, pass `group_path` and/or a smaller `depth`.
 
@@ -165,11 +166,13 @@ The camera tools use After Effects' coordinates: x to the right, y **down**, z i
 - A layer used as a track matte is hidden by After Effects (its `enabled` flag becomes false), as in the timeline UI, and stays hidden after the matte is removed (turn it back on with `set_layer` `enabled: true`).
 - `set_track_matte` uses `setTrackMatte` on After Effects 23 and later. Older versions need the matte layer directly above the target (use `reorder_layer`).
 - `delete_item` refuses items that are used in comps, or non-empty folders, unless `force` is true.
+- Image sequences import at 30 fps whatever they were rendered at: pass `fps` (or fix it later with `set_item`). Footage rows show `fps`, and `folder_id` when the item is inside a folder. Stills refuse `fps` and `loop`: they are listed in `skipped` and the rest is applied. `alpha` on footage without an alpha channel is skipped too. `fps`, `loop` and `alpha` on a comp (or a comp import) are refused.
 - `link_layers` keeps each layer where it is on screen when you link or unlink it. `jump: true` keeps the layer's own values instead, so it moves by the parent's offset. With `new_null` the null goes at the average of the layers' position values (stacked above the top-most one), and it is 3D if any of them is. A self-link, a cycle, a locked layer or mixed comps are refused before anything changes.
 - `set_3d_view` runs After Effects' own View > Switch 3D View command. It only changes what the editor shows: `preview_frame` and renders always use the active camera. Running it clears the layer selection and cannot be undone from a script. `active_camera` needs a camera in the comp (the menu item is named after it).
 - Camera rigs, shake and look-at are expressions with a marker comment on the first line (`// ae-motion rig`, `// ae-motion shake`, `// ae-motion look-at`). `camera_move` keys a rig's controls, works underneath a shake, and refuses any other expression on position or point of interest. Do not rename a rig's control layers.
 - Focal length assumes a 36 mm film width, so `focal_length` and `fov` are converted to zoom pixels using the comp width.
 - `set_text` styling applies to the whole layer; anything After Effects refuses is listed in `skipped` instead of failing the call. A font that is not installed is refused (`NOT_FOUND`, before anything changes) on After Effects 24.0+, where it can be checked; earlier versions keep the old font silently. Point text cannot be turned into box text after creation (create it with `add_layer` `options.box_size`).
+- `ranges` apply after the whole-layer fields, which set that attribute on every character. Every range is checked against the final text before anything changes (a `match` that is not there is `NOT_FOUND`). New text drops all part styling (After Effects gives every character the first one's style): the result says `ranges_cleared: true`, so pass `text` and `ranges` in one call. Unchanged text keeps it. Superscript and subscript cannot be set on part of a text; use a text animator (`add_property`) for those, and on After Effects before 24.3.
 
 ## Errors
 
