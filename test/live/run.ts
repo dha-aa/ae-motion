@@ -241,6 +241,25 @@ check("blend modes and adjustment layers render as defined; previews show the co
   expect(off.adjustment === false && JSON.stringify(px(20, 20).slice(0, 3)) === "[0,0,0]", "adjustment off: a plain (white) solid, inverted to black; read back", [off, px(20, 20)]);
 });
 
+check("run_jsx: refused unless enabled; when enabled it runs, returns values as JSON and reports script errors", async () => {
+  const off = await startClient({ AE_MCP_ALLOW_JSX: "0" }), on = await startClient({ AE_MCP_ALLOW_JSX: "1" });
+  try {
+    const refused = await off.call("run_jsx", { code: "app.project.items.addComp('jsx refused', 100, 100, 1, 1, 30)" });
+    expect(refused.isError && refused.value.error.code === "FORBIDDEN" && /AE_MCP_ALLOW_JSX/.test(refused.value.error.hint), "disabled: FORBIDDEN with the setting to change", refused.value);
+    const run = async (code: string): Promise<any> => { const r = await on.call("run_jsx", { code }); if (r.isError) throw new Error(code + ": " + JSON.stringify(r.value)); return r.value.result; };
+    expect((await run("1 + 2")) === 3 && /^\d/.test(await run("app.version")) && (await run("undefined")) === null, "numbers, strings, undefined as null");
+    expect(JSON.stringify(await run("[1, 'a', true]")) === '[1,"a",true]' && JSON.stringify(await run("({ a: 1, b: [2] })")) === '{"a":1,"b":[2]}', "arrays and plain objects as JSON");
+    expect(/Project/.test(await run("app.project")), "an After Effects object comes back as its name, not an error");
+    const id = await run("app.project.items.addComp('jsx made', 100, 100, 1, 1, 30).id");
+    expect((await call("get_project", { name: "jsx made" })).items.some((i: { id: number }) => i.id === id), "a change made by run_jsx shows in the project", id);
+    expect((await on.call("get_project", { name: "jsx refused" })).value.items.length === 0, "nothing ran while it was disabled");
+    const thrown = await on.call("run_jsx", { code: "throw new Error('boom')" });
+    expect(thrown.isError && thrown.value.error.code === "AE_ERROR" && /boom/.test(thrown.value.error.message), "a thrown error is AE_ERROR with its message", thrown.value);
+    const bad = await on.call("run_jsx", { code: "var long = 1;" }); // a Java reserved word: ExtendScript refuses the script
+    expect(bad.isError && bad.value.error.code === "AE_ERROR", "a script ExtendScript cannot parse is AE_ERROR", bad.value);
+  } finally { off.close(); on.close(); }
+});
+
 check("effects apply with parameters and can be removed", async () => {
   const l = await solid("L");
   await call("apply_effect", { layer_id: l, match_name: "ADBE Gaussian Blur 2", params: { "ADBE Gaussian Blur 2-0001": 12 } });
