@@ -72,7 +72,9 @@ export async function checkMedia(ffmpeg: string, file: string): Promise<MediaChe
   const hasVideo = /Stream #.*Video:/.test(probe), hasAudio = /Stream #.*Audio:/.test(probe);
   const args = ["-hide_banner", "-nostats", "-i", file];
   // freezedetect noise 0.0005: at 0.003 a small figure moving on a plain frame read as frozen
-  if (hasVideo) args.push("-vf", "blackdetect=d=0.5:pix_th=0.10,freezedetect=n=0.0005:d=2");
+  // pic_th 0.999: a frame is black only when (nearly) every pixel is. ffmpeg's default (98%) called a dark title card
+  // with a line of text on it black, and the check then suggested a GPU failure.
+  if (hasVideo) args.push("-vf", "blackdetect=d=0.5:pic_th=0.999:pix_th=0.10,freezedetect=n=0.0005:d=2");
   else args.push("-vn");
   if (hasAudio) args.push("-af", "silencedetect=noise=-50dB:d=1,ebur128=peak=true");
   else args.push("-an");

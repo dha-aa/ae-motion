@@ -256,6 +256,19 @@ t("find_sound_cues: whoosh at a move's fastest frame, impact on an abrupt landin
   assert.equal(ok(w.call("find_sound_cues", { comp_id: 1, max: 2 })).count, 2);
 });
 
+t("find_sound_cues: a spring pop sounds when the layer arrives, and its fade-in is the same cue", () => {
+  const w = makeWorld([]);
+  // animate pop: keys 0 -> 100 over 0.5 s, sprung by an expression that reaches 100 after ~0.1 s and then settles
+  const reveal = w.plain("Reveal", w.TextLayer, { inPoint: 7.05 });
+  const sc = reveal.tg["ADBE Scale"]; sc.keys = [{ t: 7.05, v: [0, 0, 100] }, { t: 7.55, v: [100, 100, 100] }];
+  sc.valueAtTime = (t) => { const u = Math.max(0, t - 7.05), s = t >= 7.55 ? 100 : 100 * (1 - Math.exp(-30 * u) * Math.cos(25 * u)); return [s, s, 100]; };
+  reveal.tg["ADBE Opacity"].keys = [{ t: 7.05, v: 0 }, { t: 7.25, v: 100 }];
+  const r = ok(w.call("find_sound_cues", { comp_id: 1 }));
+  assert.equal(r.cues.length, 1, "one entrance, one sound: " + JSON.stringify(r.cues));
+  assert.equal(r.cues[0].event, "pop_in");
+  assert.ok(r.cues[0].t >= 7.05 && r.cues[0].t <= 7.05 + 4 / FPS, "within a few frames of the reveal, not at the settle (7.55): " + r.cues[0].t);
+});
+
 t("find_sound_cues as a sound designer: simultaneous moments merge, entrances at a cut are one hit, a budget keeps the heroes spaced out", () => {
   const w = makeWorld([]);
   // four pieces of debris fly out together: one whoosh, not four

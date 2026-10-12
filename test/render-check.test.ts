@@ -34,6 +34,15 @@ await t("finds black picture and silence where they are, and the loudness per se
   ok(r.issues.some((x: string) => /^Black picture 2-4 s/.test(x)) && r.issues.some((x: string) => /^Silence/.test(x)) && r.issues.some((x: string) => /Quiet mix/.test(x)), "issues " + JSON.stringify(r.issues));
 });
 
+await t("a dark title card with a line of text is not black", async () => {
+  const card = path.join(tmp, "card.mp4");
+  // a 1920 x 1080 navy frame with a 600 x 30 light bar (about 1% of the picture, like a line of title text)
+  execFileSync(ff, ["-loglevel", "error", "-y", "-f", "lavfi", "-i", "color=c=0x0d0f17:s=1920x1080:r=30:d=2",
+    "-vf", "drawbox=x=660:y=525:w=600:h=30:color=0xebebf2:t=fill", "-c:v", "libx264", card]);
+  const r = await checkMedia(ff, card);
+  ok(r.black.length === 0 && !r.issues.some((x: string) => /Black/.test(x)), "read as black: " + JSON.stringify(r.black));
+});
+
 await t("deliver encodes an H.264 MP4 at the loudness target", async () => {
   const out = path.join(tmp, "out.mp4");
   const d = await deliver(ff, clip, out, -14);

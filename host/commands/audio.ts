@@ -246,6 +246,17 @@ function fastest(p: Prop, t0: number, t1: number, fd: number): { t: number; spee
   return { t: best, speed: top, end: endSpeed };
 }
 
+// The first frame in [t0, t1] where p has covered share of its change from v0 to v1 (t1 if it never does). A pop is
+// heard when the layer arrives: with a spring or a snappy ease that is well before the last key, where it only settles.
+function reached(p: Prop, t0: number, t1: number, v0: number, v1: number, share: number, fd: number): number {
+  var t, v;
+  for (t = t0; t <= t1 + 1e-6; t += fd) {
+    v = p.valueAtTime(t, false); v = typeof v === "number" ? v : v[0];
+    if ((v - v0) / (v1 - v0) >= share) return t;
+  }
+  return t1;
+}
+
 // Every keyframed property under a group whose match name is in names (text selectors, trim paths and so on).
 function keyedUnder(g: any, names: { [matchName: string]: number }, out: Prop[]): Prop[] {
   var i, p;
@@ -283,7 +294,7 @@ function layerCues(l: AVLayer, c: CompItem, push: PushCue): void {
       s = segs[i];
       v0 = typeof s.v0 === "number" ? s.v0 : s.v0[0]; v1 = typeof s.v1 === "number" ? s.v1 : s.v1[0];
       if (s.t1 - s.t0 > 0.8) continue;
-      if (v0 <= 20 && v1 >= 60) push(l, s.t1, "pop_in", "pop", 0.7);
+      if (v0 <= 20 && v1 >= 60) push(l, reached(p, s.t0, s.t1, v0, v1, 0.97, fd), "pop_in", "pop", 0.7);
       else if (v0 >= 60 && v1 <= 20) push(l, s.t0, "pop_out", "pop", 0.5);
     }
   }

@@ -2,6 +2,12 @@
 
 All notable changes. Versions follow [semantic versioning](https://semver.org); each release is a git tag `vX.Y.Z`, which is what the update check looks for.
 
+## Unreleased
+
+### Fixed
+- `find_sound_cues` cues a scale pop when the layer arrives (97% of the way), not at its last key: with a spring or snappy ease the last key is where it only settles, up to 15 frames after the hit. An entrance that pops and fades in is now one cue instead of two competing ones. Found by building a 12-second documentary reveal and checking where the impact belongs.
+- The after-render check no longer calls a dark title card with a line of text a black picture (and no longer suggests a GPU failure for it): a frame now counts as black only when 99.9% of it is dark.
+
 ## 2.19.0 — 2026-10-12
 
 ### Added
