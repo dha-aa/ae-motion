@@ -287,6 +287,12 @@ interface Args {
     release?: number;
     mode?: "auto" | "span" | "loudness";
     min_level?: number;
+    dips?: {
+      start: number;
+      end: number;
+      amount?: number;
+      fade?: number;
+    }[];
   };
   duplicate_layer: {
     layer_id: number;
@@ -339,6 +345,12 @@ interface Args {
     max?: number;
     density?: "sparse" | "normal" | "dense";
     min_gap?: number;
+    events?: {
+      t: number;
+      importance: number;
+      label?: string;
+      sound?: string;
+    }[];
   };
   get_camera: {
     layer_id: number;
@@ -462,6 +474,7 @@ interface Args {
     layer_ids: number[];
     overlap?: number;
     start?: number;
+    audio_crossfade?: boolean;
   };
   set_3d: {
     layer_id: number;
@@ -622,6 +635,10 @@ interface Args {
     preserve_transparency?: boolean;
     solid_color?: number[];
     solid_size?: number[];
+    audio_fade?: {
+      in?: number;
+      out?: number;
+    };
   };
   set_light: {
     layer_id: number;

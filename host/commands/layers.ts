@@ -106,7 +106,7 @@ C.add_layer = function (a: Args["add_layer"]) {
 
 C.set_layer = function (a: Args["set_layer"]) {
   need(a, ["layer_id"]);
-  var l = getLayer(a.layer_id), par, bm;
+  var l = getLayer(a.layer_id), par, bm, fd, len, replaced = 0, res: Obj;
   // validate before changing anything
   if (has(a, "blend_mode")) {
     bm = (BlendingMode as any)[String(a.blend_mode).toUpperCase().replace(/ /g, "_")];
@@ -119,6 +119,7 @@ C.set_layer = function (a: Args["set_layer"]) {
   if (has(a, "quality") && !QUALITY[a.quality]) fail("BAD_ARGS", "quality must be best, draft or wireframe");
   if (has(a, "sampling") && a.sampling !== "bilinear" && a.sampling !== "bicubic") fail("BAD_ARGS", "sampling must be bilinear or bicubic");
   if ((has(a, "solid_color") || has(a, "solid_size")) && !(l.source && l.source.mainSource instanceof SolidSource)) fail("BAD_ARGS", "solid_color and solid_size need a solid (or adjustment / null) layer");
+  if (a.audio_fade) { needAudio(l); if (!has(a.audio_fade, "in") && !has(a.audio_fade, "out")) fail("BAD_ARGS", "audio_fade needs in and/or out (seconds)"); }
   // unlock first and lock last, so the other edits in the same call can be applied
   if (a.locked === false) l.locked = false;
   if (has(a, "name")) l.name = a.name;
@@ -151,8 +152,17 @@ C.set_layer = function (a: Args["set_layer"]) {
   if (has(a, "auto_orient")) l.autoOrient = a.auto_orient === "path" ? AutoOrientType.ALONG_PATH : AutoOrientType.NO_AUTO_ORIENT;
   if (bm !== undefined) l.blendingMode = bm;
   if (a.parent_id === null) l.parent = null; else if (par) l.parent = par;
+  // fades last, on the final in / out points
+  if (a.audio_fade) {
+    fd = a.audio_fade; len = l.outPoint - l.inPoint;
+    if ((has(fd, "in") ? fd["in"]! : 0) + (has(fd, "out") ? fd.out! : 0) > len + EPS) fail("BAD_ARGS", "audio_fade in + out (" + ((fd["in"] || 0) + (fd.out || 0)) + " s) is longer than the layer (" + len + " s)");
+    if (has(fd, "in") && fd["in"]! > 0) replaced += audioFade(l as AVLayer, l.inPoint, fd["in"]!, false);
+    if (has(fd, "out") && fd.out! > 0) replaced += audioFade(l as AVLayer, l.outPoint - fd.out!, fd.out!, true);
+  }
   if (a.locked === true) l.locked = true;
-  return layerFieldsSet(l, a);
+  res = layerFieldsSet(l, a);
+  if (a.audio_fade) { res.audio_fade = a.audio_fade; if (replaced) res.keys_replaced = replaced; }
+  return res;
 };
 
 // parent = x keeps the layer where it is on screen (After Effects compensates); setParentWithJump keeps its own values.

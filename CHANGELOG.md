@@ -4,6 +4,16 @@ All notable changes. Versions follow [semantic versioning](https://semver.org); 
 
 ## Unreleased
 
+### Added
+- `find_sound_cues` `events`: the model says what moments mean (importance 0-1, a label, optionally the sound) and the tool keeps the timing: the nearest motion cue takes the importance and keeps its frame-exact time; an event with no motion becomes its own cue; importance 0 keeps a moment quiet. The meaning comes from the model and the timing from the rules, which a music and sound-effects planner needs.
+- `duck_music` `dips`: stretches of near-silence, e.g. 0.35 s before a reveal (measured live: -100 dB through the pause, then the impact). A dips-only call keeps the ducks as they are.
+- `set_layer` `audio_fade` (in / out seconds) and `sequence_layers` `audio_crossfade`: equal-power fades, so one music cue crossfades into the next without a dip in level (measured live: within 0.4 dB through a 2 s crossfade).
+
+### Changed
+- `duck_music` ducks by -6 dB by default (was -10): the usual range under narration is 4-8 dB.
+- `find_sound_cues` ranks cuts low on their own, so a hit on every cut is no longer the default; story events raise the cuts that matter.
+- Volume keys can be set under the ducking expression (`set_keyframes` refused them, and its hint said to clear the expression, which removed the ducking). Springs are still refused there, since they would replace it.
+
 ### Fixed
 - `find_sound_cues` cues a scale pop when the layer arrives (97% of the way), not at its last key: with a spring or snappy ease the last key is where it only settles, up to 15 frames after the hit. An entrance that pops and fades in is now one cue instead of two competing ones. Found by building a 12-second documentary reveal and checking where the impact belongs.
 - The after-render check no longer calls a dark title card with a line of text a black picture (and no longer suggests a GPU failure for it): a frame now counts as black only when 99.9% of it is dark.

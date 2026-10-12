@@ -23,9 +23,11 @@ C.shift_layers = function (a: Args["shift_layers"]) {
 
 C.sequence_layers = function (a: Args["sequence_layers"]) {
   need(a, ["layer_ids"]);
-  var ls = pickLayers(a.layer_ids), ov = has(a, "overlap") ? a.overlap : 0, out = [], i, t;
+  var ls = pickLayers(a.layer_ids), ov = has(a, "overlap") ? a.overlap : 0, out = [], i, t, xf = a.audio_crossfade === true, res: Obj;
   if (ls.length < 2) fail("BAD_ARGS", "Need at least two layers");
   if (ov < 0) fail("BAD_ARGS", "overlap must be 0 or more");
+  if (xf && !(ov > 0)) fail("BAD_ARGS", "audio_crossfade needs an overlap (the seconds the music cues share)");
+  if (xf) { for (i = 0; i < ls.length; i++) { needAudio(ls[i]); if (ls[i].outPoint - ls[i].inPoint < ov * (i === 0 || i === ls.length - 1 ? 1 : 2) - EPS) fail("BAD_ARGS", "Layer " + ls[i].id + " is shorter than its crossfades"); } }
   sameComp(ls);
   assertUnlocked(ls);
   t = has(a, "start") ? a.start : ls[0].inPoint;
@@ -34,7 +36,10 @@ C.sequence_layers = function (a: Args["sequence_layers"]) {
     t = ls[i].outPoint - ov;
     out.push(layerTiming(ls[i]));
   }
-  return { layers: out };
+  res = { layers: out };
+  // each overlap: the outgoing layer fades out while the next fades in (equal power)
+  if (xf) { for (i = 1; i < ls.length; i++) { audioFade(ls[i - 1] as AVLayer, ls[i].inPoint, ov, true); audioFade(ls[i] as AVLayer, ls[i].inPoint, ov, false); } res.crossfades = ls.length - 1; }
+  return res;
 };
 
 // Per layer, relative to the range [s, e]: before it -> untouched; after it -> shifted (ripple); inside -> deleted;

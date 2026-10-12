@@ -133,7 +133,7 @@ function makeWorld(amplitude, { menu = true } = {}) {
   vm.createContext(ctx);
   vm.runInContext(SRC, ctx);
   const call = (cmd, args = {}) => JSON.parse(ctx.AEM.dispatch(JSON.stringify({ cmd, args })));
-  return { call, comp, audioLayer, plain, log, group, keyed, TextLayer, ShapeLayer };
+  return { call, comp, audioLayer, plain, log, group, keyed, TextLayer, ShapeLayer, AVLayer };
 }
 
 const results = [];
@@ -269,6 +269,33 @@ t("find_sound_cues: a spring pop sounds when the layer arrives, and its fade-in 
   assert.ok(r.cues[0].t >= 7.05 && r.cues[0].t <= 7.05 + 4 / FPS, "within a few frames of the reveal, not at the settle (7.55): " + r.cues[0].t);
 });
 
+t("find_sound_cues events: meaning from the model raises, adds or mutes cues; timing stays the motion's; cuts stay minor", () => {
+  const w = makeWorld([]);
+  const reveal = w.plain("Reveal", w.TextLayer, { inPoint: 7.05 });
+  const sc = reveal.tg["ADBE Scale"]; sc.keys = [{ t: 7.05, v: [0, 0, 100] }, { t: 7.55, v: [100, 100, 100] }];
+  sc.valueAtTime = (t) => { const u = Math.max(0, t - 7.05), v = t >= 7.55 ? 100 : 100 * (1 - Math.exp(-30 * u) * Math.cos(25 * u)); return [v, v, 100]; };
+  w.plain("Detail", w.TextLayer, { inPoint: 9 });
+  // shot A ends at 4 s where shots B and C begin: a cut
+  w.plain("Shot A", w.AVLayer, { outPoint: 4 }); w.plain("Shot B", w.AVLayer, { inPoint: 4 }); w.plain("Shot C", w.AVLayer, { inPoint: 4 });
+  const plainRun = ok(w.call("find_sound_cues", { comp_id: 1 }));
+  const cut = plainRun.cues.find((c) => c.event === "cut");
+  assert.ok(cut && cut.tier === "minor", "a cut alone is minor, not an impact moment: " + JSON.stringify(cut));
+  const pop = plainRun.cues.find((c) => c.layer === "Reveal");
+  const r = ok(w.call("find_sound_cues", { comp_id: 1, events: [
+    { t: 7.05, importance: 0.95, label: "discovery", sound: "impact" },
+    { t: 9, importance: 0 },
+    { t: 2, importance: 0.5, label: "fact" },
+  ] }));
+  const hit = r.cues.find((c) => c.story === "discovery");
+  assert.ok(hit, "the reveal carries the story label");
+  assert.equal(hit.t, pop.t, "the cue keeps the motion's frame (" + pop.t + "), not the event's rough time");
+  assert.deepEqual([hit.priority, hit.tier, hit.sound], [0.95, "hero", "impact"]);
+  assert.ok(!r.cues.some((c) => c.layer === "Detail"), "importance 0 mutes the detail's pop");
+  const fact = r.cues.find((c) => c.story === "fact");
+  assert.deepEqual([fact.event, fact.t, fact.sound, fact.tier], ["story", 2, "accent", "major"], "an event with no motion is its own cue");
+  assert.equal(ok(w.call("find_sound_cues", { comp_id: 1, max: 1, events: [{ t: 7.05, importance: 0.95 }] })).cues[0].layer, "Reveal", "the story's hero survives the tightest budget");
+});
+
 t("find_sound_cues as a sound designer: simultaneous moments merge, entrances at a cut are one hit, a budget keeps the heroes spaced out", () => {
   const w = makeWorld([]);
   // four pieces of debris fly out together: one whoosh, not four
@@ -363,6 +390,72 @@ t("duck_music: under a voice-over only where it is heard, under short effects fo
   fails(w.call("duck_music", { music_layer_id: music.id, amount: 6 }), "BAD_ARGS");
   const w2 = makeWorld([]), lone = w2.audioLayer("music.wav");
   fails(w2.call("duck_music", { music_layer_id: lone.id }), "BAD_ARGS");
+});
+
+// Run the duck expression as After Effects would at time t (ease as a smoothstep; value + [g, g] adds per channel).
+function duckAt(layer, t, value = [0, 0]) {
+  const ex = layer.levels.expression.replace(/value \+ \[g, g\];$/, "return [value[0] + g, value[1] + g];");
+  const k = layer.markers.keys, marker = { numKeys: k.length, key: (i) => ({ time: k[i - 1].t, comment: k[i - 1].v.comment, duration: k[i - 1].v.duration || 0 }) };
+  const ease = (x, a, b, c, d) => { const u = Math.max(0, Math.min(1, (x - a) / (b - a))); return c + (d - c) * u * u * (3 - 2 * u); };
+  return new Function("thisLayer", "time", "value", "ease", ex)({ marker }, t, value, ease)[0];
+}
+
+t("duck_music dips: silence before a reveal, set apart from the ducks; volume keys go under the expression", () => {
+  const vo = Array.from({ length: 300 }, (_, k) => (k >= 15 && k < 84 ? 20 + (k % 3) : 0.2)); // talks 0.5-2.8 s
+  const w = makeWorld((name) => (name === "voice.wav" ? vo : [])), music = w.audioLayer("music.wav"), voice = w.audioLayer("voice.wav");
+  voice.inPoint = 0; voice.outPoint = 10; music.outPoint = 10;
+  const r = ok(w.call("duck_music", { music_layer_id: music.id, under_layer_ids: [voice.id] }));
+  assert.equal(r.amount, -6, "default duck is -6 dB (narration: 4-8)");
+  near(duckAt(music, 1.5), -6, "ducked under the voice", 1e-9);
+  // a dips-only call adds the pause and leaves the ducks (and their -6) alone
+  const d = ok(w.call("duck_music", { music_layer_id: music.id, dips: [{ start: 6.7, end: 7.05 }] }));
+  assert.equal(d.dips, 1); assert.equal(d.ducks, undefined, "no ducking was recomputed");
+  assert.deepEqual(music.markers.keys.map((k) => k.v.comment), ["duck", "dip -60 0.05"]);
+  near(duckAt(music, 1.5), -6, "duck kept", 1e-9);
+  near(duckAt(music, 6.8), -60, "silent through the dip", 1e-9);
+  near(duckAt(music, 6.6), 0, "full level before the dip's fade", 1e-9);
+  near(duckAt(music, 7.2), 0, "back after it", 1e-9);
+  // re-ducking keeps the dip; dips replace earlier dips
+  ok(w.call("duck_music", { music_layer_id: music.id, under_layer_ids: [voice.id], amount: -8 }));
+  near(duckAt(music, 6.8), -60, "dip survives a re-duck", 1e-9); near(duckAt(music, 1.5), -8, "new duck depth", 1e-9);
+  const d2 = ok(w.call("duck_music", { music_layer_id: music.id, dips: [{ start: 3, end: 3.5, amount: -20, fade: 0 }] }));
+  assert.equal(d2.dips_replaced, 1); near(duckAt(music, 6.8), 0, "the old dip is gone", 1e-9); near(duckAt(music, 3.2), -20, "", 1e-9);
+  near(duckAt(music, 1.5), -8, "a dips-only run keeps the last duck depth", 1e-9);
+  const before = music.markers.keys.length;
+  fails(w.call("duck_music", { music_layer_id: music.id, dips: [{ start: 2, end: 1 }] }), "BAD_ARGS");
+  fails(w.call("duck_music", { music_layer_id: music.id, dips: [{ start: 9, end: 12 }] }), "BAD_ARGS");
+  assert.equal(music.markers.keys.length, before, "a bad dip changes nothing");
+  // fades as keys under the ducking: allowed, and the expression stays
+  ok(w.call("set_keyframes", { layer_id: music.id, path: "volume", keys: [{ t: 0, v: -48 }, { t: 1, v: 0 }] }));
+  assert.equal(music.levels.keys.length, 2); assert.match(music.levels.expression, /^\/\/ ae-motion duck/);
+  fails(w.call("set_keyframes", { layer_id: music.id, path: "volume", keys: [{ t: 0, v: -48, interp: "spring" }, { t: 1, v: 0 }] }), "BAD_ARGS");
+  assert.match(music.levels.expression, /^\/\/ ae-motion duck/, "a spring would have replaced it: refused first");
+});
+
+t("audio fades: set_layer audio_fade and sequence_layers audio_crossfade keep the power (equal-power keys), work under ducking", () => {
+  const w = makeWorld([]), music = w.audioLayer("music.wav");
+  music.levels._v = [-8, -8];
+  ok(w.call("duck_music", { music_layer_id: music.id, dips: [{ start: 3, end: 3.3 }] }));
+  const r = ok(w.call("set_layer", { layer_id: music.id, audio_fade: { in: 1, out: 2 } }));
+  assert.deepEqual(plainArr(r.audio_fade), { in: 1, out: 2 }, "the result says what was faded");
+  const key = (t) => music.levels.keys.find((k) => Math.abs(k.t - t) < 1e-6)?.v[0];
+  near(key(0), -104, "silent at the in point (-96 under the level)"); near(key(1), -8, "the level after the fade-in");
+  near(key(0.5), -8 + 20 * Math.log10(Math.SQRT1_2), "half way: -3 dB (equal power)", 1e-6);
+  near(key(6), -8); near(key(8), -104, "silent at the out point");
+  assert.match(music.levels.expression, /^\/\/ ae-motion duck/, "the ducking expression stays");
+  fails(w.call("set_layer", { layer_id: music.id, audio_fade: { in: 5, out: 4 } }), "BAD_ARGS");
+  fails(w.call("set_layer", { layer_id: music.id, audio_fade: {} }), "BAD_ARGS");
+  fails(w.call("set_layer", { layer_id: w.plain("Title").id, audio_fade: { in: 1 } }), "BAD_ARGS");
+  // two music cues crossfading over a 2 s overlap: their summed power stays 1 through it
+  const a = w.comp.layers.add({ name: "cue1.wav", duration: 6 }), b = w.comp.layers.add({ name: "cue2.wav", duration: 6 });
+  a.levels._v = [0, 0]; b.levels._v = [0, 0];
+  const s = ok(w.call("sequence_layers", { layer_ids: [a.id, b.id], overlap: 2, start: 0, audio_crossfade: true }));
+  assert.equal(s.crossfades, 1); near(b.inPoint, 4, "the second cue starts 2 s before the first ends");
+  for (const t of [4, 4.5, 5, 5.5, 6]) {
+    const pa = 10 ** (a.levels.keys.find((k) => Math.abs(k.t - t) < 1e-6).v[0] / 10), pb = 10 ** (b.levels.keys.find((k) => Math.abs(k.t - t) < 1e-6).v[0] / 10);
+    near(pa + pb, 1, "power at " + t + " s", 1e-6);
+  }
+  fails(w.call("sequence_layers", { layer_ids: [a.id, b.id], audio_crossfade: true }), "BAD_ARGS");
 });
 
 t("duck_music analyses a voice-over that starts after the old work area ends (the work area really moves to it)", () => {

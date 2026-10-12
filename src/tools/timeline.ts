@@ -23,10 +23,10 @@ export function registerTimelineTools(r: ToolRegistry): void {
 
   r.bridged(
     "sequence_layers",
-    "Place layers one after another in the given order (like Animation > Keyframe Assistant > Sequence Layers). overlap is the seconds each layer overlaps the previous one. start sets where the first layer begins (default: where it already is).",
+    "Place layers one after another in the given order (like Animation > Keyframe Assistant > Sequence Layers). overlap is the seconds each layer overlaps the previous one. start sets where the first layer begins (default: where it already is). audio_crossfade: each overlap fades the outgoing audio out and the next in (equal power), e.g. one music cue into the next.",
     {
       layer_ids: z.array(z.number().int()).min(2).describe("Layer ids in playback order, all from the same comp"),
-      overlap: z.number().min(0).optional(), start: z.number().optional(),
+      overlap: z.number().min(0).optional(), start: z.number().optional(), audio_crossfade: z.boolean().optional(),
     },
   );
 

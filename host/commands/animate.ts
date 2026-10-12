@@ -31,8 +31,10 @@ C.set_keyframes = function (a: Args["set_keyframes"]) {
     tol = l.containingComp.frameDuration / 2, res: Obj;
   if (!p.canVaryOverTime) fail("BAD_ARGS", "Property is not keyframable", "Set it with set_property (no time); list_properties shows which properties have keys");
   if (!(a.keys instanceof Array) || !a.keys.length) fail("BAD_ARGS", "keys must be a non-empty array");
-  if (springList(p) === null) fail("BAD_ARGS", "Property has an active expression", "Clear it with set_expression and an empty expression");
-  if (p.expressionEnabled && !merge) p.expression = ""; // a spring expression is rebuilt from the new keys
+  // keys go under a duck expression (it adds to them); any other expression is refused
+  if (isDuck(p)) { for (i = 0; i < a.keys.length; i++) { if (SPRINGS[a.keys[i].interp!]) fail("BAD_ARGS", "interp " + a.keys[i].interp + " would replace the music's ducking expression", "Use bezier or linear keys on a ducked volume"); } }
+  else if (springList(p) === null) fail("BAD_ARGS", "Property has an active expression", "Clear it with set_expression and an empty expression");
+  if (p.expressionEnabled && !merge && !isDuck(p)) p.expression = ""; // a spring expression is rebuilt from the new keys
   for (i = 0; i < a.keys.length; i++) {
     k = a.keys[i];
     if (typeof k.t !== "number" || !has(k, "v")) fail("BAD_ARGS", "Each key needs numeric t and a v");
