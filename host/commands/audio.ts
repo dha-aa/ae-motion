@@ -246,6 +246,17 @@ function fastest(p: Prop, t0: number, t1: number, fd: number): { t: number; spee
   return { t: best, speed: top, end: endSpeed };
 }
 
+// The first frame in [t0, t1] where p has covered share of its change from v0 to v1 (t1 if it never does). A pop is
+// heard when the layer arrives: with a spring or a snappy ease that is well before the last key, where it only settles.
+function reached(p: Prop, t0: number, t1: number, v0: number, v1: number, share: number, fd: number): number {
+  var t, v;
+  for (t = t0; t <= t1 + 1e-6; t += fd) {
+    v = p.valueAtTime(t, false); v = typeof v === "number" ? v : v[0];
+    if ((v - v0) / (v1 - v0) >= share) return t;
+  }
+  return t1;
+}
+
 // Every keyframed property under a group whose match name is in names (text selectors, trim paths and so on).
 function keyedUnder(g: any, names: { [matchName: string]: number }, out: Prop[]): Prop[] {
   var i, p;
@@ -283,7 +294,7 @@ function layerCues(l: AVLayer, c: CompItem, push: PushCue): void {
       s = segs[i];
       v0 = typeof s.v0 === "number" ? s.v0 : s.v0[0]; v1 = typeof s.v1 === "number" ? s.v1 : s.v1[0];
       if (s.t1 - s.t0 > 0.8) continue;
-      if (v0 <= 20 && v1 >= 60) push(l, s.t1, "pop_in", "pop", 0.7);
+      if (v0 <= 20 && v1 >= 60) push(l, reached(p, s.t0, s.t1, v0, v1, 0.97, fd), "pop_in", "pop", 0.7);
       else if (v0 >= 60 && v1 <= 20) push(l, s.t0, "pop_out", "pop", 0.5);
     }
   }
@@ -327,7 +338,11 @@ function revealCues(l: AVLayer, push: PushCue): void {
 }
 
 // How much a sound designer cares about each kind of moment (before strength).
-var CUE_WEIGHT: { [event: string]: number } = { land: 1, cut: 0.7, camera_move: 0.8, move: 0.65, pop_in: 0.6, reveal: 0.55, spin: 0.5, draw_on: 0.5, type_on: 0.5, pop_out: 0.4, flash_in: 0.35, appear: 0.3 };
+// A cut is weighted low: a hit on every cut is the over-edited sound; story events (find_sound_cues events) raise the
+// ones that matter.
+var CUE_WEIGHT: { [event: string]: number } = { land: 1, cut: 0.4, camera_move: 0.8, move: 0.65, pop_in: 0.6, reveal: 0.55, spin: 0.5, draw_on: 0.5, type_on: 0.5, pop_out: 0.4, flash_in: 0.35, appear: 0.3 };
+// how far (s) a story event reaches to the motion cue it is about
+var EVENT_WINDOW = 0.5;
 // cues per second and the minimum spacing between cues at each density
 var CUE_DENSITY: { [density: string]: number[] } = { sparse: [1, 0.45], normal: [1.6, 0.25], dense: [3.5, 0.12] };
 
@@ -335,7 +350,7 @@ C.find_sound_cues = function (a: Args["find_sound_cues"]) {
   need(a, ["comp_id"]);
   var c = getComp(a.comp_id), fd = c.frameDuration, s = has(a, "start") ? a.start : 0, e = has(a, "end") ? a.end : c.duration,
     dens = CUE_DENSITY[a.density || "normal"], pick: { [id: number]: boolean } = {}, cues: Obj[] = [], own: Obj[] = [], groups: Obj[] = [], out: Obj[] = [],
-    ends: { [frame: number]: boolean } = {}, i, l: any, j, q, g, kept, max, gap, chosen: Obj[], kind;
+    ends: { [frame: number]: boolean } = {}, i, l: any, j, q, g, kept, max, gap, chosen: Obj[], kind, ev;
   if (!dens) fail("BAD_ARGS", "density must be sparse, normal or dense");
   max = a.max || Math.max(3, Math.round((e - s) * dens[0]));
   gap = has(a, "min_gap") ? a.min_gap : dens[1];
@@ -383,7 +398,24 @@ C.find_sound_cues = function (a: Args["find_sound_cues"]) {
     l.tier = l.priority >= 0.6 ? "hero" : (l.priority >= 0.4 ? "major" : "minor");
     out.push(l);
   }
-  // 3. the budget: the most important cues first, each at least gap from the ones already kept
+  // 3. story events (what the moment means, from the model): the nearest motion cue within EVENT_WINDOW takes the
+  // event's importance (and keeps its frame-exact time); an event with no motion near it is a cue of its own;
+  // importance 0 mutes the cues near it
+  if (has(a, "events")) {
+    for (i = 0; i < a.events.length; i++) {
+      ev = a.events[i];
+      if (ev.t < s - 1e-6 || ev.t > e + 1e-6) continue;
+      if (ev.importance === 0) { for (j = out.length - 1; j >= 0; j--) if (Math.abs(out[j].t - ev.t) <= EVENT_WINDOW + 1e-6) out.splice(j, 1); continue; }
+      q = null;
+      for (j = 0; j < out.length; j++) if (Math.abs(out[j].t - ev.t) <= EVENT_WINDOW + 1e-6 && (!q || Math.abs(out[j].t - ev.t) < Math.abs(q.t - ev.t))) q = out[j];
+      if (!q) { q = { t: snapT(c, ev.t), event: "story", sound: ev.importance >= 0.8 ? "impact" : "accent", strength: ev.importance }; out.push(q); }
+      q.priority = ev.importance;
+      if (ev.label) q.story = ev.label;
+      if (ev.sound) q.sound = ev.sound;
+      q.tier = q.priority >= 0.6 ? "hero" : (q.priority >= 0.4 ? "major" : "minor");
+    }
+  }
+  // 4. the budget: the most important cues first, each at least gap from the ones already kept
   out.sort(function (x, y) { return y.priority - x.priority || x.t - y.t; });
   chosen = [];
   for (i = 0; i < out.length && chosen.length < max; i++) {
@@ -433,59 +465,122 @@ function layerLevel(l: Layer): number {
   return mx;
 }
 
+// ---- Fades (set_layer audio_fade, sequence_layers audio_crossfade) ----
+
+// A fade ends this far down (After Effects goes to -192 dB; -96 is inaudible).
+var FADE_FLOOR = -96;
+
+// Equal-power fade keys on a layer's audio levels over [t0, t0 + dur]: gain sin(u * pi / 2) in, cos out, in dB on top
+// of the level at the fade's loud end. Two layers crossfading this way keep the mix's power, where straight dB ramps
+// leave a hole in the middle. Keys already inside the span are replaced; returns how many.
+function audioFade(l: AVLayer, t0: number, dur: number, out: boolean): number {
+  var lv = l.property("ADBE Audio Group").property("ADBE Audio Levels"), loud = lv.valueAtTime(out ? t0 : t0 + dur, true),
+    half = l.containingComp.frameDuration / 2, removed = 0, i, u, g, db;
+  for (i = lv.numKeys; i >= 1; i--) { if (lv.keyTime(i) >= t0 - half && lv.keyTime(i) <= t0 + dur + half) { lv.removeKey(i); removed++; } }
+  for (i = 0; i <= 4; i++) {
+    u = i / 4; g = out ? Math.cos(u * Math.PI / 2) : Math.sin(u * Math.PI / 2);
+    db = g <= 1e-6 ? FADE_FLOOR : Math.max(FADE_FLOOR, 20 * Math.log(g) / Math.LN10);
+    lv.setValueAtTime(t0 + u * dur, [loud[0] + db, loud[1] + db]);
+  }
+  return removed;
+}
+
+// A layer that can fade: it has audio (fails otherwise, naming the layer).
+function needAudio(l: Layer): AVLayer {
+  if (!safe(function () { return (l as AVLayer).hasAudio === true; })) fail("BAD_ARGS", "Layer " + l.id + " (" + l.name + ") has no audio to fade");
+  return l as AVLayer;
+}
+
+// The duck expression's settings, from an earlier duck_music run on this property (a dips-only run keeps them).
+function duckSettings(lv: Prop): number[] | null {
+  var m = isDuck(lv) ? /d = (-?[0-9.]+), att = ([0-9.]+), rel = ([0-9.]+)/.exec(lv.expression) : null;
+  return m ? [parseFloat(m[1]), parseFloat(m[2]), parseFloat(m[3])] : null;
+}
+
 C.duck_music = function (a: Args["duck_music"]) {
   need(a, ["music_layer_id"]);
-  var music = getLayer(a.music_layer_id), c = music.containingComp, amount = has(a, "amount") ? a.amount : -10,
-    att = has(a, "attack") ? a.attack : 0.15, rel = has(a, "release") ? a.release : 0.4, mode = a.mode || "auto",
-    minLevel = has(a, "min_level") ? a.min_level : -9, triggers: AVLayer[] = [], quiet = 0, spans: number[][] = [], i, l: AVLayer, sp, j, mk = music.property("ADBE Marker"), lv, mv, removed = 0, ex, cover = 0, res: Obj;
-  if (amount >= 0) fail("BAD_ARGS", "amount is the drop in dB and must be negative (e.g. -10)");
+  var music = getLayer(a.music_layer_id), c = music.containingComp, lv = music.property("ADBE Audio Group").property("ADBE Audio Levels"),
+    prev = duckSettings(lv), dipsOnly = has(a, "dips") && !has(a, "under_layer_ids"),
+    amount = has(a, "amount") ? a.amount : (dipsOnly && prev ? prev[0] : -6),
+    att = has(a, "attack") ? a.attack : (dipsOnly && prev ? prev[1] : 0.15), rel = has(a, "release") ? a.release : (dipsOnly && prev ? prev[2] : 0.4), mode = a.mode || "auto",
+    minLevel = has(a, "min_level") ? a.min_level : -9, triggers: AVLayer[] = [], quiet = 0, spans: number[][] = [], i, l: AVLayer, sp, j, mk = music.property("ADBE Marker"), mv, removed = 0, ex, cover = 0, res: Obj,
+    dips: number[][] = [], dp, dipsRemoved = 0;
+  if (amount >= 0) fail("BAD_ARGS", "amount is the drop in dB and must be negative (e.g. -6)");
   if (mode !== "auto" && mode !== "span" && mode !== "loudness") fail("BAD_ARGS", "mode must be auto, span or loudness");
   if (!safe(function () { return music.hasAudio === true; })) fail("BAD_ARGS", "The music layer has no audio");
-  if (has(a, "under_layer_ids")) { for (i = 0; i < a.under_layer_ids.length; i++) triggers.push(getLayer(a.under_layer_ids[i])); }
-  else {
-    for (i = 1; i <= c.numLayers; i++) {
-      l = c.layer(i) as AVLayer;
-      if (l === music || !hasAudioOn(l) || l.name.indexOf(AUDIO_NULL_PREFIX) === 0) continue;
-      // quiet effects sit under the music anyway: ducking for each of them only pumps the music
-      if (layerLevel(l) < minLevel) { quiet++; continue; }
-      triggers.push(l);
+  // dips: a stretch of near-silence (a dramatic pause before a reveal), checked before anything changes
+  if (has(a, "dips")) {
+    for (i = 0; i < a.dips.length; i++) {
+      dp = a.dips[i];
+      if (!(dp.end > dp.start) || dp.start < 0 || dp.end > c.duration + EPS) fail("BAD_ARGS", "dips[" + i + "]: start " + dp.start + " / end " + dp.end + " must be a span inside the comp (0 to " + c.duration + " s)");
+      if (has(dp, "amount") && dp.amount! >= 0) fail("BAD_ARGS", "dips[" + i + "]: amount is the drop in dB and must be negative (-60 is silence)");
+      dips.push([dp.start, dp.end, has(dp, "amount") ? dp.amount! : -60, has(dp, "fade") ? dp.fade! : 0.05]);
     }
   }
-  if (!triggers.length) fail("BAD_ARGS", "Nothing to duck under: no other audio layers" + (quiet ? " louder than " + minLevel + " dB (" + quiet + " quieter ones are ignored)" : ""), "Add voice-over or sound effects first, lower min_level, or pass under_layer_ids");
-  for (i = 0; i < triggers.length; i++) {
-    l = triggers[i];
-    if (l.containingComp !== c) fail("BAD_ARGS", "under_layer_ids must be in the music's comp");
-    if (mode === "loudness" || (mode === "auto" && l.outPoint - l.inPoint > 2)) {
-      sp = audibleSpans(l); // long layers (voice-over): only where they are actually heard
-      for (j = 0; j < sp.length; j++) spans.push(sp[j]);
-    } else spans.push([Math.max(0, l.inPoint), Math.min(c.duration, l.outPoint)]);
+  if (!dipsOnly) {
+    if (has(a, "under_layer_ids")) { for (i = 0; i < a.under_layer_ids.length; i++) triggers.push(getLayer(a.under_layer_ids[i])); }
+    else {
+      for (i = 1; i <= c.numLayers; i++) {
+        l = c.layer(i) as AVLayer;
+        if (l === music || !hasAudioOn(l) || l.name.indexOf(AUDIO_NULL_PREFIX) === 0) continue;
+        // quiet effects sit under the music anyway: ducking for each of them only pumps the music
+        if (layerLevel(l) < minLevel) { quiet++; continue; }
+        triggers.push(l);
+      }
+    }
+    if (!triggers.length) fail("BAD_ARGS", "Nothing to duck under: no other audio layers" + (quiet ? " louder than " + minLevel + " dB (" + quiet + " quieter ones are ignored)" : ""), "Add voice-over or sound effects first, lower min_level, or pass under_layer_ids");
+    for (i = 0; i < triggers.length; i++) {
+      l = triggers[i];
+      if (l.containingComp !== c) fail("BAD_ARGS", "under_layer_ids must be in the music's comp");
+      if (mode === "loudness" || (mode === "auto" && l.outPoint - l.inPoint > 2)) {
+        sp = audibleSpans(l); // long layers (voice-over): only where they are actually heard
+        for (j = 0; j < sp.length; j++) spans.push(sp[j]);
+      } else spans.push([Math.max(0, l.inPoint), Math.min(c.duration, l.outPoint)]);
+    }
+    spans = mergeSpans(spans, att + rel);
+    // the ducks are markers on the music, read by one expression: volume keys keep working under it, and a duck is
+    // moved or removed by editing its marker
+    for (i = mk.numKeys; i >= 1; i--) { if (mk.keyValue(i).comment === "duck") { mk.removeKey(i); removed++; } }
+    for (i = 0; i < spans.length; i++) {
+      mv = new MarkerValue("duck");
+      mv.duration = Math.max(c.frameDuration, spans[i][1] - spans[i][0]);
+      mk.setValueAtTime(spans[i][0], mv);
+    }
   }
-  spans = mergeSpans(spans, att + rel);
-  // the ducks are markers on the music, read by one expression: existing volume keys keep working, and a duck is
-  // moved or removed by editing its marker
-  for (i = mk.numKeys; i >= 1; i--) { if (mk.keyValue(i).comment === "duck") { mk.removeKey(i); removed++; } }
-  for (i = 0; i < spans.length; i++) {
-    mv = new MarkerValue("duck");
-    mv.duration = Math.max(c.frameDuration, spans[i][1] - spans[i][0]);
-    mk.setValueAtTime(spans[i][0], mv);
+  // a dip marker carries its own depth and fade: "dip -60 0.05"
+  if (dips.length) {
+    for (i = mk.numKeys; i >= 1; i--) { if (String(mk.keyValue(i).comment).indexOf("dip ") === 0) { mk.removeKey(i); dipsRemoved++; } }
+    for (i = 0; i < dips.length; i++) {
+      mv = new MarkerValue("dip " + dips[i][2] + " " + dips[i][3]);
+      mv.duration = dips[i][1] - dips[i][0];
+      mk.setValueAtTime(dips[i][0], mv);
+    }
   }
-  ex = "// ae-motion duck\n" +
-    "var m = thisLayer.marker, d = " + amount + ", att = " + att + ", rel = " + rel + ", g = 0, i, k, s, e, w;\n" +
+  ex = DUCK_TAG + "\n" +
+    "var m = thisLayer.marker, d = " + amount + ", att = " + att + ", rel = " + rel + ", g = 0, i, k, c, p, dd, a1, r1, s, e, w;\n" +
     "for (i = 1; i <= m.numKeys; i++) {\n" +
-    "  k = m.key(i); if (k.comment != \"duck\") continue;\n" +
+    "  k = m.key(i); c = k.comment;\n" +
+    "  if (c == \"duck\") { dd = d; a1 = att; r1 = rel; }\n" +
+    "  else if (c.indexOf(\"dip \") == 0) { p = c.split(\" \"); dd = parseFloat(p[1]); a1 = parseFloat(p[2]); r1 = a1; }\n" +
+    "  else continue;\n" +
     "  s = k.time; e = k.time + k.duration;\n" +
-    "  if (time < s - att || time > e + rel) continue;\n" +
-    "  w = time < s ? (time - s + att) / att : (time <= e ? 1 : 1 - (time - e) / rel);\n" +
-    "  g = Math.min(g, ease(w, 0, 1, 0, d));\n" +
+    "  if (time < s - a1 || time > e + r1) continue;\n" +
+    "  w = time < s ? (a1 > 0 ? (time - s + a1) / a1 : 1) : (time <= e ? 1 : (r1 > 0 ? 1 - (time - e) / r1 : 0));\n" +
+    "  g = Math.min(g, ease(w, 0, 1, 0, dd));\n" +
     "}\n" +
     "value + [g, g];";
-  lv = music.property("ADBE Audio Group").property("ADBE Audio Levels");
   lv.expression = ex;
-  // how much of the music is ducked: past half, ducking is just a lower level that pumps
-  for (i = 0; i < spans.length; i++) cover += Math.min(spans[i][1], music.outPoint) - Math.max(spans[i][0], music.inPoint);
-  cover = Math.max(0, Math.min(1, cover / Math.max(c.frameDuration, music.outPoint - music.inPoint)));
-  res = { music_layer: layerRef(music), ducks: spans.length, spans: spans.slice(0, 100), coverage: Math.round(cover * 100) / 100, amount: amount, replaced: removed, valid: !lv.expressionError, error: lv.expressionError || undefined };
-  if (quiet) res.ignored_quiet = quiet;
-  if (cover > 0.5) res.note = "The ducks cover " + Math.round(cover * 100) + "% of the music: set its volume lower instead, or duck only under the hero sounds (under_layer_ids, or a higher min_level)";
+  res = { music_layer: layerRef(music) };
+  if (!dipsOnly) {
+    // how much of the music is ducked: past half, ducking is just a lower level that pumps
+    for (i = 0; i < spans.length; i++) cover += Math.min(spans[i][1], music.outPoint) - Math.max(spans[i][0], music.inPoint);
+    cover = Math.max(0, Math.min(1, cover / Math.max(c.frameDuration, music.outPoint - music.inPoint)));
+    res.ducks = spans.length; res.spans = spans.slice(0, 100); res.coverage = Math.round(cover * 100) / 100; res.amount = amount; res.replaced = removed;
+    if (quiet) res.ignored_quiet = quiet;
+    if (cover > 0.5) res.note = "The ducks cover " + Math.round(cover * 100) + "% of the music: set its volume lower instead, or duck only under the hero sounds (under_layer_ids, or a higher min_level)";
+  }
+  if (dips.length) { res.dips = dips.length; if (dipsRemoved) res.dips_replaced = dipsRemoved; }
+  res.valid = !lv.expressionError;
+  if (lv.expressionError) res.error = lv.expressionError;
   return res;
 };

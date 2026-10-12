@@ -30,10 +30,11 @@ export function registerAudioTools(r: ToolRegistry): void {
 
   r.bridged(
     "find_sound_cues",
-    "Pick where a comp wants sound effects, as a sound designer would: landings (impact), cuts (hit), big moves and spins (whoosh at peak speed), pops, reveals, type-ons, draw-ons. One frame is one cue (layer_ids). Cues are ranked (priority, tier hero|major|minor); the most important are kept, spaced out: density sparse|normal|dense (~1 / 1.6 / 3.5 per s) or max, min_gap. Few sounds read better than many. Pass each t to add_sfx.",
+    "Pick where a comp wants sound effects, as a sound designer would: landings (impact), cuts (hit), big moves and spins (whoosh at peak speed), pops, reveals, type-ons, draw-ons. One frame is one cue (layer_ids). Cues are ranked (priority, tier hero|major|minor); the most important are kept, spaced out: density sparse|normal|dense (~1 / 1.6 / 3.5 per s) or max, min_gap. Few sounds read better than many. events: what moments mean to the story (importance 0-1): the nearest motion cue within 0.5 s takes it, keeping its exact frame (story: label); an event with no motion is its own cue; importance 0 mutes that moment. Pass each t to add_sfx.",
     {
       comp_id: id("Comp"), layer_ids: LayerIds.optional(), start: Time.optional(), end: Time.optional(), max: z.number().int().min(1).max(200).optional(),
       density: z.enum(["sparse", "normal", "dense"]).optional(), min_gap: z.number().min(0).optional(),
+      events: z.array(z.strictObject({ t: Time, importance: z.number().min(0).max(1), label: z.string().optional(), sound: z.string().optional() })).max(100).optional(),
     },
     { readOnly: true, tooLargeHint: "Narrow start/end or layer_ids, or lower max" },
   );
@@ -50,10 +51,11 @@ export function registerAudioTools(r: ToolRegistry): void {
 
   r.bridged(
     "duck_music",
-    'Lower the music under voice-over and sound effects (default: every other audio layer): by amount dB (default -10), easing over attack (0.15 s) and release (0.4 s). Long layers duck only where they are actually heard (mode auto; span = whole layer, loudness = always measure). Effects quieter than min_level (-9 dB) are ignored; coverage = share of the music ducked. Ducks are "duck" markers read by one expression (volume keys keep working); re-running replaces them.',
+    'Lower the music under voice-over and sound effects (default: every other audio layer): by amount dB (default -6), easing over attack (0.15 s) and release (0.4 s). Long layers duck only where they are actually heard (mode auto; span = whole layer, loudness = always measure). Effects quieter than min_level (-9 dB) are ignored; coverage = share of the music ducked. dips: near-silence over start-end (amount default -60, fade 0.05 s), e.g. a pause before a reveal; dips without under_layer_ids leave the ducks as they are. Ducks and dips are markers read by one expression; volume keys (fades) work under it; re-running replaces each kind it sets.',
     {
       music_layer_id: id("Music layer"), under_layer_ids: LayerIds.optional(), amount: z.number().max(0).optional(),
       attack: z.number().min(0).optional(), release: z.number().min(0).optional(), mode: z.enum(["auto", "span", "loudness"]).optional(), min_level: z.number().optional(),
+      dips: z.array(z.strictObject({ start: z.number().min(0), end: z.number().positive(), amount: z.number().max(0).optional(), fade: z.number().min(0).optional() })).min(1).max(50).optional(),
     },
     { idempotent: true },
   );

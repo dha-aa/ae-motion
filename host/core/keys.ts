@@ -46,6 +46,10 @@ function coerce(prop: Prop, v: any): any {
 // are pure functions of time, the keys stay linear, and other segments keep their own easing.
 
 var SPRING_TAG = "// ae-motion spring";
+// duck_music's expression on a music layer's audio levels: it adds the ducks and dips to the value, so keys under it
+// (fades, crossfades, a hand-set level) keep working and set_keyframes may add them.
+var DUCK_TAG = "// ae-motion duck";
+function isDuck(p: Prop): boolean { return p.expressionEnabled === true && String(p.expression).indexOf(DUCK_TAG) === 0; }
 // Step responses: x(u) = 1 - e^(-a u) cos(b u), normalised so x(1) = 1. spring overshoots about 13 % once and
 // settles; bounce folds the cosine (|.|) so the value hits the target and bounces back off it, like a dropped object
 // (b = 4.5 pi puts cos(b) = 0 at the end, so it lands exactly and never passes the target).

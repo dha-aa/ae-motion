@@ -190,6 +190,27 @@ check("import_footage: a sequence conforms to fps into a folder; a still refuses
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
+check("audio: duck_music dips, audio_fade and volume keys all live under the duck expression", async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "ae-motion-live-"));
+  // 4 s of a 220 Hz tone, 16-bit mono PCM
+  const rate = 48000, n = rate * 4, wav = Buffer.alloc(44 + n * 2);
+  wav.write("RIFF", 0); wav.writeUInt32LE(36 + n * 2, 4); wav.write("WAVEfmt ", 8); wav.writeUInt32LE(16, 16); wav.writeUInt16LE(1, 20); wav.writeUInt16LE(1, 22);
+  wav.writeUInt32LE(rate, 24); wav.writeUInt32LE(rate * 2, 28); wav.writeUInt16LE(2, 32); wav.writeUInt16LE(16, 34); wav.write("data", 36); wav.writeUInt32LE(n * 2, 40);
+  for (let i = 0; i < n; i++) wav.writeInt16LE(Math.round(8000 * Math.sin((2 * Math.PI * 220 * i) / rate)), 44 + i * 2);
+  fs.writeFileSync(path.join(dir, "tone.wav"), wav);
+  try {
+    const item = await call("import_footage", { path: path.join(dir, "tone.wav") });
+    const m = (await call("add_layer", { comp_id: comp, kind: "footage", options: { item_id: item.id } })).id;
+    const d = await call("duck_music", { music_layer_id: m, dips: [{ start: 2, end: 2.5 }] });
+    expect(d.dips === 1 && d.valid === true, "the dip expression is valid in After Effects", d);
+    const f = await call("set_layer", { layer_id: m, audio_fade: { in: 0.5, out: 1 } });
+    expect(f.audio_fade?.in === 0.5, "fades set", f);
+    await call("set_keyframes", { layer_id: m, path: "volume", keys: [{ t: 1, v: -3 }], merge: true });
+    const k = await call("get_keyframes", { layer_id: m, path: "volume" });
+    expect(k.num_keys === 11 && /^\/\/ ae-motion duck/.test(k.expression ?? ""), "5 + 5 fade keys and the new one, under the duck expression", k);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
 check("effects apply with parameters and can be removed", async () => {
   const l = await solid("L");
   await call("apply_effect", { layer_id: l, match_name: "ADBE Gaussian Blur 2", params: { "ADBE Gaussian Blur 2-0001": 12 } });

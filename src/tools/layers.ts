@@ -25,7 +25,7 @@ export function registerLayerTools(r: ToolRegistry): void {
 
   r.bridged(
     "set_layer",
-    "Edit a layer; only the fields you pass change. stretch: percent (200 = half speed, negative reverses). parent_id null unparents. blend_mode: e.g. ADD, SCREEN. motion_blur / frame_blending need the switch in set_comp too. separate_dimensions: x_position / y_position / z_position. auto_orient path: along the motion path. collapse: continuously rasterize. guide: not rendered. sampling bicubic: sharper scaled images. solid_color / solid_size change the solid item (every layer using it).",
+    "Edit a layer; only the fields you pass change. stretch: percent (200 = half speed, negative reverses). parent_id null unparents. blend_mode: e.g. ADD, SCREEN. motion_blur / frame_blending need the switch in set_comp too. separate_dimensions: x_position / y_position / z_position. auto_orient path: along the motion path. collapse: continuously rasterize. guide: not rendered. sampling bicubic: sharper scaled images. solid_color / solid_size change the solid item (every layer using it). audio_fade: seconds of equal-power fade from the in point / to the out point (volume keys; works under duck_music).",
     {
       layer_id: id("Layer"), name: z.string().optional(), start: z.number().optional(), in: z.number().optional(), out: z.number().optional(),
       parent_id: z.number().int().nullable().optional(), blend_mode: z.string().optional(), enabled: z.boolean().optional(),
@@ -35,6 +35,7 @@ export function registerLayerTools(r: ToolRegistry): void {
       frame_blending: z.enum(["off", "frame_mix", "pixel_motion"]).optional(), quality: z.enum(["best", "draft", "wireframe"]).optional(), sampling: z.enum(["bilinear", "bicubic"]).optional(), collapse: z.boolean().optional(),
       guide: z.boolean().optional(), adjustment: z.boolean().optional(), effects: z.boolean().optional(), audio: z.boolean().optional(), preserve_transparency: z.boolean().optional(),
       solid_color: Color.optional(), solid_size: Size.optional(),
+      audio_fade: z.strictObject({ in: z.number().min(0).optional(), out: z.number().min(0).optional() }).optional(),
     },
     { idempotent: true },
   );
