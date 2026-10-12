@@ -5,7 +5,7 @@ import { z } from "zod";
 import { AeToolError } from "../errors.js";
 import { assertAllowed, toAe } from "../sandbox.js";
 import { fromBridge, json, type ToolRegistry } from "./registry.js";
-import { Color, id } from "./schemas.js";
+import { Color, FolderRef, id, InterpretShape } from "./schemas.js";
 
 // Factories rather than shared instances: a zod schema reused within one object is emitted as a JSON Schema $ref.
 const dimension = () => z.number().int().min(1).max(30000);
@@ -71,9 +71,22 @@ export function registerProjectTools(r: ToolRegistry): void {
 
   r.bridged(
     "import_footage",
-    "Import a file (or an image sequence) into the project. Path must be inside the allowed folders.",
-    { path: z.string(), as: z.enum(["footage", "sequence"]).optional() },
-    { paths: ["path"], destructive: false },
+    "Import a file, or several (paths), into the project. as: sequence (path is its first frame), comp / comp_cropped (a layered PSD or Illustrator file as a comp of its layers). fps, loop and alpha set the footage's interpretation (set_item changes them later). folder files the imports. All files are checked before any is imported.",
+    {
+      path: z.string().optional(), paths: z.array(z.string()).min(1).max(50).optional(),
+      as: z.enum(["footage", "sequence", "comp", "comp_cropped"]).optional(), ...InterpretShape, folder: FolderRef.optional(), name: z.string().optional(),
+    },
+    { paths: ["path", "paths"], destructive: false },
+  );
+
+  r.bridged(
+    "set_item",
+    "Change a project item (comp, footage or folder): name, comment, label (0-16), folder (null: top level); footage interpretation (fps, loop, alpha); file swaps the footage's file for every layer that uses it (sequence: file is a sequence's first frame).",
+    {
+      item_id: id("Item"), name: z.string().optional(), comment: z.string().optional(), label: z.number().int().min(0).max(16).optional(),
+      folder: FolderRef.nullable().optional(), ...InterpretShape, file: z.string().optional(), sequence: z.boolean().optional(),
+    },
+    { paths: ["file"], idempotent: true },
   );
 
   r.bridged(

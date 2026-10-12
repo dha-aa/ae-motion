@@ -5,6 +5,10 @@
 //   npm run build && node test/live/run.ts --yes [--only <name substring>]
 //
 // Needs After Effects with the ae-motion panel open. It replaces the open project with a new one (--yes confirms).
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { PNG } from "pngjs";
 import { startClient, type ToolResult } from "../../scripts/mcp-client.ts";
 
 const argv = process.argv.slice(2);
@@ -168,6 +172,22 @@ check("text ranges: part styling sticks (stroke too), reads back, and new text c
   expect(count?.stroke === true && count?.stroke_width === 3, "count: stroke on (needs applyStroke set explicitly)", g);
   const r = await call("set_text", { layer_id: t, text: "Make every second count" });
   expect(r.ranges_cleared === true && (await call("get_text", { layer_id: t })).ranges === undefined, "new text clears part styling", r);
+});
+
+check("import_footage: a sequence conforms to fps into a folder; a still refuses fps; set_item renames and moves", async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "ae-motion-live-"));
+  const png = new PNG({ width: 16, height: 16 }); png.data.fill(200);
+  for (let i = 1; i <= 10; i++) fs.writeFileSync(path.join(dir, `f_${String(i).padStart(3, "0")}.png`), PNG.sync.write(png));
+  fs.mkdirSync(path.join(dir, "still")); fs.writeFileSync(path.join(dir, "still", "logo.png"), PNG.sync.write(png));
+  try {
+    const seq = await call("import_footage", { path: path.join(dir, "f_001.png"), as: "sequence", fps: 20, loop: 2, folder: "Live imports" });
+    expect(seq.fps === 20 && near(seq.duration, 1) && typeof seq.folder_id === "number", "10 frames at 20 fps looped twice = 1 s, in a folder", seq);
+    const still = await call("import_footage", { path: path.join(dir, "still", "logo.png"), fps: 12, folder: "Live imports" });
+    expect(still.folder_id === seq.folder_id && still.skipped?.[0]?.field === "fps", "still: same folder, fps skipped", still);
+    const moved = await call("set_item", { item_id: seq.id, name: "Seq", folder: null, label: 2 });
+    expect(moved.name === "Seq" && moved.folder_id === undefined && moved.label === 2, "renamed, at the top level", moved);
+    expect((await callError("set_item", { item_id: comp, fps: 24 })).code === "BAD_ARGS", "fps on a comp is refused");
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
 check("effects apply with parameters and can be removed", async () => {

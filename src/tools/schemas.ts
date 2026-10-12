@@ -63,6 +63,14 @@ export const ShapeLayerSpec = z.strictObject({
   rotation: z.number().optional(), opacity: z.number().min(0).max(100).optional(),
 });
 
+/** Footage interpretation, shared by import_footage and set_item (stills refuse fps and loop: reported in skipped). */
+export const InterpretShape = {
+  fps: z.number().min(1).max(120).optional().describe("Conform frame rate (image sequences import at 30)"),
+  loop: z.number().int().min(1).max(1000).optional(), alpha: z.enum(["straight", "premultiplied", "ignore"]).optional(),
+};
+/** A project folder: its id, or the name of a top-level folder (created if missing). */
+export const FolderRef = z.union([z.number().int(), z.string().min(1)]);
+
 /** Anchor positions on a layer's content (set_anchor, add_layer options.anchor). */
 export const Anchor = z.enum(["center", "top_left", "top", "top_right", "left", "right", "bottom_left", "bottom", "bottom_right"]);
 

@@ -67,16 +67,96 @@ C.set_comp = function (a: Args["set_comp"]) {
   return compInfo(c, false);
 };
 
+// ----- footage interpretation and folders (import_footage, set_item) -----
+// Verified in AE 26.3: image sequences import at 30 fps whatever they were rendered at; loop multiplies the duration;
+// stills refuse loop and conformFrameRate (thrown, reported in skipped); a new folder lands in the root folder.
+
+var ALPHA_MODES: { [name: string]: string } = { straight: "STRAIGHT", premultiplied: "PREMULTIPLIED", ignore: "IGNORE" };
+
+type Interp = { fps?: number; loop?: number; alpha?: "straight" | "premultiplied" | "ignore" };
+
+function hasInterp(a: Interp): boolean { return has(a, "fps") || has(a, "loop") || has(a, "alpha"); }
+
+// Apply fps / loop / alpha to a footage item; what After Effects refuses goes into skipped as {id, field, reason}.
+function interpret(it: _ItemClasses, a: Interp, skipped: Obj[]): void {
+  var ms: any;
+  function put(field: string, fn: () => void): void { try { fn(); } catch (e) { skipped.push({ id: it.id, field: field, reason: String((e as any).message || e) }); } }
+  if (!hasInterp(a) || !(it instanceof FootageItem)) return;
+  ms = it.mainSource;
+  if (has(a, "fps")) put("fps", function () { ms.conformFrameRate = a.fps; });
+  if (has(a, "loop")) put("loop", function () { ms.loop = a.loop; });
+  if (has(a, "alpha")) put("alpha", function () {
+    if (ms.hasAlpha !== true) throw new Error("The footage has no alpha channel");
+    ms.alphaMode = (AlphaMode as any)[ALPHA_MODES[a.alpha!]];
+  });
+}
+
+// A folder by id, or the top-level folder with that name (created when missing).
+function folderFor(ref: number | string): FolderItem {
+  var p = app.project, it, i;
+  if (typeof ref === "number") {
+    it = getItem(ref);
+    if (!(it instanceof FolderItem)) fail("BAD_ARGS", "Item " + ref + " is not a folder", "Pass a folder id or a folder name");
+    return it as FolderItem;
+  }
+  for (i = 1; i <= p.numItems; i++) { it = p.item(i); if (it instanceof FolderItem && it.name === ref && it.parentFolder === p.rootFolder) return it; }
+  return p.items.addFolder(ref);
+}
+
 C.import_footage = function (a: Args["import_footage"]) {
-  need(a, ["path"]);
-  var f = new File(a.path), io, it;
-  if (!f.exists) fail("NOT_FOUND", "File not found: " + a.path);
-  io = new ImportOptions(f);
-  if (a.as === "sequence") io.sequence = true;
-  if (!io.canImportAs(ImportAsType.FOOTAGE)) fail("BAD_ARGS", "File cannot be imported as footage");
-  io.importAs = ImportAsType.FOOTAGE;
-  it = app.project.importFile(io);
-  return itemInfo(it);
+  var list: string[] = [], opts: any[] = [], out: Obj[] = [], skipped: Obj[] = [], missing: string[] = [], i, f, io, it, type, folder: FolderItem | null = null, res: Obj;
+  if (has(a, "path") === has(a, "paths")) fail("BAD_ARGS", "Pass path or paths");
+  if (has(a, "name") && has(a, "paths")) fail("BAD_ARGS", "name needs a single path", "Rename the others with set_item");
+  if (hasInterp(a) && (a.as === "comp" || a.as === "comp_cropped")) fail("BAD_ARGS", "fps, loop and alpha are footage settings; a comp import has none", "Set them on the layers' footage items with set_item");
+  list = has(a, "paths") ? a.paths : [a.path!];
+  type = a.as === "comp" ? ImportAsType.COMP : (a.as === "comp_cropped" ? ImportAsType.COMP_CROPPED_LAYERS : ImportAsType.FOOTAGE);
+  // check every file before importing any
+  for (i = 0; i < list.length; i++) { f = new File(list[i]); if (!f.exists) missing.push(list[i]); }
+  if (missing.length) fail("NOT_FOUND", "File not found: " + missing.join(", "));
+  for (i = 0; i < list.length; i++) {
+    io = new ImportOptions(new File(list[i]));
+    if (a.as === "sequence") io.sequence = true;
+    if (!io.canImportAs(type)) fail("BAD_ARGS", "Cannot import " + list[i] + " as " + (a.as || "footage"), a.as === "comp" || a.as === "comp_cropped" ? "Only layered files (PSD, Illustrator) import as a comp" : "");
+    io.importAs = type;
+    opts.push(io);
+  }
+  if (has(a, "folder")) folder = folderFor(a.folder);
+  for (i = 0; i < opts.length; i++) {
+    it = app.project.importFile(opts[i]);
+    if (has(a, "name")) it.name = a.name;
+    interpret(it, a, skipped);
+    if (folder) it.parentFolder = folder;
+    out.push(itemInfo(it));
+  }
+  res = has(a, "paths") ? { items: out } : out[0];
+  if (skipped.length) res.skipped = skipped;
+  return res;
+};
+
+C.set_item = function (a: Args["set_item"]) {
+  need(a, ["item_id"]);
+  var it = getItem(a.item_id), skipped: Obj[] = [], f, res: Obj;
+  if (hasInterp(a) && !(it instanceof FootageItem)) fail("BAD_ARGS", "fps, loop and alpha are footage settings; item " + a.item_id + " is a " + itemType(it), "Use set_comp to change a comp's frame rate");
+  if (has(a, "file")) {
+    if (!(it instanceof FootageItem) || it.mainSource instanceof SolidSource) fail("BAD_ARGS", "file swaps a footage item's file; item " + a.item_id + " is not file footage", "Use replace_source to swap a layer's source for another item");
+    f = new File(a.file);
+    if (!f.exists) fail("NOT_FOUND", "File not found: " + a.file);
+    if (a.sequence === true) it.replaceWithSequence(f, false); else it.replace(f);
+  } else if (has(a, "sequence")) fail("BAD_ARGS", "sequence goes with file");
+  if (has(a, "name")) it.name = a.name;
+  if (has(a, "comment")) it.comment = a.comment;
+  if (has(a, "label")) it.label = a.label;
+  if (a.folder === null) it.parentFolder = app.project.rootFolder;
+  else if (has(a, "folder")) {
+    if (a.folder === a.item_id || (typeof a.folder === "string" && it instanceof FolderItem && it.name === a.folder && it.parentFolder === app.project.rootFolder)) fail("BAD_ARGS", "A folder cannot go inside itself");
+    it.parentFolder = folderFor(a.folder);
+  }
+  interpret(it, a, skipped);
+  res = itemInfo(it);
+  if (has(a, "comment")) res.comment = it.comment;
+  if (has(a, "label")) res.label = it.label;
+  if (skipped.length) res.skipped = skipped;
+  return res;
 };
 
 C.delete_item = function (a: Args["delete_item"]) {

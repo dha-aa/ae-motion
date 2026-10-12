@@ -167,11 +167,20 @@ export class ToolRegistry {
       shape,
       async (a) => {
         const args: Record<string, unknown> = { ...a };
-        for (const k of paths) if (typeof args[k] === "string") args[k] = toAe(assertAllowed(args[k] as string));
+        sandboxPaths(args, paths);
         return fromBridge(await this.deps.bridge.run(name, args));
       },
       opts,
     );
+  }
+}
+
+/** Sandbox and slash-normalise the path arguments in args (a string, or an array of strings), in place. */
+export function sandboxPaths(args: Record<string, unknown>, paths: string[]): void {
+  for (const k of paths) {
+    const v = args[k];
+    if (typeof v === "string") args[k] = toAe(assertAllowed(v));
+    else if (Array.isArray(v)) args[k] = v.map((p) => (typeof p === "string" ? toAe(assertAllowed(p)) : p));
   }
 }
 

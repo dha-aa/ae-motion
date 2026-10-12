@@ -420,6 +420,15 @@ const results: [name: string, pass: boolean, detail?: string][] = [];
   const [, openErr] = await body("batch", { steps: [{ tool: "open_project", args: { path: path.join(DIR, "x.aep") } }] });
   results.push(["H: paths are sandboxed, forward references, run_jsx and open_project are refused", sandboxed && outsideErr && refErr && jsxErr && openErr && calls.length === 0]);
 
+  // a path array (import_footage paths) is sandboxed element by element, directly and inside a batch
+  calls.length = 0;
+  const [arrOut, arrOutErr] = await body("import_footage", { paths: [path.join(DIR, "a.png"), "/etc/passwd"] });
+  const [bArrOut, bArrOutErr] = await body("batch", { steps: [{ tool: "import_footage", args: { paths: ["/etc/hosts"] } }] });
+  const refusedBoth = arrOutErr && arrOut.error?.code === "FORBIDDEN" && bArrOutErr && bArrOut.error?.code === "FORBIDDEN" && calls.length === 0;
+  await body("import_footage", { paths: [path.join(DIR, "a.png"), path.join(DIR, "b.png")] });
+  const sent = received.import_footage?.paths as string[] | undefined;
+  results.push(["H: path arrays are sandboxed per element and slash-normalised", refusedBoth && calls.length === 1 && sent?.length === 2 && sent.every((p) => !p.includes("\\"))]);
+
   // snapshot: true keeps numbered copies next to the project, named by the note; a plain save makes none
   await body("save_project", {});
   const [s1] = await body("save_project", { snapshot: true, note: "Before S01 change!" });

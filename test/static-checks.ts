@@ -16,7 +16,7 @@ import { Ajv2020 } from "ajv/dist/2020.js";
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 
-const EXPECTED_TOOLS = 77; // update when adding or removing a tool
+const EXPECTED_TOOLS = 78; // update when adding or removing a tool
 
 const SERVER_ONLY_TOOLS = SERVER_ONLY; // implemented in the server, no host command (scripts/host-args.ts)
 const HOST_ONLY_COMMANDS = new Set(["get_selection", "prepare_render"]); // used by a resource / render_start, not tools

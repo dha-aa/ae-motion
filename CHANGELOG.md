@@ -8,6 +8,10 @@ All notable changes. Versions follow [semantic versioning](https://semver.org); 
 - `set_text` `ranges` style part of a text in the same call (After Effects 24.3+): a word in the accent colour, a bold name, one outlined line. Each range is `match` (every occurrence of a string) or `start` / `end` character indexes, with font, size, color, stroke, faux styles, caps, tracking, scale or baseline shift. This used to take a text animator built through several `add_property` calls. Every range is checked against the text before anything changes.
 - `get_text` lists the parts styled differently from the first character (`ranges`, only the fields that differ), so a model sees part styling before it changes the text.
 
+- `import_footage` imports several files at once (`paths`), a layered PSD or Illustrator file as a comp of its layers (`as: comp` / `comp_cropped`), and sets the footage's interpretation as it imports: `fps` (image sequences come in at 30 fps whatever they were rendered at, so a 24 fps render played too fast), `loop` and `alpha`. `folder` files the imports in a project folder (made if missing). Every file is checked before any is imported.
+- `set_item`, a new tool: rename a project item, set its comment or label, move it into a folder or back to the top level, change a footage item's `fps` / `loop` / `alpha`, or swap its file (or image sequence) for every layer that uses it.
+- Footage in `get_project` shows its `fps`, and items inside a folder show `folder_id`.
+
 ### Fixed
 - `set_text` with new text now says when it removed part styling (`ranges_cleared: true`): After Effects gives every character the first one's style when the text changes. Passing the same text no longer reassigns it, so part styling survives.
 

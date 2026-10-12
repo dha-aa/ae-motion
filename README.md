@@ -133,12 +133,12 @@ If a call fails, the error includes a code and a hint. See [Troubleshooting](#tr
 
 ## What it can do
 
-77 tools in thirteen groups. The full reference, with behavior notes, is in [docs/tools.md](docs/tools.md).
+78 tools in thirteen groups. The full reference, with behavior notes, is in [docs/tools.md](docs/tools.md).
 
 | Group | Tools |
 |---|---|
 | Inspect | `get_project`, `get_comp`, `get_layer`, `list_properties`, `get_keyframes`, `find_effects` |
-| Project | `open_project`, `save_project`, `create_comp`, `set_comp`, `import_footage`, `delete_item` |
+| Project | `open_project`, `save_project`, `create_comp`, `set_comp`, `import_footage`, `set_item`, `delete_item` |
 | Layers | `add_layer`, `set_layer`, `link_layers`, `replace_source`, `delete_layer`, `duplicate_layer`, `reorder_layer`, `precompose` |
 | Timeline | `split_layer`, `delete_range`, `insert_time`, `shift_layers`, `sequence_layers`, `align_to_markers`, `trim_comp`, `set_playhead`, `add_marker`, `update_marker`, `list_markers`, `delete_marker` |
 | Masks and mattes | `add_mask`, `set_track_matte` |

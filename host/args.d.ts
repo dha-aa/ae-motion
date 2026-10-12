@@ -372,8 +372,14 @@ interface Args {
     time?: number;
   };
   import_footage: {
-    path: string;
-    as?: "footage" | "sequence";
+    path?: string;
+    paths?: string[];
+    as?: "footage" | "sequence" | "comp" | "comp_cropped";
+    fps?: number;
+    loop?: number;
+    alpha?: "straight" | "premultiplied" | "ignore";
+    folder?: number | string;
+    name?: string;
   };
   insert_time: {
     comp_id: number;
@@ -554,6 +560,18 @@ interface Args {
     layer_ids?: number[];
     path: string | (string | number)[];
     expression: string;
+  };
+  set_item: {
+    item_id: number;
+    name?: string;
+    comment?: string;
+    label?: number;
+    folder?: number | string | null;
+    fps?: number;
+    loop?: number;
+    alpha?: "straight" | "premultiplied" | "ignore";
+    file?: string;
+    sequence?: boolean;
   };
   set_keyframes: {
     layer_id: number;

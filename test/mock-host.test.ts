@@ -29,9 +29,24 @@ class FakeProp {
 function makeWorld({ startShiftsInOut = true, inKeepsDuration = true } = {}) {
   let nextId = 100;
   const world = { items: [] };
-  class Item { constructor() { this.id = nextId++; this.name = "item"; this.usedIn = []; } remove() { world.items = world.items.filter((i) => i !== this); } }
+  const root = { id: 0, name: "root" };
+  class Item { constructor() { this.id = nextId++; this.name = "item"; this.usedIn = []; this.comment = ""; this.label = 0; this.parentFolder = root; } remove() { world.items = world.items.filter((i) => i !== this); } }
   class FolderItem extends Item { constructor() { super(); this.numItems = 0; } }
-  class FootageItem extends Item {}
+  // as After Effects 26.3: stills refuse loop and conformFrameRate; image sequences import at 30 fps; loop multiplies the duration
+  class MainSource {
+    constructor(still, alpha) { this.isStill = still; this.hasAlpha = alpha; this._fps = still ? 0 : 30; this._loop = 1; this.alphaMode = 5412; }
+    get conformFrameRate() { return this._fps; }
+    set conformFrameRate(v) { if (this.isStill) throw new Error("Can not change conformFrameRate because the footage source is a still."); this._fps = v; }
+    get loop() { return this._loop; }
+    set loop(v) { if (this.isStill) throw new Error("Can not change attribute \u201cloop\u201d because the footage source is a still."); this._loop = v; }
+  }
+  class FootageItem extends Item {
+    constructor(file, { still = false, alpha = false, frames = 10 } = {}) { super(); if (file) this.name = file.split("/").pop(); this.file = file; this._frames = frames; this.mainSource = new MainSource(still, alpha); this.width = 100; this.height = 100; }
+    get frameRate() { return this.mainSource.conformFrameRate; }
+    get duration() { return this.mainSource.isStill ? 0 : (this._frames / this.mainSource.conformFrameRate) * this.mainSource.loop; }
+    replace(f) { this.file = f.path; this.name = f.path.split("/").pop(); this.replacedWith = "file"; }
+    replaceWithSequence(f, forceAlpha) { this.file = f.path; this.name = f.path.split("/").pop(); this.replacedWith = "sequence"; }
+  }
   class CompItem extends Item {
     constructor(name) {
       super(); this.name = name; this.width = 1920; this.height = 1080; this.frameRate = 30; this.frameDuration = FD; this.duration = 10;
@@ -75,15 +90,28 @@ function makeWorld({ startShiftsInOut = true, inKeepsDuration = true } = {}) {
       item(i) { return world.items[i - 1]; },
       itemByID(id) { return world.items.find((i) => i.id === id) || null; },
       layerByID(id) { for (const c of world.items) for (let j = 1; j <= (c.numLayers || 0); j++) if (c.layer(j).id === id) return c.layer(j); return null; },
-      file: null, dirty: false, closed: null,
+      file: null, dirty: false, closed: null, rootFolder: root,
+      items: { addFolder(name) { const f = new FolderItem(); f.name = name; world.items.push(f); return f; } },
+      importFile(io) {
+        const p = io.file.path, layered = /\.(psd|ai)$/.test(p);
+        let it;
+        if (io.importAs === ImportAsType.COMP || io.importAs === ImportAsType.COMP_CROPPED_LAYERS) { it = new CompItem(p.split("/").pop()); it.croppedLayers = io.importAs === ImportAsType.COMP_CROPPED_LAYERS; }
+        else it = new FootageItem(p, { still: !io.sequence && /\.(png|jpg|psd)$/.test(p), alpha: /\.png$/.test(p) || layered });
+        world.items.push(it); return it;
+      },
       close(opt) { this.closed = opt; },
     },
     beginUndoGroup() {}, endUndoGroup() {},
     opened: [], open(f) { this.opened.push(f.path); return {}; },
     newProjects: 0, newProject() { this.newProjects++; return {}; },
   };
+  const ImportAsType = { COMP_CROPPED_LAYERS: 3812, FOOTAGE: 3813, COMP: 3814, PROJECT: 3815 };
+  class ImportOptions {
+    constructor(f) { this.file = f; this.sequence = false; this.importAs = ImportAsType.FOOTAGE; }
+    canImportAs(t) { return t === ImportAsType.FOOTAGE || /\.(psd|ai)$/.test(this.file.path); }
+  }
   class MarkerValue { constructor(c) { this.comment = c; this.duration = 0; this.chapter = ""; this.url = ""; this.label = 0; } }
-  const ctx = { app, CompItem, FolderItem, FootageItem, TextLayer: Stub, ShapeLayer: Stub, CameraLayer: Stub, LightLayer: Stub, SolidSource: Stub, MarkerValue, console,
+  const ctx = { app, CompItem, FolderItem, FootageItem, TextLayer: Stub, ShapeLayer: Stub, CameraLayer: Stub, LightLayer: Stub, SolidSource: Stub, MarkerValue, console, ImportOptions, ImportAsType, AlphaMode: { STRAIGHT: 5412, IGNORE: 5413, PREMULTIPLIED: 5414 },
     FrameBlendingType: { NO_FRAME_BLEND: 1, FRAME_MIX: 2, PIXEL_MOTION: 3 }, LayerQuality: { BEST: 1, DRAFT: 2, WIREFRAME: 3 },
     BlendingMode: { NORMAL: 5212, ADD: 5220, SCREEN: 5232 }, CloseOptions: { DO_NOT_SAVE_CHANGES: 1, SAVE_CHANGES: 2 },
     File: class { constructor(p) { this.path = p; this.exists = !/missing/.test(p); } } };
@@ -93,7 +121,7 @@ function makeWorld({ startShiftsInOut = true, inKeepsDuration = true } = {}) {
   const comp = (name = "Comp") => { const c = new CompItem(name); world.items.push(c); return c; };
   const layer = (c, name, i, o) => c.addLayer(name, i, o);
   const names = (c) => c._layers.map((l) => l.name);
-  return { call, comp, layer, names, world, FolderItem, FootageItem, CompItem, app };
+  return { call, comp, layer, names, world, root, FolderItem, FootageItem, CompItem, app };
 }
 
 const results = [];
@@ -245,6 +273,53 @@ t("delete_item guards used items and non-empty folders", () => {
   const fo = new w.FolderItem(); fo.numItems = 2; w.world.items.push(fo);
   fails(w.call("delete_item", { item_id: fo.id }), "BAD_ARGS");
   fails(w.call("delete_item", { item_id: 99999 }), "NOT_FOUND");
+});
+
+const res = (r) => { ok(r); return r.result; };
+
+t("import_footage: several files into a folder, sequence fps and loop, stills skipped, all checked first", () => {
+  const w = makeWorld();
+  let r = res(w.call("import_footage", { paths: ["/m/seq/f_001.png", "/m/still.png"], as: "sequence", fps: 20, loop: 2, folder: "Imports" }));
+  const folder = w.world.items.find((i) => i instanceof w.FolderItem && i.name === "Imports");
+  assert.ok(folder, "folder created");
+  assert.equal(r.items.length, 2); assert.equal(r.items[0].fps, 20); near(r.items[0].duration, 1, "10 frames at 20 fps, looped twice");
+  assert.equal(r.items[0].folder_id, folder.id);
+  r = res(w.call("import_footage", { path: "/m/logo.png", folder: "Imports", fps: 12, alpha: "premultiplied", name: "Logo" }));
+  assert.equal(r.name, "Logo"); assert.equal(r.fps, undefined, "a still has no fps");
+  assert.deepEqual(r.skipped.map((s) => s.field), ["fps"], "the still refuses fps; alpha is set");
+  assert.equal(w.world.items.find((i) => i.id === r.id).mainSource.alphaMode, 5414);
+  assert.equal(w.world.items.filter((i) => i instanceof w.FolderItem).length, 1, "the folder is reused by name");
+  const before = w.world.items.length;
+  const e = w.call("import_footage", { paths: ["/m/a.mov", "/m/missing.mov"] }); fails(e, "NOT_FOUND");
+  assert.match(e.error.message, /missing\.mov/); assert.equal(w.world.items.length, before, "nothing imported");
+  fails(w.call("import_footage", { paths: ["/m/a.mov", "/m/b.mov"], as: "comp" }), "BAD_ARGS");
+  assert.equal(w.world.items.length, before, "nothing imported when one cannot be a comp");
+  r = res(w.call("import_footage", { path: "/m/board.psd", as: "comp_cropped" }));
+  assert.equal(r.type, "comp");
+  fails(w.call("import_footage", { paths: ["/m/a.mov"], name: "x" }), "BAD_ARGS");
+  fails(w.call("import_footage", { path: "/m/board.psd", as: "comp", fps: 24 }), "BAD_ARGS");
+  fails(w.call("import_footage", {}), "BAD_ARGS");
+});
+
+t("set_item renames, labels, files into folders, interprets and swaps files", () => {
+  const w = makeWorld();
+  const f = new w.FootageItem("/m/clip.mov"); w.world.items.push(f);
+  const c = w.comp("Main");
+  let r = res(w.call("set_item", { item_id: f.id, name: "Hero", comment: "v2", label: 3, folder: "Footage", fps: 24, loop: 3 }));
+  assert.equal(f.name, "Hero"); assert.equal(r.comment, "v2"); assert.equal(r.label, 3); assert.equal(r.fps, 24);
+  assert.equal(f.parentFolder.name, "Footage"); assert.equal(r.folder_id, f.parentFolder.id);
+  r = res(w.call("set_item", { item_id: f.id, folder: null }));
+  assert.equal(f.parentFolder, w.root); assert.equal(r.folder_id, undefined, "top level is left out");
+  res(w.call("set_item", { item_id: f.id, file: "/m/clip_v3.mov" })); assert.equal(f.replacedWith, "file");
+  res(w.call("set_item", { item_id: f.id, file: "/m/seq/f_001.png", sequence: true })); assert.equal(f.replacedWith, "sequence");
+  fails(w.call("set_item", { item_id: f.id, file: "/m/missing.mov" }), "NOT_FOUND");
+  fails(w.call("set_item", { item_id: c.id, file: "/m/x.mov" }), "BAD_ARGS");
+  fails(w.call("set_item", { item_id: f.id, sequence: true }), "BAD_ARGS");
+  fails(w.call("set_item", { item_id: c.id, name: "Renamed", fps: 12 }), "BAD_ARGS");
+  assert.equal(c.name, "Main", "refused before anything changes");
+  const fo = res(w.call("set_item", { item_id: c.id, folder: "Comps" })).folder_id;
+  fails(w.call("set_item", { item_id: fo, folder: fo }), "BAD_ARGS");
+  fails(w.call("set_item", { item_id: c.id, folder: c.id }), "BAD_ARGS");
 });
 
 t("set_playhead snaps and validates; get_comp reports timeline fields only when not default", () => {
