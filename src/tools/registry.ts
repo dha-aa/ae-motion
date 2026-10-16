@@ -135,6 +135,13 @@ export class ToolRegistry {
   readonly names: string[] = [];
   /** Each tool's top-level argument names, for "did you mean" hints on unknown keys (toolInputErrors). */
   readonly argNames = new Map<string, string[]>();
+  /** Shows the hidden group a tool belongs to and returns its name; null if it was already listed (index.ts sets it). */
+  autoload?: (tool: string) => string | null;
+
+  /** Tell the client its tool list changed (a hidden group was shown). */
+  listChanged(): void {
+    try { this.server.sendToolListChanged(); } catch { /* not connected yet: the first tools/list will include it */ }
+  }
 
   constructor(
     private readonly server: McpServer,
@@ -217,6 +224,8 @@ export function slimSchema(root: Record<string, unknown>): Record<string, unknow
     if (out.additionalProperties === false && o !== root) delete out.additionalProperties;
     // zod 4 states that a record's keys are strings, which JSON object keys always are
     if (JSON.stringify(out.propertyNames) === '{"type":"string"}') delete out.propertyNames;
+    // an enum of strings already says its type (64 enums: about 1k characters on every request)
+    if (Array.isArray(out.enum) && out.type === "string" && out.enum.every((x) => typeof x === "string")) delete out.type;
     if (Array.isArray(out.items)) {
       const members = out.items as unknown[], first = JSON.stringify(members[0]);
       if (members.every((m) => JSON.stringify(m) === first)) out.items = members[0];
@@ -292,12 +301,13 @@ export function toolInputErrors(server: McpServer, argNames?: Map<string, string
   });
 }
 
-export function slimToolList(server: McpServer): void {
+export function slimToolList(server: McpServer, listed: (tool: string) => boolean = () => true): void {
   const handlers = (server.server as unknown as { _requestHandlers?: Map<string, ListHandler> })._requestHandlers;
   const original = handlers?.get("tools/list");
   if (!handlers || !original) return;
   handlers.set("tools/list", async (request, extra) => {
     const res = await original(request, extra);
+    res.tools = res.tools.filter((t) => listed(String(t.name)));
     for (const t of res.tools) {
       if (t.inputSchema) t.inputSchema = slimSchema(t.inputSchema as Record<string, unknown>);
       delete t.execution;

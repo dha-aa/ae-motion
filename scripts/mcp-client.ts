@@ -18,7 +18,7 @@ export type Client = {
 
 export async function startClient(env: Record<string, string> = {}): Promise<Client> {
   if (!fs.existsSync(SERVER)) throw new Error("dist/index.js missing: run `npm run build` first");
-  const p = spawn(process.execPath, [SERVER], { env: { ...process.env, AE_MCP_UPDATE_CHECK: "0", ...env }, stdio: ["pipe", "pipe", "inherit"] });
+  const p = spawn(process.execPath, [SERVER], { env: { ...process.env, AE_MCP_UPDATE_CHECK: "0", AE_MCP_TOOLSETS: "all", ...env }, stdio: ["pipe", "pipe", "inherit"] });
   let buf = "", nextId = 1;
   const waiters = new Map<number, (m: { result?: any; error?: unknown }) => void>();
   p.stdout.on("data", (d) => {

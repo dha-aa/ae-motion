@@ -67,7 +67,7 @@ fs.writeFileSync(fakeFf, `#!/bin/bash\necho "$@" >> ${DIR}/ffmpeg.calls\nlast="\
 function startServer(extraEnv: Record<string, string> = {}) {
   const p = spawn("node", [SERVER], {
     // update checks stay off unless a test turns them on (no real network calls from tests)
-    env: { ...process.env, AE_MCP_BRIDGE_FILE: path.join(DIR, "bridge.json"), AE_AERENDER: fake, AE_MCP_ALLOWED_DIRS: DIR, AE_MCP_UPDATE_CHECK: "0", AE_MCP_FFMPEG: fakeFf, ...extraEnv },
+    env: { ...process.env, AE_MCP_BRIDGE_FILE: path.join(DIR, "bridge.json"), AE_AERENDER: fake, AE_MCP_ALLOWED_DIRS: DIR, AE_MCP_UPDATE_CHECK: "0", AE_MCP_FFMPEG: fakeFf, AE_MCP_TOOLSETS: "all", ...extraEnv },
     stdio: ["pipe", "pipe", "pipe"],
   });
   let buf = "";
@@ -220,6 +220,7 @@ const results: [name: string, pass: boolean, detail?: string][] = [];
   results.push(["C2: software: true reaches prepare_render", received.prepare_render?.software === true]);
   results.push(["C2: a GPU failure with exit code 0 fails the job and says to render with software: true",
     st.state === "failed" && Array.isArray(st.errors) && /GPU/.test(st.errors[0]) && /software: true/.test(st.hint)]);
+  results.push(["C2: a failed job includes the log tail", Array.isArray(st.log_tail) && st.log_tail.length > 0, JSON.stringify(st.log_tail)]);
   s.p.stdin.end();
   await Promise.race([s.exited, sleep(3000)]);
   s.p.kill();
@@ -243,6 +244,7 @@ const results: [name: string, pass: boolean, detail?: string][] = [];
     mid.state === "running" && mid.frames_done === 4 && mid.total_frames === 10 && mid.percent === 40 && mid.seconds_per_frame > 0.05 && mid.seconds_per_frame < 3
     && mid.eta_s >= 0 && mid.eta_s <= 20 && typeof mid.finishes_at === "string" && mid.poll_after_s >= 5 && mid.poll_after_s <= 10 && mid.elapsed_s > 0.5,
     JSON.stringify({ frames: mid.frames_done, spf: mid.seconds_per_frame, eta: mid.eta_s, poll: mid.poll_after_s, elapsed: mid.elapsed_s })]);
+  results.push(["C3: a running job's status leaves out the log (it repeated on every poll)", !("log_tail" in mid) && !("log_tail" in first)]);
   await s.call("tools/call", { name: "render_cancel", arguments: { job_id: job } });
   s.p.stdin.end();
   await Promise.race([s.exited, sleep(3000)]);
@@ -511,6 +513,12 @@ const results: [name: string, pass: boolean, detail?: string][] = [];
   const [, unusedDefErr] = await body("batch", { defaults: { set_text: { size: 10 } }, steps: [{ tool: "add_layer", args: { comp_id: 1, kind: "null" } }] });
   results.push(["H: defaults for a tool no step uses are refused before anything runs", unusedDefErr && calls.length === 0]);
 
+  // results auto (default): small results whole, big ones cut to ids and names with a note; "all" keeps them whole
+  const [autoRes] = await body("batch", { steps: [{ tool: "add_layer", args: { comp_id: 1, kind: "null" } }, { tool: "list_properties", args: { layer_id: 1 } }] });
+  results.push(["H: results auto keeps small results whole and cuts big ones, with a note", autoRes.results?.[0]?.id === 42 && !JSON.stringify(autoRes.results?.[1] ?? "").includes("xxxx") && /1 result\(s\) over 600/.test(autoRes.note) && /results: "all"/.test(autoRes.note), JSON.stringify(autoRes).slice(0, 300)]);
+  const [small] = await body("batch", { steps: [{ tool: "add_layer", args: { comp_id: 1, kind: "null" } }] });
+  results.push(["H: results auto adds no note when nothing was cut", small.results?.[0]?.id === 42 && !("note" in small)]);
+
   const [last] = await body("batch", { steps: [{ tool: "add_layer", args: { comp_id: 1, kind: "null" } }, { tool: "set_layer", args: { layer_id: "$1.id" } }], results: "none" });
   results.push(["H: results none returns only the step count", JSON.stringify(last) === '{"steps":2}']);
 
@@ -554,6 +562,17 @@ const results: [name: string, pass: boolean, detail?: string][] = [];
   const before = await names();
   results.push(["I: a partial toolset lists load_tools and not the other groups' tools", before.includes("load_tools") && before.includes("batch") && before.includes("add_layer") && !before.includes("camera_move") && /load_tools/.test((initReply.result as Json | undefined)?.instructions ?? "")]);
 
+  results.push(["I: the instructions name the tools of groups not loaded", /set_track_matte/.test((initReply.result as Json | undefined)?.instructions ?? "") && /camera_move/.test((initReply.result as Json | undefined)?.instructions ?? "")]);
+
+  // a batch step naming a tool of an unloaded group loads that group, runs, and the client is told the list changed
+  calls.length = 0;
+  const notesBefore = s.notifications.length;
+  const auto = await s.call("tools/call", { name: "batch", arguments: { steps: [{ tool: "set_track_matte", args: { layer_id: 2, matte_layer_id: 1 } }] } });
+  let autoBody: Json = {};
+  try { autoBody = JSON.parse(textOf(auto)); } catch {}
+  await sleep(200);
+  results.push(["I: a batch step loads its tool's group by itself and runs", auto.result?.isError !== true && calls.join(",") === "set_track_matte" && JSON.stringify(autoBody.loaded_groups) === '["masks"]' && (await names()).includes("add_mask") && s.notifications.slice(notesBefore).includes("notifications/tools/list_changed"), JSON.stringify(autoBody)]);
+
   const r = await s.call("tools/call", { name: "load_tools", arguments: { groups: ["scene3d"] } });
   let body: Json = {};
   try { body = JSON.parse(textOf(r)); } catch {}
@@ -571,7 +590,20 @@ const results: [name: string, pass: boolean, detail?: string][] = [];
   const allNames = await listNames(all);
   results.push(["I: with every group loaded there is no load_tools", !allNames.includes("load_tools") && allNames.includes("camera_move")]);
 
-  for (const x of [s, all]) { x.p.stdin.end(); await Promise.race([x.exited, sleep(3000)]); x.p.kill(); }
+  // no AE_MCP_TOOLSETS: core, the smaller tool list on every request
+  const dflt = startServer({ AE_MCP_TOOLSETS: "" });
+  await dflt.init();
+  const dfltNames = await listNames(dflt);
+  results.push(["I: by default only core is loaded (load_tools present, 3D and masks not)", dfltNames.includes("load_tools") && dfltNames.includes("add_layer") && dfltNames.includes("preview_frame") && !dfltNames.includes("camera_move") && !dfltNames.includes("add_mask"), String(dfltNames.length)]);
+
+  // Claude Code defers definitions itself: with no AE_MCP_TOOLSETS it is shown every tool, and no load_tools
+  const cc = startServer({ AE_MCP_TOOLSETS: "" });
+  const ccInit = await cc.call("initialize", { protocolVersion: "2024-11-05", capabilities: {}, clientInfo: { name: "claude-code", version: "2" } });
+  cc.p.stdin.write(JSON.stringify({ jsonrpc: "2.0", method: "notifications/initialized" }) + "\n");
+  const ccNames = await listNames(cc);
+  results.push(["I: Claude Code is shown every tool (no load_tools, no hidden-tools note)", ccNames.length === 78 && ccNames.includes("camera_move") && !ccNames.includes("load_tools") && !/not listed yet/.test((ccInit.result as Json | undefined)?.instructions ?? ""), String(ccNames.length)]);
+
+  for (const x of [s, all, dflt, cc]) { x.p.stdin.end(); await Promise.race([x.exited, sleep(3000)]); x.p.kill(); }
 }
 
 // Phase G: update check against a fake GitHub tags API.

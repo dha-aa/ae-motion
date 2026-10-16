@@ -192,7 +192,8 @@ function checkFont(name: string): void {
 }
 
 C.find_fonts = function (a: Args["find_fonts"]) {
-  var fonts = allFonts(), words = String(a.query || "").toLowerCase().split(" "), limit = a.limit || 30, out: Obj[] = [], total = 0, i, j, f, hay, ok;
+  // grouped as {family: {style: PostScript name}}: a row per font repeated "font", "family" and "style" (2.5x the size)
+  var fonts = allFonts(), words = String(a.query || "").toLowerCase().split(" "), limit = a.limit || 30, families: { [family: string]: Obj } = {}, listed = 0, total = 0, i, j, f, hay, ok, res: Obj;
   for (i = 0; i < fonts.length; i++) {
     f = fonts[i];
     hay = (f.familyName + " " + f.styleName + " " + f.postScriptName).toLowerCase();
@@ -200,9 +201,15 @@ C.find_fonts = function (a: Args["find_fonts"]) {
     for (j = 0; j < words.length; j++) { if (words[j] && hay.indexOf(words[j]) === -1) { ok = false; break; } }
     if (!ok) continue;
     total++;
-    if (out.length < limit) out.push({ font: f.postScriptName, family: f.familyName, style: f.styleName });
+    if (listed < limit) {
+      if (!families.hasOwnProperty(f.familyName)) families[f.familyName] = {};
+      families[f.familyName][f.styleName] = f.postScriptName;
+      listed++;
+    }
   }
-  return { total: total, fonts: out };
+  res = { total: total, families: families };
+  if (listed < total) res.listed = listed;
+  return res;
 };
 
 C.set_text = function (a: Args["set_text"]) {
