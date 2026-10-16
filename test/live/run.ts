@@ -317,6 +317,31 @@ check("batch runs several steps with $N references", async () => {
   expect(g.length === 1 && g[0].name === "B1" && g[0].in === 2, "layer added and changed", { g, r });
 });
 
+check("batch named steps and defaults; an undeclared $word stays text", async () => {
+  const r = await call("batch", {
+    defaults: { add_layer: { comp_id: comp, kind: "text", options: { text_style: { size: 80 } } } },
+    steps: [
+      { tool: "add_layer", as: "cap", args: { options: { text: "costs $TSLA" } } },
+      { tool: "set_layer", args: { layer_id: "$cap.id", in: 2 } },
+    ],
+  });
+  const t = await call("get_text", { layer_id: r.results[0].id });
+  const g = (await call("get_comp", { comp_id: comp })).layers;
+  expect(t.text === "costs $TSLA" && near(t.size, 80) && g[0].in === 2, "default style applied, literal $TSLA, named reference resolved", { t, g });
+});
+
+check("add_layer fit covers or contains; source_in and stretch place the clip", async () => {
+  const src = await newComp("4K source", { width: 3840, height: 2160, duration: 20 });
+  const tall = await newComp("vertical", { width: 1080, height: 1920 });
+  const cover = await call("add_layer", { comp_id: tall, kind: "precomp", options: { item_id: src, fit: "cover", in: 1, source_in: 9.3, stretch: 200, out: 4 } });
+  const contain = await call("add_layer", { comp_id: tall, kind: "precomp", options: { item_id: src, fit: "contain" } });
+  expectNear([cover.scale, contain.scale], [1920 / 2160 * 100, 1080 / 3840 * 100], "cover fills the height, contain the width", 1e-3);
+  const l = await call("get_layer", { layer_id: cover.id });
+  expectNear([l.start, l.in, l.out, l.stretch], [1 - 9.3 * 2, 1, 4, 200], "start = in - source_in * stretch, in and out kept", 1e-3);
+  const e = await callError("add_layer", { comp_id: tall, kind: "precomp", options: { item_id: src, source_in: 3 } });
+  expect(e.code === "BAD_ARGS" && /in/.test(e.hint), "source_in without in is refused with a hint", e);
+});
+
 check("errors use the ae-motion format", async () => {
   const e = await callError("get_layer", { layer_id: 999999 });
   expect(e.code === "NOT_FOUND" && typeof e.hint === "string", "NOT_FOUND with a hint", e);

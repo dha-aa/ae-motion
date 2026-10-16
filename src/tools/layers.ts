@@ -6,7 +6,7 @@ import { Anchor, Color, id, Label, LayerIds, LightType, ShapeLayerSpec, Size, Te
 export function registerLayerTools(r: ToolRegistry): void {
   r.bridged(
     "add_layer",
-    "Add a layer. item_id: footage/precomp source. center: camera/light. position with 3 values turns 3D on. box_size: box text; text_style as set_text. anchor moves the anchor onto the content (as set_anchor) before position, so position places e.g. the text's center. shape: a shape layer's first shape (as add_shape). fit_to (shape): a rect that keeps fitting that layer's content + padding (a highlight behind text).",
+    "Add a layer. item_id: footage/precomp source. center: camera/light. position with 3 values turns 3D on. box_size: box text; text_style as set_text. anchor moves the anchor onto the content (as set_anchor) before position, so position places e.g. the text's center. shape: a shape layer's first shape (as add_shape). fit_to (shape): a rect that keeps fitting that layer's content + padding (a highlight behind text). fit: scale to cover or fit inside the comp frame. Timing: in/out are comp times; source_in is the source time shown at in (no start maths); stretch in percent (200 = half speed).",
     {
       comp_id: id("Comp"),
       kind: z.enum(["solid", "text", "shape", "null", "adjustment", "footage", "precomp", "camera", "light"]),
@@ -17,6 +17,8 @@ export function registerLayerTools(r: ToolRegistry): void {
           start: z.number().optional(), in: z.number().optional(), out: z.number().optional(), position: V3.optional(), three_d: z.boolean().optional(),
           box_size: Size.optional(), text_style: TextStyleRef.optional(), anchor: Anchor.optional(), shape: ShapeLayerSpec.optional(),
           fit_to: z.strictObject({ layer_id: z.number().int(), padding: z.union([z.number(), z.array(z.number()).length(2)]).optional() }).optional(),
+          fit: z.enum(["cover", "contain"]).optional(), source_in: z.number().min(0).optional(),
+          stretch: z.number().refine((n) => n !== 0, "stretch cannot be 0").optional(),
         })
         .default({}),
     },

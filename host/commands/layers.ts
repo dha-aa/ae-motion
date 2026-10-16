@@ -37,7 +37,8 @@ var NEUTRAL_TEXT: { [field: string]: number | boolean } = {
 C.add_layer = function (a: Args["add_layer"]) {
   need(a, ["comp_id", "kind"]);
   var comp = getComp(a.comp_id), o = a.options || {}, kind = a.kind, dur = has(o, "duration") ? o.duration : comp.duration,
-    center = o.center || [comp.width / 2, comp.height / 2], l, item, col, size, lt, styled = null, styleArgs: Obj, k, kept, out, fit: AVLayer | null = null;
+    center = o.center || [comp.width / 2, comp.height / 2], l, item, col, size, lt, styled = null, styleArgs: Obj, k, kept, out, fit: AVLayer | null = null,
+    src: AVItem, sw: number, fitScale: number | null = null;
   if (o.text_style && kind !== "text") fail("BAD_ARGS", "text_style is for text layers", "Use kind: text, or leave text_style out");
   if (o.text_style && o.text_style.font) checkFont(o.text_style.font as string); // before the layer exists
   if (kind === "shape" && o.shape && o.shape.type && " rect ellipse star polygon path ".indexOf(" " + o.shape.type + " ") === -1) fail("BAD_ARGS", "shape.type must be rect, ellipse, star, polygon or path");
@@ -46,6 +47,17 @@ C.add_layer = function (a: Args["add_layer"]) {
     if (!lt) fail("BAD_ARGS", "light_type must be point, spot, parallel or ambient");
   }
   if (kind === "footage" || kind === "precomp") { need(o, ["item_id"]); item = getItem(o.item_id); }
+  if (has(o, "fit")) {
+    if (o.fit !== "cover" && o.fit !== "contain") fail("BAD_ARGS", "fit must be cover or contain", "cover fills the frame (edges cropped); contain shows the whole source");
+    if (" footage precomp solid adjustment ".indexOf(" " + kind + " ") === -1) fail("BAD_ARGS", "fit is for footage, precomp and solid layers", "Text and shapes: set scale, or size the shape");
+  }
+  if (has(o, "stretch") && !o.stretch) fail("BAD_ARGS", "stretch cannot be 0", "100 is normal speed, 200 half speed, -100 reversed");
+  if (has(o, "source_in")) {
+    if (!has(o, "in")) fail("BAD_ARGS", "source_in needs in: the comp time where that source time shows", "Add in (comp seconds), e.g. in: 0, source_in: 12 shows the source from 12 s at the comp's start");
+    if (has(o, "start")) fail("BAD_ARGS", "Pass start or source_in, not both", "source_in sets start for you");
+    if (has(o, "stretch") && o.stretch! < 0) fail("BAD_ARGS", "source_in needs a positive stretch", "For a reversed clip set start and stretch");
+    if (item && (item as AVItem).duration > 0 && o.source_in! >= (item as AVItem).duration) fail("BAD_ARGS", "source_in " + o.source_in + " s is past the end of the source (" + (item as AVItem).duration + " s)", "Use a source time inside the clip; get_project lists each item's duration");
+  }
   if (kind === "shape" && o.shape) checkShapeSpec(o.shape);
   if (o.fit_to) {
     if (kind !== "shape" || (o.shape && o.shape.type && o.shape.type !== "rect")) fail("BAD_ARGS", "fit_to makes a rect shape layer (kind shape, shape type rect)");
@@ -76,6 +88,13 @@ C.add_layer = function (a: Args["add_layer"]) {
   } else { fail("BAD_ARGS", "Unknown layer kind: " + kind); }
   if (o.name) l.name = o.name;
   if (has(o, "three_d")) (l as AVLayer).threeDLayer = o.three_d;
+  // fit: scale so the source covers (no gaps, edges cropped) or fits inside (whole picture) the comp frame
+  if (has(o, "fit")) {
+    src = (l as AVLayer).source as AVItem;
+    sw = src.width * (src.pixelAspect || 1) / (comp.pixelAspect || 1);
+    fitScale = (o.fit === "cover" ? Math.max : Math.min)(comp.width / sw, comp.height / src.height) * 100;
+    tp(l, "ADBE Scale").setValue((l as AVLayer).threeDLayer ? [fitScale, fitScale, fitScale] : [fitScale, fitScale]);
+  }
   // style, then anchor (it measures the styled content), then position (it places that anchor)
   if (kind === "text") {
     styleArgs = { layer_id: l.id };
@@ -96,10 +115,15 @@ C.add_layer = function (a: Args["add_layer"]) {
   if (o.anchor) C.set_anchor({ layer_id: l.id, anchor: o.anchor, keep_position: fit !== null });
   if (has(o, "position") && !fit) setLayerPosition(l, o.position);
   if (fit && !has(o, "in") && !has(o, "out") && !has(o, "start")) { l.startTime = fit.startTime; setIn(l, fit.inPoint); l.outPoint = fit.outPoint; }
+  // stretch first: it rescales the layer's span around its start time. source_in then places the start so the
+  // source time source_in shows at the in point (source time = (comp time - start) * 100 / stretch).
+  if (has(o, "stretch")) (l as AVLayer).stretch = o.stretch!;
+  if (has(o, "source_in")) l.startTime = o["in"]! - o.source_in! * (has(o, "stretch") ? o.stretch! : 100) / 100;
   if (has(o, "start")) l.startTime = o.start;
   if (has(o, "in")) setIn(l, o["in"]);
   if (has(o, "out")) l.outPoint = o.out;
   out = layerRef(l);
+  if (fitScale !== null) out.scale = Math.round(fitScale * 1000) / 1000;
   if (styled && styled.skipped) out.skipped = styled.skipped;
   return out;
 };
