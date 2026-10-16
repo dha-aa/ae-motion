@@ -50,6 +50,9 @@ interface Args {
         layer_id: number;
         padding?: number | number[];
       };
+      fit?: "cover" | "contain";
+      source_in?: number;
+      stretch?: number;
     };
   };
   add_layer_style: {

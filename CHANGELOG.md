@@ -2,6 +2,17 @@
 
 All notable changes. Versions follow [semantic versioning](https://semver.org); each release is a git tag `vX.Y.Z`, which is what the update check looks for.
 
+## 2.21.0 — 2026-10-16
+
+### Added
+- `batch` named steps: give a step `as: "title"` and refer to it as `"$title.id"` instead of counting steps, the most common reference mistake in long builds. A `"$word"` that is not a declared name stays literal text, so `"$TSLA"` in a caption still works; a repeated name, or a name used before its step, is reported before anything runs.
+- `batch` `defaults: {tool: args}`: shared arguments merged under every step of that tool (nested objects merge, the step's own values win). Repeated layers such as captions send their `comp_id` and style once instead of in every step, which cut a 48-caption build to about a third of its size.
+- `add_layer` `fit: "cover" | "contain"` scales footage, precomps and solids to fill the comp frame or fit inside it (pixel aspect included) and returns the `scale` used, instead of working out a percentage per clip.
+- `add_layer` `source_in` and `stretch`: place a clip by the source time it shows at `in` (`{in: 1, source_in: 9.3}`) and its speed, with no start-time maths. Hand-computed start times put the wrong part of a clip on screen twice while building a 3-minute edit.
+
+### Verified
+- Live in After Effects 26.3: `fit` cover / contain scales, `source_in` with `stretch`, named steps, `defaults` and a literal `$word` in `batch`; both are now part of the live tests (27/27 pass).
+
 ## 2.20.1 — 2026-10-12
 
 ### Fixed

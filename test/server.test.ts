@@ -479,6 +479,38 @@ const results: [name: string, pass: boolean, detail?: string][] = [];
   const [inArr, inArrErr] = await body("batch", { steps: [{ tool: "add_layer", args: { comp_id: 1, kind: "null" } }, { tool: "shift_layers", args: { layer_ids: ["$1.id"], offset_seconds: 1 } }] });
   results.push(["H: references inside arrays pass the pre-check and resolve", !inArrErr && JSON.stringify(received.shift_layers?.layer_ids) === "[42]" && calls.join(",") === "add_layer,shift_layers", JSON.stringify(inArr)]);
 
+  // named steps: "$ctrl.id" instead of counting; an undeclared "$word" stays literal text
+  calls.length = 0;
+  const [named, namedErr] = await body("batch", { steps: [
+    { tool: "add_layer", as: "ctrl", args: { comp_id: 1, kind: "null" } },
+    { tool: "add_layer", args: { comp_id: 1, kind: "text", options: { text: "$TSLA" } } },
+    { tool: "set_layer", args: { layer_id: "$ctrl.id", label: 3 } },
+  ] });
+  results.push(["H: a step named with as is referred to as $name.path; an undeclared $word is literal text", !namedErr && received.set_layer?.layer_id === 42 && received.add_layer?.options?.text === "$TSLA" && calls.length === 3, JSON.stringify(named)]);
+
+  calls.length = 0;
+  const [badNames, badNamesErr] = await body("batch", { steps: [
+    { tool: "add_layer", as: "a", args: { comp_id: 1, kind: "null" } },
+    { tool: "set_layer", args: { layer_id: "$b.id" } },
+    { tool: "add_layer", as: "b", args: { comp_id: 1, kind: "null" } },
+    { tool: "add_layer", as: "a", args: { comp_id: 1, kind: "null" } },
+  ] });
+  const nameMsgs = (badNames.problems ?? []).map((x: Json) => `${x.step}:${x.message}`).join(" | ");
+  results.push(["H: a repeated name and a name used before its step are reported; nothing runs", badNamesErr && calls.length === 0 && /4:.*already step 1/.test(nameMsgs) && /2:.*step 3, which has not run/.test(nameMsgs), nameMsgs]);
+
+  // defaults: shared args merged under each step of that tool (nested objects merge, the step's own values win)
+  calls.length = 0;
+  const [def, defErr] = await body("batch", {
+    defaults: { add_layer: { comp_id: 1, kind: "text", options: { position: [540, 1290], text_style: { size: 86, color: [1, 1, 1] } } } },
+    steps: [{ tool: "add_layer", args: { options: { text: "one" } } }, { tool: "add_layer", args: { options: { text: "TWO", text_style: { color: [1, 0.85, 0.15] } } } }],
+  });
+  const sentOpts = received.add_layer?.options;
+  results.push(["H: batch defaults merge under every step of that tool", !defErr && calls.length === 2 && received.add_layer?.comp_id === 1 && sentOpts?.text === "TWO" && sentOpts?.text_style?.size === 86 && JSON.stringify(sentOpts?.text_style?.color) === "[1,0.85,0.15]" && JSON.stringify(sentOpts?.position) === "[540,1290]", JSON.stringify(def) + JSON.stringify(sentOpts)]);
+
+  calls.length = 0;
+  const [, unusedDefErr] = await body("batch", { defaults: { set_text: { size: 10 } }, steps: [{ tool: "add_layer", args: { comp_id: 1, kind: "null" } }] });
+  results.push(["H: defaults for a tool no step uses are refused before anything runs", unusedDefErr && calls.length === 0]);
+
   const [last] = await body("batch", { steps: [{ tool: "add_layer", args: { comp_id: 1, kind: "null" } }, { tool: "set_layer", args: { layer_id: "$1.id" } }], results: "none" });
   results.push(["H: results none returns only the step count", JSON.stringify(last) === '{"steps":2}']);
 

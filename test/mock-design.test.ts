@@ -103,10 +103,21 @@ function makeWorld() {
       return l;
     },
   };
+  // Footage items and comp.layers.add: a new footage layer starts at 0 and runs the source's duration; as in After
+  // Effects, changing startTime moves in and out with it, and stretch rescales the span from the start time.
+  const items = new Map();
+  const footage = (width, height, duration, pixelAspect = 1) => { const it = { id: nextId++, name: "clip", width, height, duration, pixelAspect }; items.set(it.id, it); return it; };
+  comp.layers.add = (item) => {
+    const l = make(null, { name: item.name }); l.source = item;
+    let start = 0, stretch = 100; l.inPoint = 0; l.outPoint = item.duration || comp.duration;
+    Object.defineProperty(l, "startTime", { get: () => start, set(v) { const d = v - start; start = v; l.inPoint += d; l.outPoint += d; } });
+    Object.defineProperty(l, "stretch", { get: () => stretch, set(v) { stretch = v; l.outPoint = start + (item.duration || comp.duration) * v / 100; } });
+    return l;
+  };
   const font = (family, style, ps) => ({ familyName: family, styleName: style, postScriptName: ps });
   const families = [[font("Arial", "Regular", "ArialMT"), font("Arial", "Bold", "Arial-BoldMT")], [font("Montserrat", "ExtraBold Italic", "Montserrat-ExtraBoldItalic"), font("Montserrat", "Light", "Montserrat-Light")]];
   const fonts = { allFonts: families, getFontsByPostScriptName: (n) => families.flat().filter((f) => f.postScriptName === n) };
-  const app = { project: { itemByID: (id) => (id === 1 ? comp : null), layerByID: (id) => layers.get(id) || null }, fonts, beginUndoGroup() {}, endUndoGroup() {}, executeCommand() {}, findMenuCommandId: () => 0 };
+  const app = { project: { itemByID: (id) => (id === 1 ? comp : items.get(id) || null), layerByID: (id) => layers.get(id) || null }, fonts, beginUndoGroup() {}, endUndoGroup() {}, executeCommand() {}, findMenuCommandId: () => 0 };
   const ParagraphJustification = { LEFT_JUSTIFY: 1, CENTER_JUSTIFY: 2, RIGHT_JUSTIFY: 3, FULL_JUSTIFY_LASTLINE_LEFT: 4, FULL_JUSTIFY_LASTLINE_CENTER: 5, FULL_JUSTIFY_LASTLINE_RIGHT: 6, FULL_JUSTIFY_LASTLINE_FULL: 7 };
   const FontCapsOption = { FONT_NORMAL_CAPS: 0, FONT_SMALL_CAPS: 1, FONT_ALL_CAPS: 2 };
   const ctx = { app, ParagraphJustification, FontCapsOption, TextLayer, ShapeLayer, CameraLayer, LightLayer, SolidSource, CompItem, FolderItem: Stub, FootageItem: Stub, PropertyValueType: {}, PropertyType: {} };
@@ -116,7 +127,7 @@ function makeWorld() {
   vm.runInContext(SRC, ctx);
   const call = (cmd, args = {}) => JSON.parse(ctx.AEM.dispatch(JSON.stringify({ cmd, args })));
   const tp = (l, m) => l.property("ADBE Transform Group").property(m);
-  return { call, make, tp, comp, TextLayer, ShapeLayer, CameraLayer, CompItem };
+  return { call, make, tp, comp, footage, layers, TextLayer, ShapeLayer, CameraLayer, CompItem };
 }
 
 const results = [];
@@ -278,6 +289,37 @@ t("add_shape and add_layer reject bad stroke options before creating anything", 
   fails(w.call("add_shape", { layer_id: l.id, shape: { type: "rect", dashes: [4, 2] } }), "BAD_ARGS"); // dashes without a stroke
   fails(w.call("add_shape", { layer_id: l.id, shape: { type: "rect", stroke: [1, 1, 1], line_cap: "pointy" } }), "BAD_ARGS");
   assert.equal(added, 0);
+});
+
+t("add_layer fit: cover fills the frame, contain shows the whole source (pixel aspect counted)", () => {
+  const w = makeWorld(), wide = w.footage(1280, 1080, 5); // comp is 640x360
+  const cover = ok(w.call("add_layer", { comp_id: 1, kind: "footage", options: { item_id: wide.id, fit: "cover" } }));
+  near(cover.scale, 50); near(w.tp(w.layers.get(cover.id), "ADBE Scale").value[0], 50);
+  const contain = ok(w.call("add_layer", { comp_id: 1, kind: "footage", options: { item_id: wide.id, fit: "contain" } }));
+  near(contain.scale, 100 / 3, "", 1e-3);
+  const anamorphic = w.footage(320, 360, 5, 2); // displays 640 wide
+  near(ok(w.call("add_layer", { comp_id: 1, kind: "footage", options: { item_id: anamorphic.id, fit: "cover" } })).scale, 100);
+  const n = w.comp.numLayers;
+  fails(w.call("add_layer", { comp_id: 1, kind: "text", options: { text: "x", fit: "cover" } }), "BAD_ARGS");
+  assert.equal(w.comp.numLayers, n, "nothing added when fit is refused");
+});
+
+t("add_layer source_in: the source time shown at in, with stretch (no start maths)", () => {
+  const w = makeWorld(), clip = w.footage(640, 360, 20);
+  const a = ok(w.call("add_layer", { comp_id: 1, kind: "footage", options: { item_id: clip.id, in: 2, source_in: 5 } }));
+  const la = w.layers.get(a.id);
+  near(la.startTime, -3); near(la.inPoint, 2); near(la.outPoint, 17, "runs to the source's end");
+  // half speed: source 5 s shows at comp 2 s, so start = 2 - 5 * 2; the out point is trimmed as given
+  const b = ok(w.call("add_layer", { comp_id: 1, kind: "footage", options: { item_id: clip.id, in: 2, out: 6, source_in: 5, stretch: 200 } }));
+  const lb = w.layers.get(b.id);
+  near(lb.startTime, -8); near(lb.inPoint, 2); near(lb.outPoint, 6); assert.equal(lb.stretch, 200);
+  const n = w.comp.numLayers;
+  assert.match(fails(w.call("add_layer", { comp_id: 1, kind: "footage", options: { item_id: clip.id, source_in: 5 } }), "BAD_ARGS").hint, /in: 0/, "says what to add");
+  fails(w.call("add_layer", { comp_id: 1, kind: "footage", options: { item_id: clip.id, in: 0, start: 1, source_in: 5 } }), "BAD_ARGS");
+  const past = fails(w.call("add_layer", { comp_id: 1, kind: "footage", options: { item_id: clip.id, in: 0, source_in: 25 } }), "BAD_ARGS");
+  assert.match(past.message, /past the end/); assert.ok(past.hint, "with a hint");
+  fails(w.call("add_layer", { comp_id: 1, kind: "footage", options: { item_id: clip.id, in: 0, source_in: 1, stretch: -100 } }), "BAD_ARGS");
+  assert.equal(w.comp.numLayers, n, "nothing added when the timing is refused");
 });
 
 t("add_layer text: text_style, then anchor on the styled content, then position", () => {

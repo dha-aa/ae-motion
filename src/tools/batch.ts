@@ -5,6 +5,10 @@
  * and the like) as calling the tool directly; a string "$N.path" (N = 1-based step, path = dot-separated keys and
  * array indexes) is replaced by that value from step N's result first, so a step can use an id an earlier step
  * created. "$$" escapes a literal dollar ("$$99" is the text "$99"), so prices and the like can be passed.
+ * A step can be named (as: "title") and referred to as "$title.id": counting steps by hand is the most common
+ * reference mistake. A "$word" that is not a declared name stays literal text, so "$TSLA" in a caption still works.
+ * defaults: {tool: args} are merged under every step of that tool (nested objects merged, arrays replaced), so 48
+ * caption layers send one style instead of 48 copies of it.
  *
  * Models do not always send the shape the schema asks for, so the steps are normalised first: JSON strings for
  * steps or args, name / arguments / params for tool / args, and client-prefixed tool names (mcp__ae-motion__x).
@@ -19,12 +23,15 @@ import { AeToolError, type ErrorCode } from "../errors.js";
 import { json, sandboxPaths, type ToolExtra, type ToolRegistry } from "./registry.js";
 
 const MAX_STEPS = 50;
-const REF = /^\$(\d+)((?:\.[\w-]+)*)$/;
+const REF = /^\$(\d+|[A-Za-z_]\w*)((?:\.[\w-]+)*)$/;
+const NAME = /^[A-Za-z_]\w*$/;
+/** Step names declared with `as`, to their 1-based step number. */
+export type Names = Map<string, number>;
 // open_project would leave later steps on another project; preview_frame returns an image; run_jsx stays a
 // deliberate, direct call; batch and load_tools are not steps
 const NOT_IN_BATCH = new Set(["open_project", "preview_frame", "run_jsx", "batch", "load_tools"]);
 
-type Step = { tool: string; args: Record<string, unknown> };
+type Step = { tool: string; args: Record<string, unknown>; as?: string };
 
 // The results of recent batches by batch_id, so a batch that stopped at step N can resume there (resume: {batch_id,
 // from: N}) with the ids its earlier steps made, instead of running everything again or rewiring the references.
@@ -60,13 +67,22 @@ export function normalizeSteps(v: unknown): unknown {
 
 const LITERAL = 'For text that starts with "$" and a number (a price), write "$$" ("$$99")';
 
-/** Replace "$N.path" strings anywhere in v with values from earlier results; "$$..." becomes the literal "$...". */
-export function resolveRefs(v: unknown, results: unknown[], step: number): unknown {
+/** The step a reference string points to: its number, or its declared name's step; null if it is not a reference. */
+function refStep(v: string, names?: Names): { n: number; m: RegExpExecArray } | null {
+  const m = REF.exec(v);
+  if (!m) return null;
+  if (/^\d+$/.test(m[1])) return { n: Number(m[1]), m };
+  const n = names?.get(m[1]);
+  return n === undefined ? null : { n, m };
+}
+
+/** Replace "$N.path" / "$name.path" strings anywhere in v with values from earlier results; "$$..." becomes the literal "$...". */
+export function resolveRefs(v: unknown, results: unknown[], step: number, names?: Names): unknown {
   if (typeof v === "string") {
     if (v.startsWith("$$")) return v.slice(1);
-    const m = REF.exec(v);
-    if (!m) return v;
-    const n = Number(m[1]);
+    const r = refStep(v, names);
+    if (!r) return v;
+    const { n, m } = r;
     if (n < 1 || n >= step) throw new AeToolError("BAD_ARGS", `Step ${step}: "${v}" refers to step ${n}, which has not run yet`, `Refer only to earlier steps ($1 is the first). ${LITERAL}`);
     let cur: unknown = results[n - 1];
     for (const k of m[2].split(".").slice(1)) {
@@ -75,19 +91,40 @@ export function resolveRefs(v: unknown, results: unknown[], step: number): unkno
     }
     return cur;
   }
-  if (Array.isArray(v)) return v.map((x) => resolveRefs(x, results, step));
-  if (v !== null && typeof v === "object") return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, resolveRefs(x, results, step)]));
+  if (Array.isArray(v)) return v.map((x) => resolveRefs(x, results, step, names));
+  if (v !== null && typeof v === "object") return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, resolveRefs(x, results, step, names)]));
   return v;
 }
 
 type Path = (string | number)[];
 
-/** Where "$N.path" strings sit in v, as key paths. */
-function refPaths(v: unknown, at: Path = [], out: Path[] = []): Path[] {
-  if (typeof v === "string" && REF.test(v)) out.push(at);
-  else if (Array.isArray(v)) v.forEach((x, i) => refPaths(x, [...at, i], out));
-  else if (v !== null && typeof v === "object") for (const [k, x] of Object.entries(v)) refPaths(x, [...at, k], out);
+/** Where reference strings sit in v, as key paths. */
+function refPaths(v: unknown, names: Names, at: Path = [], out: Path[] = []): Path[] {
+  if (typeof v === "string" && !v.startsWith("$$") && refStep(v, names)) out.push(at);
+  else if (Array.isArray(v)) v.forEach((x, i) => refPaths(x, names, [...at, i], out));
+  else if (v !== null && typeof v === "object") for (const [k, x] of Object.entries(v)) refPaths(x, names, [...at, k], out);
   return out;
+}
+
+const isPlain = (v: unknown): v is Record<string, unknown> => v !== null && typeof v === "object" && !Array.isArray(v);
+
+/** base with over on top: nested plain objects merged key by key, everything else (arrays included) replaced. */
+export function mergeArgs(base: Record<string, unknown>, over: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = { ...base };
+  for (const [k, x] of Object.entries(over)) out[k] = isPlain(x) && isPlain(out[k]) ? mergeArgs(out[k] as Record<string, unknown>, x) : x;
+  return out;
+}
+
+/** The names steps declare with `as`, and any problem with them (bad or repeated name). */
+export function stepNames(steps: Step[]): { names: Names; problems: { step: number; tool: string; message: string }[] } {
+  const names: Names = new Map(), problems: { step: number; tool: string; message: string }[] = [];
+  steps.forEach(({ tool, as }, i) => {
+    if (as === undefined) return;
+    if (!NAME.test(as)) problems.push({ step: i + 1, tool, message: `as "${as}": use letters, digits and _, starting with a letter or _` });
+    else if (names.has(as)) problems.push({ step: i + 1, tool, message: `as "${as}" is already step ${names.get(as)}'s name` });
+    else names.set(as, i + 1);
+  });
+  return { names, problems };
 }
 
 // compared as strings: zod reports array indexes as numbers, and a path may come from either side
@@ -104,14 +141,14 @@ function schemaOf(r: Pick<ToolRegistry, "bridgedTools" | "serverTools">, tool: s
  * counted; unknown keys, missing fields and every other value are.
  */
 export function precheck(steps: Step[], r: Pick<ToolRegistry, "bridgedTools" | "serverTools">): { step: number; tool: string; message: string }[] {
-  const problems: { step: number; tool: string; message: string }[] = [];
+  const { names, problems } = stepNames(steps);
   steps.forEach(({ tool, args }, i) => {
     const step = i + 1, schema = schemaOf(r, tool), add = (message: string) => problems.push({ step, tool, message });
     if (NOT_IN_BATCH.has(tool)) return add("not allowed in batch: call it directly");
     if (!schema) return add("unknown or unavailable tool (if its group is not loaded, call load_tools first)");
-    const refs = refPaths(args);
+    const refs = refPaths(args, names);
     for (const p of refs) {
-      const n = Number(REF.exec(String(p.reduce<unknown>((o, k) => (o as Record<string | number, unknown>)[k], args)))![1]);
+      const v = String(p.reduce<unknown>((o, k) => (o as Record<string | number, unknown>)[k], args)), n = refStep(v, names)!.n;
       if (n < 1 || n >= step) add(`${p.join(".")} refers to step ${n}, which has not run yet${n === 0 ? " (steps count from $1)" : ""}. ${LITERAL}`);
     }
     const parsed = schema.safeParse(args);
@@ -157,14 +194,19 @@ function unwrap(res: CallToolResult): { ok: true; result: unknown } | { ok: fals
 export function registerBatchTool(r: ToolRegistry): void {
   r.tool(
     "batch",
-    'Run up to 50 tool calls in order in one call (prefer it for multi-step builds). "$N.path" in args is that value from step N\'s result (from 1), e.g. "$1.id", "$2.layers.0.id"; "$$" is a literal $ ("$$99"). All steps are checked before any runs; a step that fails in After Effects stops the batch with the results so far and a batch_id for resume. Each step is its own undo step. Not preview_frame, run_jsx or open_project.',
+    'Run up to 50 tool calls in order in one call (prefer it for multi-step builds). "$N.path" in args is that value from step N\'s result (from 1), e.g. "$1.id", "$2.layers.0.id"; name a step (as: "title") to use "$title.id" instead. "$$" is a literal $ ("$$99"). defaults: {tool: args} merged under every step of that tool (shared style, comp_id). All steps are checked before any runs; a step that fails in After Effects stops the batch with the results so far and a batch_id for resume. Each step is its own undo step. Not preview_frame, run_jsx or open_project.',
     {
-      steps: z.preprocess(normalizeSteps, z.array(z.strictObject({ tool: z.string(), args: z.record(z.string(), z.unknown()).default({}) })).min(1).max(MAX_STEPS)),
+      steps: z.preprocess(normalizeSteps, z.array(z.strictObject({ tool: z.string(), args: z.record(z.string(), z.unknown()).default({}), as: z.string().optional() })).min(1).max(MAX_STEPS)),
+      defaults: z.record(z.string(), z.record(z.string(), z.unknown())).optional().describe("Per tool: args every step of that tool starts from (its own args win; nested objects merge)"),
       results: z.enum(["all", "last", "none"]).default("all").describe("Which results to return (default all; none returns only the step count)"),
       resume: z.strictObject({ batch_id: z.string(), from: z.number().int().min(2) }).optional().describe("After a failure: the same steps, fixed, run from step `from` with the earlier results"),
     },
     async (a, extra?: ToolExtra) => {
-      const steps = a.steps as Step[];
+      const defaults = (a.defaults ?? {}) as Record<string, Record<string, unknown>>;
+      const steps = (a.steps as Step[]).map((s) => (defaults[s.tool] ? { ...s, args: mergeArgs(defaults[s.tool], s.args) } : s));
+      const unusedDefaults = Object.keys(defaults).filter((t) => !steps.some((s) => s.tool === t));
+      if (unusedDefaults.length) return json({ error: { code: "BAD_ARGS", message: `defaults for ${unusedDefaults.join(", ")}, which no step uses; nothing ran`, hint: "Key defaults by the tool name of the steps they apply to" } }, true);
+      const { names } = stepNames(steps);
       let results: unknown[] = [], first = 1;
       const batchId = a.resume?.batch_id ?? randomUUID().slice(0, 8);
       if (a.resume) {
@@ -197,7 +239,7 @@ export function registerBatchTool(r: ToolRegistry): void {
         };
         let resolved: unknown;
         try {
-          resolved = resolveRefs(args, results, step);
+          resolved = resolveRefs(args, results, step, names);
         } catch (e) {
           const err = e as AeToolError;
           return fail(err.code ?? "BAD_ARGS", err.message, err.hint ?? "Check the reference");
