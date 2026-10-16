@@ -89,7 +89,7 @@ async function rawBridge(command: string, args: Json = {}, timeoutMs = 60000): P
 // ---------- MCP client over stdio ----------
 function startServer(): Server {
   if (!fs.existsSync(SERVER)) die(`${SERVER} not found: run \`npm run build\` from the repo root first`);
-  const env: NodeJS.ProcessEnv = { ...process.env, AE_MCP_BRIDGE_FILE: bridgeFile };
+  const env: NodeJS.ProcessEnv = { AE_MCP_TOOLSETS: "all", ...process.env, AE_MCP_BRIDGE_FILE: bridgeFile };
   if (ALLOW_JSX) env.AE_MCP_ALLOW_JSX = "1";
   const p = spawn(process.execPath, [SERVER], { env, stdio: ["pipe", "pipe", "inherit"] });
   let buf = "", nextId = 1;

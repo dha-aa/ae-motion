@@ -55,17 +55,27 @@ export type Toolset = (typeof TOOLSETS)[number];
 /** Groups that are always registered, whatever AE_MCP_TOOLSETS says. */
 export const ALWAYS_ON: readonly Toolset[] = ["inspect", "meta"];
 
+/** The groups "core" (the default) loads, besides ALWAYS_ON: what nearly every build uses. */
+export const CORE: readonly Toolset[] = ["project", "layers", "animate", "motion", "output"];
+
 /**
- * Which tool groups to register at startup (AE_MCP_TOOLSETS, comma separated; default: all). Fewer tools means a
- * smaller tool list in every request; when some are left out, load_tools adds them during the session. inspect and
- * meta are always on. "core" = inspect, project, layers, animate, motion, output.
+ * Which tool groups to register at startup (AE_MCP_TOOLSETS, comma separated; default: core, "all" for every group).
+ * The tool list goes to the model on every request: core is 46 tools instead of 78, about 7k tokens less each time.
+ * The other groups are named in the instructions and load_tools, and a batch step that names one of their tools
+ * loads its group first. inspect and meta are always on.
  */
+/** Whether AE_MCP_TOOLSETS picks the groups (otherwise the client decides: Claude Code all, others core). */
+export function toolsetsChosen(): boolean {
+  return Boolean(process.env.AE_MCP_TOOLSETS?.trim());
+}
+
 export function enabledToolsets(): Set<Toolset> {
-  const env = process.env.AE_MCP_TOOLSETS?.trim();
-  if (!env || env === "all") return new Set(TOOLSETS);
+  const env = process.env.AE_MCP_TOOLSETS?.trim().toLowerCase() || "core";
+  if (env === "all") return new Set(TOOLSETS);
   const out = new Set<Toolset>(ALWAYS_ON);
-  for (const raw of env.split(",").map((s) => s.trim().toLowerCase()).filter(Boolean)) {
-    if (raw === "core") for (const g of ["project", "layers", "animate", "motion", "output"] as const) out.add(g);
+  for (const raw of env.split(",").map((s) => s.trim()).filter(Boolean)) {
+    if (raw === "core") for (const g of CORE) out.add(g);
+    else if (raw === "all") for (const g of TOOLSETS) out.add(g);
     else if ((TOOLSETS as readonly string[]).includes(raw)) out.add(raw as Toolset);
     else process.stderr.write(`ae-motion-mcp: unknown toolset "${raw}" in AE_MCP_TOOLSETS (known: core, ${TOOLSETS.join(", ")})\n`);
   }

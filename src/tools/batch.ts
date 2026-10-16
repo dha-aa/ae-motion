@@ -23,6 +23,8 @@ import { AeToolError, type ErrorCode } from "../errors.js";
 import { json, sandboxPaths, type ToolExtra, type ToolRegistry } from "./registry.js";
 
 const MAX_STEPS = 50;
+// results: "auto" returns a step's result whole up to this many characters (ids, timing, values read back)
+const AUTO_WHOLE = 600;
 const REF = /^\$(\d+|[A-Za-z_]\w*)((?:\.[\w-]+)*)$/;
 const NAME = /^[A-Za-z_]\w*$/;
 /** Step names declared with `as`, to their 1-based step number. */
@@ -198,10 +200,18 @@ export function registerBatchTool(r: ToolRegistry): void {
     {
       steps: z.preprocess(normalizeSteps, z.array(z.strictObject({ tool: z.string(), args: z.record(z.string(), z.unknown()).default({}), as: z.string().optional() })).min(1).max(MAX_STEPS)),
       defaults: z.record(z.string(), z.record(z.string(), z.unknown())).optional().describe("Per tool: args every step of that tool starts from (its own args win; nested objects merge)"),
-      results: z.enum(["all", "last", "none"]).default("all").describe("Which results to return (default all; none returns only the step count)"),
+      results: z.enum(["auto", "all", "last", "none"]).default("auto").describe("auto (default): each result whole up to 600 characters, larger ones cut to ids and names; all: everything; none: only the step count"),
       resume: z.strictObject({ batch_id: z.string(), from: z.number().int().min(2) }).optional().describe("After a failure: the same steps, fixed, run from step `from` with the earlier results"),
     },
     async (a, extra?: ToolExtra) => {
+      // a step naming a tool of a group not loaded yet loads that group first (its definitions then reach the client)
+      const loadedGroups: string[] = [];
+      for (const s of a.steps as Step[]) {
+        if (NOT_IN_BATCH.has(s.tool)) continue;
+        const g = r.autoload?.(s.tool);
+        if (g) loadedGroups.push(g);
+      }
+      const loadedNote = loadedGroups.length ? { loaded_groups: loadedGroups } : {};
       const defaults = (a.defaults ?? {}) as Record<string, Record<string, unknown>>;
       const steps = (a.steps as Step[]).map((s) => (defaults[s.tool] ? { ...s, args: mergeArgs(defaults[s.tool], s.args) } : s));
       const unusedDefaults = Object.keys(defaults).filter((t) => !steps.some((s) => s.tool === t));
@@ -219,9 +229,17 @@ export function registerBatchTool(r: ToolRegistry): void {
       }
       const problems = precheck(steps, r).filter((x) => x.step >= first);
       if (problems.length) {
-        return json({ error: { code: "BAD_ARGS", message: `${problems.length} problem(s) found; nothing ran`, hint: "Fix every listed step and send the batch again" }, steps: 0, problems }, true);
+        return json({ error: { code: "BAD_ARGS", message: `${problems.length} problem(s) found; nothing ran`, hint: "Fix every listed step and send the batch again" }, steps: 0, problems, ...loadedNote }, true);
       }
-      const out = (): unknown => (a.results === "all" ? results : a.results === "last" ? results.slice(-1) : undefined);
+      // auto: small results whole (ids, timing, a value read back), big ones (every key, a whole text style) as brief
+      let cut = 0;
+      const auto = (): unknown[] => results.map((x) => {
+        if (JSON.stringify(x).length <= AUTO_WHOLE) return x;
+        cut++;
+        return brief(x);
+      });
+      const out = (): unknown => (a.results === "auto" ? auto() : a.results === "all" ? results : a.results === "last" ? results.slice(-1) : undefined);
+      const autoNote = (): Record<string, unknown> => (cut ? { note: `${cut} result(s) over ${AUTO_WHOLE} characters shortened to ids and names; results: "all" returns them whole` } : {});
       // progress after each step: clients that honour it keep a long batch from timing out
       const token = extra?._meta?.progressToken;
       const progress = async (done: number, tool: string) => {
@@ -264,7 +282,9 @@ export function registerBatchTool(r: ToolRegistry): void {
         await progress(step, tool);
       }
       remember(batchId, results);
-      return reply(a.results === "none" ? { steps: results.length } : { steps: results.length, results: out() });
+      if (a.results === "none") return reply({ steps: results.length });
+      const shown = out();
+      return reply({ steps: results.length, results: shown, ...autoNote(), ...loadedNote });
     },
     { tooLargeHint: 'Pass results: "last" or "none", or split the batch' },
   );

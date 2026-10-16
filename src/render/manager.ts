@@ -205,8 +205,10 @@ export class RenderManager {
     if (j.state === "done" && !fs.existsSync(actual)) actual = findWrittenOutput(j.output, j.startedAt) ?? actual;
     const out: Record<string, unknown> = {
       job_id: j.id, state: j.state, percent: j.percent, ...timing(j), output_path: actual, output_exists: fs.existsSync(actual),
-      exit_code: j.exitCode, log_tail: j.log.slice(-LOG_LINES_REPORTED),
+      exit_code: j.exitCode,
     };
+    // the log only when something went wrong: while running, every poll repeated the same progress lines
+    if (j.state === "failed" || j.errors.length) out.log_tail = j.log.slice(-LOG_LINES_REPORTED);
     if (j.phase && j.state === "running") out.phase = j.phase;
     if (j.check) out.check = j.check;
     if (j.errors.length) {

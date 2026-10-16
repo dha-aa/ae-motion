@@ -2,6 +2,15 @@
 
 All notable changes. Versions follow [semantic versioning](https://semver.org); each release is a git tag `vX.Y.Z`, which is what the update check looks for.
 
+## 2.22.0 — 2026-10-16
+
+### Changed
+- Clients that send every tool definition with every message (Claude Desktop, most others) are shown the core tools only: about 11k tokens of definitions per message instead of 18k. The other 32 tools are named in the server instructions, and a `batch` step that uses one shows its group first (the result lists `loaded_groups`); `load_tools` still works. Claude Code is shown every tool, as before, because it loads definitions only when a tool is used. `AE_MCP_TOOLSETS` still chooses the groups (`all` for everything); every tool is registered either way.
+- `batch` returns `results: "auto"` by default: each step's result whole up to 600 characters (ids, timing, values read back), larger ones cut to ids and names with a `note` (`results: "all"` keeps the old behaviour). Batch results were 43% of the result tokens in a 3-minute video build, mostly keyframe lists nobody re-read.
+- `render_status` includes the aerender log tail only when a job fails or logged errors; while running, every poll repeated the same ten progress lines.
+- `find_fonts` groups its result as `{family: {style: PostScript name}}` (plus `listed` when `limit` cut it): the same information in about 40% of the size.
+- Tool definitions: an enum of strings no longer repeats `"type": "string"` (about 1k characters less on every request; zod still checks every value).
+
 ## 2.21.0 — 2026-10-16
 
 ### Added

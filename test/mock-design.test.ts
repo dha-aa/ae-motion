@@ -335,9 +335,11 @@ t("add_layer text: text_style, then anchor on the styled content, then position"
 t("find_fonts matches every word against family, style and PostScript name, with a limit", () => {
   const w = makeWorld();
   const r = ok(w.call("find_fonts", { query: "montserrat italic" }));
-  assert.deepEqual(r, { total: 1, fonts: [{ font: "Montserrat-ExtraBoldItalic", family: "Montserrat", style: "ExtraBold Italic" }] });
+  // grouped by family, style -> PostScript name (the name set_text takes)
+  assert.deepEqual(r, { total: 1, families: { Montserrat: { "ExtraBold Italic": "Montserrat-ExtraBoldItalic" } } });
   const all = ok(w.call("find_fonts", { limit: 3 }));
-  assert.equal(all.total, 4); assert.equal(all.fonts.length, 3);
+  assert.equal(all.total, 4); assert.equal(all.listed, 3, "listed says how many of total are shown");
+  assert.equal(Object.values(all.families).reduce((n, s) => n + Object.keys(s).length, 0), 3);
 });
 
 t("set_text refuses a font that is not installed, before changing anything", () => {

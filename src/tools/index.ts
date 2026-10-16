@@ -15,7 +15,7 @@
  *   src/tools/scripting.ts <-> host/commands/output.jsx    (run_jsx)
  *   src/tools/meta.ts      (server only: check_for_updates)
  *   src/tools/batch.ts     (server only: batch, always on)
- *   load_tools (below)     (server only: present when AE_MCP_TOOLSETS leaves groups out)
+ *   load_tools (below)     (server only: listed while some groups are hidden from tools/list)
  */
 import { z } from "zod";
 import { enabledToolsets, TOOLSETS, type Toolset } from "../config.js";
@@ -57,27 +57,69 @@ const GROUP_SUMMARY: Partial<Record<Toolset, string>> = {
 };
 
 /**
- * Register the tool groups in `on` (default: those AE_MCP_TOOLSETS enables, else all), then batch, and, when some
- * groups are left out, load_tools to add them later (the SDK tells the client with tools/list_changed).
+ * Which tool groups the client is shown. Every tool is registered (batch and direct calls always work); tools/list
+ * leaves out the groups not shown, because a client that sends every definition with every request (Claude Desktop)
+ * pays for each one each time. Claude Code defers definitions itself, so it is shown everything. load_tools or a
+ * batch step naming a hidden tool shows its group and tells the client the list changed.
  */
-export function registerAllTools(r: ToolRegistry, on: Set<Toolset> = enabledToolsets()): void {
-  for (const name of TOOLSETS) if (on.has(name)) GROUPS[name](r);
-  registerBatchTool(r); // after the groups: it runs the bridged tools registered so far
-  const later = TOOLSETS.filter((g) => !on.has(g));
-  if (later.length) registerLoadTools(r, on, later);
+export class ToolVisibility {
+  readonly groupOf = new Map<string, Toolset>();
+  constructor(private readonly r: ToolRegistry, readonly shown: Set<Toolset>) {}
+  /** Groups registered but not shown, in TOOLSETS order. */
+  hidden(): Toolset[] { return TOOLSETS.filter((g) => !this.shown.has(g)); }
+  /** Whether tools/list includes this tool (load_tools only while something is hidden). */
+  listed(tool: string): boolean {
+    if (tool === "load_tools") return this.hidden().length > 0;
+    const g = this.groupOf.get(tool);
+    return g === undefined || this.shown.has(g);
+  }
+  /** Show groups; true if any was hidden. notify: send tools/list_changed (not during the handshake). */
+  show(groups: Toolset[], notify = true): boolean {
+    const added = groups.filter((g) => !this.shown.has(g));
+    for (const g of added) this.shown.add(g);
+    if (added.length && notify) this.r.listChanged();
+    return added.length > 0;
+  }
+  /** The tools of the hidden groups, for the server instructions: "masks: add_mask, set_track_matte; ...". */
+  hiddenText(): string {
+    return this.hidden().map((g) => `${g}: ${[...this.groupOf].filter(([, x]) => x === g).map(([t]) => t).join(", ")}`).join("; ");
+  }
 }
 
-function registerLoadTools(r: ToolRegistry, loaded: Set<Toolset>, later: Toolset[]): void {
+/**
+ * Register every tool group, then batch and load_tools. `shown` (default: what AE_MCP_TOOLSETS asks for, core when
+ * unset) is what tools/list includes; server.ts widens it to everything for Claude Code during the handshake.
+ */
+export function registerAllTools(r: ToolRegistry, shown: Set<Toolset> = enabledToolsets()): ToolVisibility {
+  const vis = new ToolVisibility(r, new Set(shown));
+  for (const g of TOOLSETS) {
+    const before = r.names.length;
+    GROUPS[g](r);
+    for (const t of r.names.slice(before)) vis.groupOf.set(t, g);
+  }
+  registerBatchTool(r); // after the groups: it runs the bridged tools registered so far
+  registerLoadTools(r, vis);
+  // a batch step naming a hidden tool shows its group (the tool itself is registered, so the step runs as it is)
+  r.autoload = (tool) => {
+    const g = vis.groupOf.get(tool);
+    return g && vis.show([g]) ? g : null;
+  };
+  return vis;
+}
+
+const OPTIONAL = TOOLSETS.filter((g) => GROUP_SUMMARY[g] !== undefined);
+
+function registerLoadTools(r: ToolRegistry, vis: ToolVisibility): void {
   r.tool(
     "load_tools",
-    "Add tool groups that are not loaded yet: " + later.map((g) => `${g} (${GROUP_SUMMARY[g]})`).join("; ") + ". Call it when you need one of them; the new tools can also be run through batch.",
-    { groups: z.array(z.enum(later as [Toolset, ...Toolset[]])).min(1) },
+    "Show a tool group that is not listed yet, to see its tools' arguments: " + OPTIONAL.map((g) => `${g} (${GROUP_SUMMARY[g]})`).join("; ") + ". A batch step naming one of their tools shows its group by itself.",
+    { groups: z.array(z.enum(OPTIONAL as [Toolset, ...Toolset[]])).min(1) },
     async (a) => {
-      const before = r.names.length, added: Toolset[] = [];
-      for (const g of a.groups) if (!loaded.has(g)) { GROUPS[g](r); loaded.add(g); added.push(g); }
+      const added = a.groups.filter((g) => !vis.shown.has(g));
+      vis.show(added);
       return json({
         loaded: added,
-        tools: r.names.slice(before),
+        tools: [...vis.groupOf].filter(([, g]) => added.includes(g)).map(([t]) => t),
         ...(added.length ? { note: "If your client does not show the new tools yet, run them through batch" } : {}),
       });
     },
