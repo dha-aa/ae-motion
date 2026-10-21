@@ -2,6 +2,11 @@
 
 All notable changes. Versions follow [semantic versioning](https://semver.org); each release is a git tag `vX.Y.Z`, which is what the update check looks for.
 
+## Unreleased
+
+### Changed
+- The server instructions are rewritten to fit in the 4,096 characters Claude Code shows (5,599 before, 4,083 now). The last rules (editing footage, framing, text over video, sound, counting, before finishing, run_jsx) used to be cut off, so Claude only saw them after the motion-guide prompt was run; now every rule reaches the model in every session. Same rules and numbers in fewer words; about 380 tokens less per session, and Claude Code's motion-guide is about 570 tokens (was about 1,090) since nothing is left over for it. A test fails if the instructions grow past the cut.
+
 ## 2.23.0 — 2026-10-21
 
 ### Changed
