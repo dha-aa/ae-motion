@@ -619,7 +619,9 @@ const results: [name: string, pass: boolean, detail?: string][] = [];
   const rules: string[] = [...DESIGN_RULES.split("\n"), RUN_JSX_RULE];
   const lost = rules.filter((l) => !ccShown.includes(l) && !ccGuide.includes(l));
   const twice = rules.filter((l) => ccShown.includes(l) && ccGuide.includes(l));
-  results.push(["I: Claude Code's guide keeps every rule its cut instructions miss, and none they show", lost.length === 0 && twice.length === 0 && /run_jsx is a last resort/.test(ccGuide) && !/Time is in seconds/.test(ccGuide) && /Recommended loop/.test(ccGuide) && /one undo step/.test(ccGuide) && ccGuide.length < fullGuide.length, `lost ${lost.length}, twice ${twice.length}, ${ccGuide.length} vs ${fullGuide.length}`]);
+  const ccFull: string = (ccInit.result as Json | undefined)?.instructions ?? "";
+  results.push(["I: the server instructions fit in Claude Code's 4096-character cut", ccFull.length <= 4096 && ccFull.includes(RUN_JSX_RULE), String(ccFull.length)]);
+  results.push(["I: Claude Code's guide keeps every rule its cut instructions miss, and none they show", lost.length === 0 && twice.length === 0 && !/Time is in seconds/.test(ccGuide) && /Recommended loop/.test(ccGuide) && /one undo step/.test(ccGuide) && ccGuide.length < fullGuide.length, `lost ${lost.length}, twice ${twice.length}, ${ccGuide.length} vs ${fullGuide.length}`]);
 
   // advertised schemas use the short equivalent forms (one type list, no type beside a const)
   const ccTools: Json[] = ((await cc.call("tools/list", {})).result as Json | undefined)?.tools ?? [];
