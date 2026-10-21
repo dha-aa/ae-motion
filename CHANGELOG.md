@@ -2,7 +2,7 @@
 
 All notable changes. Versions follow [semantic versioning](https://semver.org); each release is a git tag `vX.Y.Z`, which is what the update check looks for.
 
-## Unreleased
+## 2.23.0 — 2026-10-21
 
 ### Changed
 - The `motion-guide` prompt no longer repeats what Claude Code already shows from the server instructions. Claude Code cuts the instructions at 4,096 characters, so the conventions and the first design rules (format, copy, type, layout, timing, holds, polish) were in the model's context twice. The rules past the cut (editing footage, footage framing, text over video, sound, counting, before finishing, and the run_jsx rule) stay in the guide. Claude Code's guide is about 1,090 tokens instead of 1,680. Other clients, which may not show the server instructions to the model, get the whole guide as before.
