@@ -17,7 +17,7 @@
  */
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
-import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
+import type { CallToolResult } from "@modelcontextprotocol/server";
 import { CHARACTER_LIMIT } from "../config.js";
 import { AeToolError, type ErrorCode } from "../errors.js";
 import { json, sandboxPaths, type ToolExtra, type ToolRegistry } from "./registry.js";
@@ -241,10 +241,10 @@ export function registerBatchTool(r: ToolRegistry): void {
       const out = (): unknown => (a.results === "auto" ? auto() : a.results === "all" ? results : a.results === "last" ? results.slice(-1) : undefined);
       const autoNote = (): Record<string, unknown> => (cut ? { note: `${cut} result(s) over ${AUTO_WHOLE} characters shortened to ids and names; results: "all" returns them whole` } : {});
       // progress after each step: clients that honour it keep a long batch from timing out
-      const token = extra?._meta?.progressToken;
+      const token = extra?.mcpReq?._meta?.progressToken, notify = extra?.mcpReq?.notify;
       const progress = async (done: number, tool: string) => {
-        if (token === undefined || !extra?.sendNotification) return;
-        try { await extra.sendNotification({ method: "notifications/progress", params: { progressToken: token, progress: done, total: steps.length, message: tool } }); } catch { /* best effort */ }
+        if (token === undefined || !notify) return;
+        try { await notify({ method: "notifications/progress", params: { progressToken: token, progress: done, total: steps.length, message: tool } }); } catch { /* best effort */ }
       };
       for (let i = first - 1; i < steps.length; i++) {
         const step = i + 1, { tool, args } = steps[i];

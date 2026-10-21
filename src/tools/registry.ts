@@ -14,8 +14,7 @@
  * - compact JSON output with numbers rounded to 6 significant digits, capped at {@link CHARACTER_LIMIT} characters;
  * - error handling: anything thrown becomes an MCP error result `{error: {code, message, hint}}`.
  */
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import type { CallToolResult, ToolAnnotations } from "@modelcontextprotocol/sdk/types.js";
+import type { McpServer, CallToolResult, ToolAnnotations } from "@modelcontextprotocol/server";
 import { z } from "zod";
 import type { Bridge, BridgeResult } from "../bridge.js";
 import { CHARACTER_LIMIT } from "../config.js";
@@ -114,10 +113,12 @@ export interface BridgedSpec {
   paths: string[];
 }
 
-/** The part of the SDK's per-request context tools use: the client's progress token and a way to notify it. */
+/** The part of the SDK's per-request context (ctx.mcpReq) tools use: the client's progress token and a way to notify it. */
 export interface ToolExtra {
-  _meta?: { progressToken?: string | number };
-  sendNotification?: (n: { method: "notifications/progress"; params: { progressToken: string | number; progress: number; total?: number; message?: string } }) => Promise<void>;
+  mcpReq?: {
+    _meta?: { progressToken?: string | number };
+    notify?: (n: { method: "notifications/progress"; params: { progressToken: string | number; progress: number; total?: number; message?: string } }) => Promise<void>;
+  };
 }
 
 /** What batch needs to run a server-side tool (get_project, render_status ...): its strict schema and handler. */
@@ -133,6 +134,8 @@ export class ToolRegistry {
   readonly serverTools = new Map<string, ServerSpec>();
   /** Every tool registered so far, in order (load_tools reports what it added). */
   readonly names: string[] = [];
+  /** Each tool's strict input schema, to explain a schema failure from structured issues (toolInputErrors). */
+  readonly schemas = new Map<string, z.ZodType>();
   /** Each tool's top-level argument names, for "did you mean" hints on unknown keys (toolInputErrors). */
   readonly argNames = new Map<string, string[]>();
   /** Shows the hidden group a tool belongs to and returns its name; null if it was already listed (index.ts sets it). */
@@ -162,6 +165,7 @@ export class ToolRegistry {
     this.names.push(name);
     this.argNames.set(name, Object.keys(shape));
     const config = { title: opts.title ?? titleFromName(name), description, inputSchema: z.strictObject(shape), annotations: annotationsFor(opts) };
+    this.schemas.set(name, config.inputSchema);
     if (!this.bridgedTools.has(name)) this.serverTools.set(name, { schema: config.inputSchema, run: run as ServerSpec["run"] });
     // The SDK's generic callback type does not line up with zod's inferred output type; the shape is the same.
     this.server.registerTool(name, config as any, handler as any);
@@ -205,7 +209,8 @@ const BOUNDS = new Set(["minimum", "maximum", "exclusiveMinimum", "exclusiveMaxi
  * nested additionalProperties: false dropped (zod enforces both; the top level keeps it), and string propertyNames
  * dropped (JSON keys are strings anyway). Equivalent shorter forms where JSON Schema has one: no type beside a string
  * enum or const, no empty additionalProperties, plain-type anyOf members merged into one type list.
- * Tuples (zod's draft-07 `items: [a, b]`) become one `items` schema when the members are alike, else `prefixItems`:
+ * Tuples (`items: [a, b]` in draft 07, `prefixItems: [a, b]` + `items: false` in 2020-12) become one `items` schema
+ * when the members are alike (length is checked by zod), else `prefixItems`:
  * without the $schema header clients read the schema as draft 2020-12, where an `items` array is invalid (the Claude
  * API refused add_layer, set_layer and set_text over box_size / solid_size).
  */
@@ -243,10 +248,12 @@ export function slimSchema(root: Record<string, unknown>): Record<string, unknow
         else { delete out.anyOf; Object.assign(out, merged); }
       }
     }
-    if (Array.isArray(out.items)) {
-      const members = out.items as unknown[], first = JSON.stringify(members[0]);
-      if (members.every((m) => JSON.stringify(m) === first)) out.items = members[0];
-      else { out.prefixItems = members; delete out.items; }
+    // a tuple: draft-07 items: [a, b] (SDK v1), or 2020-12 prefixItems: [a, b] with items: false (SDK v2)
+    const tuple = Array.isArray(out.items) ? out.items : Array.isArray(out.prefixItems) && out.items === false ? out.prefixItems : null;
+    if (tuple) {
+      const first = JSON.stringify(tuple[0]);
+      if (tuple.every((m) => JSON.stringify(m) === first)) { out.items = tuple[0]; delete out.prefixItems; }
+      else { out.prefixItems = tuple; delete out.items; }
       delete out.additionalItems;
     }
     return out;
@@ -260,12 +267,16 @@ export function slimSchema(root: Record<string, unknown>): Record<string, unknow
  * handler; if the SDK's internals change, it does nothing (test/static-checks.ts fails if "$schema" comes back).
  */
 type CallHandler = (request: { params: { name: string; arguments?: Record<string, unknown> } }, extra: unknown) => Promise<CallToolResult>;
-const INPUT_ERROR = /^MCP error -32602: Input validation error: Invalid arguments for tool \S+: /;
+// The SDK's words for a schema failure (v1 prefixed "MCP error -32602: "); only used to recognise one.
+const INPUT_ERROR = /^(MCP error -32602: )?Input validation error: /;
+const UNKNOWN_TOOL = /^(MCP error -32602: )?Tool (\S+) not found$/;
 
 /**
  * Bad arguments as ae-motion errors. The SDK reports a schema failure as an isError result (as the spec asks) but in
- * its own words ("MCP error -32602: Input validation error: ..."), without a hint, before any tool handler runs. This
- * rewrites it as {error: {code: BAD_ARGS, message, hint}} like every other error, and counts it in the token meter.
+ * its own words, without a hint, before any tool handler runs. This rewrites it as {error: {code: BAD_ARGS, message,
+ * hint}} like every other error, and counts it in the token meter. The message comes from validating the arguments
+ * again with the tool's zod schema (structured issues), not from parsing the SDK's text, whose wording changed between
+ * SDK versions. An unknown tool (a JSON-RPC error in SDK v2) becomes a NOT_FOUND result naming the closest tool.
  */
 // Argument names a model mixes up across tools; a key in one group suggests the tool's own name from it.
 const SAME_ARG: string[][] = [
@@ -296,24 +307,38 @@ export function suggestArg(key: string, valid: string[], passed: string[]): stri
   return near !== undefined && editDistance(key, near) <= Math.max(2, Math.floor(near.length / 3)) ? near : undefined;
 }
 
-export function toolInputErrors(server: McpServer, argNames?: Map<string, string[]>): void {
+export function toolInputErrors(server: McpServer, registry: Pick<ToolRegistry, "argNames" | "schemas" | "names">): void {
   const handlers = (server.server as unknown as { _requestHandlers?: Map<string, CallHandler> })._requestHandlers;
   const original = handlers?.get("tools/call");
   if (!handlers || !original) return;
   handlers.set("tools/call", async (request, extra) => {
-    const res = await original(request, extra);
+    const name = request.params.name;
+    let res: CallToolResult;
+    try {
+      res = await original(request, extra);
+    } catch (e) {
+      const unknown = UNKNOWN_TOOL.exec(e instanceof Error ? e.message : "");
+      if (!unknown) throw e;
+      const near = suggestArg(name, registry.names, []);
+      const out = errorResult({ code: "NOT_FOUND", message: `Unknown tool ${name}`, hint: near ? `Did you mean ${near}?` : "Check the tool name in tools/list" });
+      usage.record(name, out);
+      return out;
+    }
     const text = res.isError && res.content?.[0]?.type === "text" ? res.content[0].text : "";
-    if (!INPUT_ERROR.test(text)) return res;
-    const valid = argNames?.get(request.params.name) ?? [], passed = Object.keys(request.params.arguments ?? {});
-    const issues = text.replace(INPUT_ERROR, "").split("\n").map((x) => x.trim()).filter(Boolean)
-      // a top-level unknown key gets the likely intended name (nested ones carry an "at" path and are left as they are)
-      .map((x) => (/ at /.test(x) ? x : x.replace(/^Unrecognized keys?: (.+)$/, (line, list: string) => {
-        const hints = [...list.matchAll(/"([^"]+)"/g)].map((m) => [m[1], suggestArg(m[1], valid, passed)]).filter((h) => h[1]);
-        return hints.length ? `${line} (did you mean ${hints.map((h) => `${h[0]} -> ${h[1]}`).join(", ")}?)` : line;
-      })))
-      .join("; ");
-    const out = errorResult({ code: "BAD_ARGS", message: `Invalid arguments for ${request.params.name}: ${issues}`, hint: "Fix the listed arguments (unknown keys are rejected; the tool's input schema lists the valid ones)" });
-    usage.record(request.params.name, out);
+    const schema = registry.schemas.get(name);
+    if (!INPUT_ERROR.test(text) || !schema) return res;
+    const parsed = schema.safeParse(request.params.arguments ?? {});
+    if (parsed.success) return res; // not a schema failure after all: leave the SDK's result as it is
+    const valid = registry.argNames.get(name) ?? [], passed = Object.keys(request.params.arguments ?? {});
+    const issues = parsed.error.issues.map((i) => {
+      const at = i.path.length ? ` at ${i.path.join(".")}` : "";
+      // a top-level unknown key gets the likely intended name (nested ones are left as they are)
+      if (i.code !== "unrecognized_keys" || at) return i.message + at;
+      const hints = i.keys.map((k) => [k, suggestArg(k, valid, passed)]).filter((h) => h[1]);
+      return hints.length ? `${i.message} (did you mean ${hints.map((h) => `${h[0]} -> ${h[1]}`).join(", ")}?)` : i.message;
+    }).join("; ");
+    const out = errorResult({ code: "BAD_ARGS", message: `Invalid arguments for ${name}: ${issues}`, hint: "Fix the listed arguments (unknown keys are rejected; the tool's input schema lists the valid ones)" });
+    usage.record(name, out);
     return out;
   });
 }

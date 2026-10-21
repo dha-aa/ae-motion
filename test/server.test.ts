@@ -8,7 +8,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { spawn } from "node:child_process";
 import type { AddressInfo } from "node:net";
-import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
+import type { CallToolResult } from "@modelcontextprotocol/server";
 import { PNG } from "pngjs";
 
 /** A JSON-RPC reply from the server; `result` is a CallToolResult for tools/call. */
@@ -462,6 +462,12 @@ const results: [name: string, pass: boolean, detail?: string][] = [];
     /stagger -> stagger_seconds/.test(syn.error?.message) && /colr -> color/.test(typo.error?.message) && /font_size -> size/.test(typo.error?.message) &&
     !/sise ->/.test(typo.error?.message) && !/did you mean/.test(none.error?.message) && !/did you mean/.test(taken.error?.message) && calls.length === 0,
     JSON.stringify([syn, typo, none, taken])]);
+
+  // an unknown tool is a NOT_FOUND result naming the closest tool (SDK v2 itself answers with a JSON-RPC error)
+  const unknownTool = await s.call("tools/call", { name: "get_layr", arguments: {} });
+  let unknownBody: Json = {};
+  try { unknownBody = JSON.parse(textOf(unknownTool)); } catch {}
+  results.push(["H: an unknown tool is isError NOT_FOUND with the closest name", unknownTool.result?.isError === true && unknownBody.error?.code === "NOT_FOUND" && /get_layer/.test(unknownBody.error?.hint ?? ""), JSON.stringify(unknownTool)]);
 
   // get_project passes its filter and paging to the host; a failed resource read is a resources/read error, not JSON
   await body("get_project", { name: "logo", type: "footage", limit: 5, offset: 10 });

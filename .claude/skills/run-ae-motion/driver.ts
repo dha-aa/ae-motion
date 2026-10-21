@@ -27,7 +27,7 @@ import http from "node:http";
 import os from "node:os";
 import path from "node:path";
 import type { AddressInfo } from "node:net";
-import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
+import type { CallToolResult } from "@modelcontextprotocol/server";
 
 type Json = Record<string, any>; // free-form tool args and results
 type Rpc = { id?: number; result?: any; error?: unknown };

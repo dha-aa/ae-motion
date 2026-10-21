@@ -8,7 +8,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawn, execFileSync } from "node:child_process";
-import type { Tool } from "@modelcontextprotocol/sdk/types.js";
+import type { Tool } from "@modelcontextprotocol/server";
 import { buildHost, emittedPath, HOST_OUT, HOST_SOURCES } from "../scripts/build-host.ts";
 import { ARGS_OUT, argsFile, SERVER_ONLY } from "../scripts/host-args.ts";
 import { Ajv2020 } from "ajv/dist/2020.js";

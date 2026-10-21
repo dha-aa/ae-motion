@@ -1,5 +1,5 @@
 /** MCP prompts. motion-guide gives the model the conventions and a good build loop. */
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { McpServer } from "@modelcontextprotocol/server";
 
 /** Shared with the server instructions: run_jsx is the lowest-priority tool. */
 export const RUN_JSX_RULE =

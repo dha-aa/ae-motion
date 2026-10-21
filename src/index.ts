@@ -6,7 +6,7 @@
  *
  * See docs/architecture.md.
  */
-import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { StdioServerTransport } from "@modelcontextprotocol/server/stdio";
 import { HttpBridge } from "./bridge.js";
 import { createServer } from "./server.js";
 import { checkForUpdates } from "./update.js";

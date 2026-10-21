@@ -9,7 +9,7 @@
  */
 import fs from "node:fs";
 import path from "node:path";
-import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
+import type { CallToolResult } from "@modelcontextprotocol/server";
 import { bridgeFile, SERVER_VERSION } from "./config.js";
 
 const CHARS_PER_TOKEN = 3.6;
