@@ -203,7 +203,8 @@ const BOUNDS = new Set(["minimum", "maximum", "exclusiveMinimum", "exclusiveMaxi
 /**
  * A copy of an input schema with local $refs inlined (a ref path is longer than what it points to), bounds and
  * nested additionalProperties: false dropped (zod enforces both; the top level keeps it), and string propertyNames
- * dropped (JSON keys are strings anyway).
+ * dropped (JSON keys are strings anyway). Equivalent shorter forms where JSON Schema has one: no type beside a string
+ * enum or const, no empty additionalProperties, plain-type anyOf members merged into one type list.
  * Tuples (zod's draft-07 `items: [a, b]`) become one `items` schema when the members are alike, else `prefixItems`:
  * without the $schema header clients read the schema as draft 2020-12, where an `items` array is invalid (the Claude
  * API refused add_layer, set_layer and set_text over box_size / solid_size).
@@ -226,6 +227,22 @@ export function slimSchema(root: Record<string, unknown>): Record<string, unknow
     if (JSON.stringify(out.propertyNames) === '{"type":"string"}') delete out.propertyNames;
     // an enum of strings already says its type (64 enums: about 1k characters on every request)
     if (Array.isArray(out.enum) && out.type === "string" && out.enum.every((x) => typeof x === "string")) delete out.type;
+    // a string const says its type too
+    if (typeof out.const === "string" && out.type === "string") delete out.type;
+    // a record of unknown values: an empty schema allows anything, as no additionalProperties does
+    const extra = out.additionalProperties;
+    if (extra && typeof extra === "object" && !Object.keys(extra).length) delete out.additionalProperties;
+    // anyOf [{type: number}, {type: string}, ...] is one type list (Value is in set_property, set_keyframes, edit_keyframes)
+    if (Array.isArray(out.anyOf)) {
+      const plain = (out.anyOf as Record<string, unknown>[]).filter((m) => Object.keys(m).length === 1 && "type" in m);
+      if (plain.length > 1) {
+        // JSON Schema wants the names in a type list unique
+        const merged = { type: [...new Set(plain.flatMap((m) => m.type as string | string[]))] };
+        const rest = (out.anyOf as Record<string, unknown>[]).filter((m) => !plain.includes(m));
+        if (rest.length || "type" in out) out.anyOf = [merged, ...rest];
+        else { delete out.anyOf; Object.assign(out, merged); }
+      }
+    }
     if (Array.isArray(out.items)) {
       const members = out.items as unknown[], first = JSON.stringify(members[0]);
       if (members.every((m) => JSON.stringify(m) === first)) out.items = members[0];

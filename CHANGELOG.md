@@ -2,6 +2,12 @@
 
 All notable changes. Versions follow [semantic versioning](https://semver.org); each release is a git tag `vX.Y.Z`, which is what the update check looks for.
 
+## Unreleased
+
+### Changed
+- The `motion-guide` prompt no longer repeats what Claude Code already shows from the server instructions. Claude Code cuts the instructions at 4,096 characters, so the conventions and the first design rules (format, copy, type, layout, timing, holds, polish) were in the model's context twice. The rules past the cut (editing footage, footage framing, text over video, sound, counting, before finishing, and the run_jsx rule) stay in the guide. Claude Code's guide is about 1,090 tokens instead of 1,680. Other clients, which may not show the server instructions to the model, get the whole guide as before.
+- Tool definitions use shorter forms that mean the same in JSON Schema: plain-type `anyOf` members become one type list (`"type": ["integer", "null"]`), no `"type"` beside a string `const`, no empty `additionalProperties`. That is about 100 tokens less, on every request in clients that send the definitions with each message; descriptions are unchanged and zod checks every value as before.
+
 ## 2.22.0 — 2026-10-16
 
 ### Changed
