@@ -8,7 +8,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { spawn } from "node:child_process";
 import type { AddressInfo } from "node:net";
-import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
+import type { CallToolResult } from "@modelcontextprotocol/server";
 import { PNG } from "pngjs";
 
 /** A JSON-RPC reply from the server; `result` is a CallToolResult for tools/call. */
@@ -18,6 +18,7 @@ type Json = Record<string, any>; // tool payloads and forwarded args are free-fo
 if (process.platform === "win32") { console.log("SKIP  render tests (need bash)"); process.exit(0); }
 const DIR = fs.mkdtempSync(path.join(os.tmpdir(), "ae-motion-render-"));
 const SERVER = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "dist", "index.js");
+const { DESIGN_RULES, RUN_JSX_RULE } = await import(new URL("../dist/prompts.js", import.meta.url).href) as { DESIGN_RULES: string; RUN_JSX_RULE: string };
 const TOKEN = "testtoken";
 let prepareOk = true;
 let prepareFps: number | undefined; // set: prepare_render reports a frame rate (and 240 frames), so the server passes a range
@@ -462,6 +463,12 @@ const results: [name: string, pass: boolean, detail?: string][] = [];
     !/sise ->/.test(typo.error?.message) && !/did you mean/.test(none.error?.message) && !/did you mean/.test(taken.error?.message) && calls.length === 0,
     JSON.stringify([syn, typo, none, taken])]);
 
+  // an unknown tool is a NOT_FOUND result naming the closest tool (SDK v2 itself answers with a JSON-RPC error)
+  const unknownTool = await s.call("tools/call", { name: "get_layr", arguments: {} });
+  let unknownBody: Json = {};
+  try { unknownBody = JSON.parse(textOf(unknownTool)); } catch {}
+  results.push(["H: an unknown tool is isError NOT_FOUND with the closest name", unknownTool.result?.isError === true && unknownBody.error?.code === "NOT_FOUND" && /get_layer/.test(unknownBody.error?.hint ?? ""), JSON.stringify(unknownTool)]);
+
   // get_project passes its filter and paging to the host; a failed resource read is a resources/read error, not JSON
   await body("get_project", { name: "logo", type: "footage", limit: 5, offset: 10 });
   const [, projBadErr] = await body("get_project", { limit: 0 });
@@ -602,6 +609,24 @@ const results: [name: string, pass: boolean, detail?: string][] = [];
   cc.p.stdin.write(JSON.stringify({ jsonrpc: "2.0", method: "notifications/initialized" }) + "\n");
   const ccNames = await listNames(cc);
   results.push(["I: Claude Code is shown every tool (no load_tools, no hidden-tools note)", ccNames.length === 78 && ccNames.includes("camera_move") && !ccNames.includes("load_tools") && !/not listed yet/.test((ccInit.result as Json | undefined)?.instructions ?? ""), String(ccNames.length)]);
+
+  // the motion guide: Claude Code reads the instructions, so its guide leaves out what they already say
+  const guideOf = async (srv: { call: typeof s.call }): Promise<string> => ((await srv.call("prompts/get", { name: "motion-guide" })).result as Json | undefined)?.messages?.[0]?.content?.text ?? "";
+  const ccGuide = await guideOf(cc), fullGuide = await guideOf(dflt);
+  results.push(["I: other clients get the whole motion guide (conventions, design rules, run_jsx rule)", /Work like a senior motion designer/.test(fullGuide) && /run_jsx is a last resort/.test(fullGuide) && /Time is in seconds/.test(fullGuide) && /Recommended loop/.test(fullGuide)]);
+  // Claude Code shows the instructions cut at 4096 characters: every rule must be in that part or in its guide
+  const ccShown = ((ccInit.result as Json | undefined)?.instructions ?? "").slice(0, 4096);
+  const rules: string[] = [...DESIGN_RULES.split("\n"), RUN_JSX_RULE];
+  const lost = rules.filter((l) => !ccShown.includes(l) && !ccGuide.includes(l));
+  const twice = rules.filter((l) => ccShown.includes(l) && ccGuide.includes(l));
+  results.push(["I: Claude Code's guide keeps every rule its cut instructions miss, and none they show", lost.length === 0 && twice.length === 0 && /run_jsx is a last resort/.test(ccGuide) && !/Time is in seconds/.test(ccGuide) && /Recommended loop/.test(ccGuide) && /one undo step/.test(ccGuide) && ccGuide.length < fullGuide.length, `lost ${lost.length}, twice ${twice.length}, ${ccGuide.length} vs ${fullGuide.length}`]);
+
+  // advertised schemas use the short equivalent forms (one type list, no type beside a const)
+  const ccTools: Json[] = ((await cc.call("tools/list", {})).result as Json | undefined)?.tools ?? [];
+  const schemaOf = (n: string): Json => ccTools.find((t) => t.name === n)?.inputSchema ?? {};
+  const listed = JSON.stringify(ccTools);
+  results.push(["I: plain-type anyOf members are merged into one type list", JSON.stringify(schemaOf("set_property").properties?.value?.anyOf?.[0]) === '{"type":["number","string","boolean","object"]}' && JSON.stringify(schemaOf("set_layer").properties?.parent_id) === '{"type":["integer","null"]}', JSON.stringify(schemaOf("set_property").properties?.value)]);
+  results.push(["I: no type beside a string const, no empty additionalProperties", !/"type":"string","const"/.test(listed) && !/"additionalProperties":\{\}/.test(listed)]);
 
   for (const x of [s, all, dflt, cc]) { x.p.stdin.end(); await Promise.race([x.exited, sleep(3000)]); x.p.kill(); }
 }

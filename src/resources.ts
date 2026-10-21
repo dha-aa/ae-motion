@@ -1,5 +1,5 @@
 /** MCP resources: read-only JSON views of the live project, backed by host commands. */
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { McpServer } from "@modelcontextprotocol/server";
 import type { Bridge } from "./bridge.js";
 
 const RESOURCES = [

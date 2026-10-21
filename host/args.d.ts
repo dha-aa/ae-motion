@@ -316,7 +316,7 @@ interface Args {
       t?: number;
       index?: number;
       to?: number;
-      v?: number | string | boolean | number[] | { [key: string]: unknown };
+      v?: number | string | boolean | { [key: string]: unknown } | number[];
       interp?: "linear" | "bezier" | "hold" | "spring" | "bounce";
       ease_in?: "easy" | {
         speed?: number;
@@ -595,7 +595,7 @@ interface Args {
     path: string | (string | number)[];
     keys: ({
       t: number;
-      v: number | string | boolean | number[] | { [key: string]: unknown };
+      v: number | string | boolean | { [key: string]: unknown } | number[];
       interp?: "linear" | "bezier" | "hold" | "spring" | "bounce";
       ease_in?: "easy" | {
         speed?: number;
@@ -676,7 +676,7 @@ interface Args {
     layer_id?: number;
     layer_ids?: number[];
     path: string | (string | number)[];
-    value: number | string | boolean | number[] | { [key: string]: unknown };
+    value: number | string | boolean | { [key: string]: unknown } | number[];
     time?: number;
   };
   set_text: {

@@ -1,5 +1,5 @@
 /** Builds the MCP server: tools, resources and prompts, wired to a bridge and a render manager. */
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { McpServer } from "@modelcontextprotocol/server";
 import type { Bridge } from "./bridge.js";
 import { enabledToolsets, SERVER_NAME, SERVER_VERSION, toolsetsChosen } from "./config.js";
 import { registerPrompts, SERVER_INSTRUCTIONS } from "./prompts.js";
@@ -22,7 +22,7 @@ export function createServer(bridge: Bridge): AeMotionServer {
   registerResources(server, bridge);
   registerPrompts(server);
   slimToolList(server, (t) => vis.listed(t));
-  toolInputErrors(server, registry.argNames);
+  toolInputErrors(server, registry);
   pickToolsForClient(server, vis);
   usage.clientName = () => server.server.getClientVersion()?.name ?? null;
   return { server, renders };
