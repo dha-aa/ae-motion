@@ -67,14 +67,16 @@ await t("without --ae: checks only that the server starts", async () => {
   if (/After Effects setting|Panel:/.test(r.out)) throw new Error("checked After Effects without --ae:\n" + r.out);
 });
 
-await t("--ae names the setting that is off and the panel that is not open", async () => {
+// After Effects (and its prefs folder) exists on macOS and Windows only
+const aeOs = process.platform === "darwin" || process.platform === "win32";
+if (aeOs) await t("--ae names the setting that is off and the panel that is not open", async () => {
   const r = await run(["--ae"], envFor(home("home-off", "0"), path.join(tmp, "missing.json")));
   eq(r.status, 1, "exit code\n" + r.out);
   if (!/Allow Scripts to Write Files and Access Network is off/.test(r.out)) throw new Error("setting:\n" + r.out);
   if (!/Panel: not reachable \(Bridge file not found\)\. In After Effects open Window > Extensions > AE Motion MCP/.test(r.out)) throw new Error("panel:\n" + r.out);
 });
 
-await t("--ae passes with the setting on and the panel answering", async () => {
+if (aeOs) await t("--ae passes with the setting on and the panel answering", async () => {
   const bridge = http.createServer((req, res) => {
     let body = "";
     req.on("data", (d) => { body += d; });
@@ -96,6 +98,7 @@ await t("--ae passes with the setting on and the panel answering", async () => {
   } finally { bridge.close(); }
 });
 
+if (!aeOs) results.push(["no After Effects on " + process.platform + ": --ae tests skipped", true]);
 fs.rmSync(tmp, { recursive: true, force: true });
 let failed = 0;
 for (const [name, pass, msg] of results) { console.log((pass ? "PASS  " : "FAIL  ") + name + (msg ? "\n      " + msg : "")); if (!pass) failed++; }
