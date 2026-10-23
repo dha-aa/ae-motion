@@ -22,7 +22,7 @@ MCP client --stdio--> MCP server (Node) --HTTP 127.0.0.1 + token--> CEP panel in
 ## Contents
 
 - [Requirements](#requirements)
-- [Installation](#installation)
+- [Installation](#installation): [with an agent](#install-with-an-agent) or [by hand](#install-by-hand)
 - [Verify it works](#verify-it-works)
 - [What it can do](#what-it-can-do)
 - [Configuration](#configuration)
@@ -40,7 +40,21 @@ MCP client --stdio--> MCP server (Node) --HTTP 127.0.0.1 + token--> CEP panel in
 
 ## Installation
 
-### 1. Get the code and run the installer
+Two ways: let an AI agent do it, or do it by hand. Either way the installer registers the server with Claude Desktop and Claude Code for you.
+
+### Install with an agent
+
+In Claude Code, the Code tab of Claude Desktop, or any agent that can run commands on your computer, paste:
+
+```text
+Install the After Effects MCP server from https://github.com/dha-aa/ae-motion. Follow its INSTALL.md.
+```
+
+The agent checks Node.js, clones the repo to `~/ae-motion`, runs the installer and registers the server. [INSTALL.md](INSTALL.md) holds its exact steps. It then hands you the two things only you can do, inside After Effects: turn on **Allow Scripts to Write Files and Access Network** ([step 2](#2-allow-scripts-in-after-effects)) and open the panel ([step 3](#3-open-the-panel)). Restart Claude Desktop if it was open.
+
+### Install by hand
+
+#### 1. Get the code and run the installer
 
 ```bash
 git clone https://github.com/dha-aa/ae-motion.git
@@ -66,6 +80,7 @@ The installer:
    - macOS: `~/Library/Application Support/Adobe/CEP/extensions/com.aemotion.mcp`
    - Windows: `%APPDATA%\Adobe\CEP\extensions\com.aemotion.mcp`
 3. Enables unsigned CEP panels (`PlayerDebugMode`, CSXS 9 to 12). This per-user setting is required for any panel that isn't signed by Adobe.
+4. Registers the server with **Claude Desktop** (adds `ae-motion` to `claude_desktop_config.json`, keeping your other servers and settings; restart Claude Desktop) and **Claude Code** (user scope, so it works in every project). It keeps an `env` you added to an existing entry, skips a client that isn't installed, and never touches a config file that isn't valid JSON. Set `AE_MCP_REGISTER=0` to skip this step (`AE_MCP_REGISTER=0 bash scripts/install.sh`).
 
 <details>
 <summary>Prefer to install by hand?</summary>
@@ -78,14 +93,14 @@ The installer:
 
 </details>
 
-### 2. Allow scripts in After Effects
+#### 2. Allow scripts in After Effects
 
 Open the preferences, go to **Scripting & Expressions**, and enable **Allow Scripts to Write Files and Access Network**.
 
 - macOS: **After Effects > Settings**
 - Windows: **Edit > Preferences**
 
-### 3. Open the panel
+#### 3. Open the panel
 
 Restart After Effects, then open **Window > Extensions > AE Motion MCP** and keep it open. Docking it in a workspace makes it load on startup.
 
@@ -93,14 +108,14 @@ The panel starts a small server on `127.0.0.1` (port 47670, or the next free por
 
 The panel also shows a **token meter**: the estimated tokens ae-motion has added to the model's context in this session (tool results and preview images), and the size of its tool definitions per request. It counts only what ae-motion sends; your messages and the model's replies are on top (your client shows the full count).
 
-### 4. Register the server with your client
+#### 4. Register the server with your client
 
-Use the **absolute path** to `dist/index.js`.
+The installer already did this for Claude Desktop and Claude Code (step 4 above); to do it by hand, or for another client, use the **absolute path** to `dist/index.js`.
 
 **Claude Code**
 
 ```bash
-claude mcp add ae-motion -- node /absolute/path/to/ae-motion/dist/index.js
+claude mcp add -s user ae-motion -- node /absolute/path/to/ae-motion/dist/index.js
 ```
 
 **Claude Desktop**: add this to `claude_desktop_config.json` (macOS: `~/Library/Application Support/Claude/`, Windows: `%APPDATA%\Claude\`) and restart the app.
@@ -217,7 +232,7 @@ How the check works: the MCP server asks GitHub for the repository's version tag
 
 **Uninstall:**
 
-1. Remove the server from your client (`claude mcp remove ae-motion`, or delete the entry from the Claude Desktop config).
+1. Remove the server from your client (`claude mcp remove -s user ae-motion`, or delete the entry from the Claude Desktop config).
 2. Delete the installed panel folder (see [Installation](#1-get-the-code-and-run-the-installer)).
 3. Delete `~/.ae-motion-mcp/`.
 4. Optional: turn unsigned panels back off.

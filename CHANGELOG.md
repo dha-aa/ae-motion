@@ -4,6 +4,11 @@ All notable changes. Versions follow [semantic versioning](https://semver.org); 
 
 ## Unreleased
 
+### Added
+- The installers (`scripts/install.sh`, `scripts/install.ps1`) register ae-motion with Claude Desktop and Claude Code themselves (`scripts/register.ts`), so there is no command left to copy. Claude Desktop gets an absolute `node` path (it starts with a minimal PATH that misses Homebrew and nvm); Claude Code gets the server at user scope, so it works in every project instead of only the folder the old printed command was run in. Other servers, app settings and an `env` you added are kept; an entry that is already right is left alone (the panel's Update button re-runs the installer); a config file that isn't valid JSON is never overwritten. `AE_MCP_REGISTER=0` skips it.
+- Install with an agent: paste "Install the After Effects MCP server from https://github.com/dha-aa/ae-motion. Follow its INSTALL.md." into Claude Code (or any agent that can run commands) and it clones, installs and registers the server, then lists the two After Effects settings only you can change. `INSTALL.md` holds the agent's steps; the README's Installation section offers both ways.
+- The installers stop at once with a clear message when Node.js is missing or older than 22.18, instead of failing partway through the build.
+
 ### Changed
 - The server instructions are rewritten to fit in the 4,096 characters Claude Code shows (5,599 before, 4,083 now). The last rules (editing footage, framing, text over video, sound, counting, before finishing, run_jsx) used to be cut off, so Claude only saw them after the motion-guide prompt was run; now every rule reaches the model in every session. Same rules and numbers in fewer words; about 380 tokens less per session, and Claude Code's motion-guide is about 570 tokens (was about 1,090) since nothing is left over for it. A test fails if the instructions grow past the cut.
 

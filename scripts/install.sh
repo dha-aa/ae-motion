@@ -3,10 +3,16 @@
 #   1. npm install && npm run build   (dist/ and panel/host/host.jsx)
 #   2. copy panel/ into the CEP extensions folder, plus install.json (repo path, PATH) for the panel's Update button
 #   3. allow unsigned CEP panels (PlayerDebugMode)
+#   4. register the server with Claude Desktop and Claude Code (scripts/register.ts; AE_MCP_REGISTER=0 skips it)
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")/.." && pwd)"
 
 if [ "$(uname)" != "Darwin" ]; then echo "On Windows run scripts/install.ps1"; exit 1; fi
+
+# Node 22.18+ runs the TypeScript build scripts directly (type stripping)
+if ! command -v node >/dev/null || ! node -e 'const [a,b]=process.versions.node.split(".").map(Number);process.exit(a>22||(a===22&&b>=18)?0:1)'; then
+  echo "Node.js 22.18 or later is needed (found: $(node --version 2>/dev/null || echo none)). Install it from https://nodejs.org, then run this again."; exit 1
+fi
 
 # Build first: panel/host/host.jsx is generated from host/.
 (cd "$HERE" && npm install && npm run build)
@@ -22,6 +28,9 @@ node -e 'require("fs").writeFileSync(process.argv[1], JSON.stringify({ repo: pro
 # Allow unsigned CEP panels
 for v in 9 10 11 12; do defaults write "com.adobe.CSXS.$v" PlayerDebugMode 1; done
 
+echo
+node "$HERE/scripts/register.ts"
+
 cat <<EOF
 
 Done. Panel installed to:
@@ -30,6 +39,5 @@ Done. Panel installed to:
 1. In After Effects: After Effects > Settings > Scripting & Expressions > enable
    "Allow Scripts to Write Files and Access Network".
 2. Restart After Effects, then open Window > Extensions > AE Motion MCP and keep it open (dock it).
-3. Register the server:
-   claude mcp add ae-motion -- node "$HERE/dist/index.js"
+3. Other MCP clients: run node "$HERE/dist/index.js" as a stdio server.
 EOF
