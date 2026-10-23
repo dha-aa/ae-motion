@@ -16,7 +16,8 @@ const slug = (heading: string): string => heading.trim().toLowerCase().replace(/
 const headings = (file: string): Set<string> => {
   const out = new Set<string>();
   let fenced = false;
-  for (const line of fs.readFileSync(file, "utf8").split("\n")) {
+  // split on \r\n too: git on Windows checks the docs out with CRLF, and "." never matches the \r
+  for (const line of fs.readFileSync(file, "utf8").split(/\r?\n/)) {
     if (line.startsWith("```")) fenced = !fenced;
     const m = !fenced && /^#{1,6} (.+)$/.exec(line);
     if (m) out.add(slug(m[1]));
@@ -44,12 +45,15 @@ const codeFiles = (dir: string): string[] => fs.readdirSync(path.join(ROOT, dir)
   .filter((f) => /\.(ts|js)$/.test(f)).map((f) => path.join(dir, f));
 const sources = [...codeFiles("src"), ...codeFiles("scripts"), "panel/main.js"];
 
-t("the checker finds a missing file and a missing section", () => {
+t("the checker finds a missing file and a missing section, with LF or CRLF line ends", () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "ae-motion-docs-"));
-  fs.writeFileSync(path.join(tmp, "a.md"), "# Real Part\n[ok](#real-part) [gone](b.md) [moved](#old-part)\n```\n[in code](nowhere.md)\n```\n");
-  const bad = brokenLinks(tmp, ["a.md"]);
+  const doc = "# Real Part\n[ok](#real-part) [gone](b.md) [moved](#old-part)\n```\n[in code](nowhere.md)\n```\n";
+  fs.writeFileSync(path.join(tmp, "a.md"), doc);
+  fs.writeFileSync(path.join(tmp, "crlf.md"), doc.replace(/\n/g, "\r\n"));
+  const bad = brokenLinks(tmp, ["a.md"]), badCrlf = brokenLinks(tmp, ["crlf.md"]).map((b) => b.replace("crlf.md", "a.md"));
   fs.rmSync(tmp, { recursive: true, force: true });
   if (bad.length !== 2 || !/b\.md \(no such file\)/.test(bad[0]) || !/#old-part \(no such section\)/.test(bad[1])) throw new Error(JSON.stringify(bad));
+  if (JSON.stringify(badCrlf) !== JSON.stringify(bad)) throw new Error("CRLF: " + JSON.stringify(badCrlf));
 });
 
 t(`every relative link and #section in the Markdown resolves (${mdFiles.length} files)`, () => {
