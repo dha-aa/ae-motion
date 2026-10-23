@@ -2,11 +2,12 @@
 
 These rules are strict. Each one exists because breaking it once cost a broken release, a crashed After Effects, a
 red CI run or a lost afternoon. The incident is noted under each rule; do not relax a rule without a better fix for
-that incident. How-to material (setup, adding a tool step by step, the quirk list) is in
-[docs/development.md](docs/development.md); this file is what must be true before a change ships.
+that incident. How-to material (setup, adding a tool step by step) is in
+[docs/development.md](docs/development.md), the After Effects quirks in [host/CLAUDE.md](host/CLAUDE.md); this file
+is what must be true before a change ships.
 
-**Before anything else:** read `CLAUDE.md`, the "After Effects quirks" and "ExtendScript rules" sections of
-`docs/development.md`, and the code you are changing. Search for an existing tool or option before adding one.
+**Before anything else:** read `CLAUDE.md`, `host/CLAUDE.md` (the After Effects quirks), the "ExtendScript rules"
+section of `docs/development.md`, and the code you are changing. Search for an existing tool or option before adding one.
 
 ## New here? Start here
 
@@ -93,7 +94,7 @@ npm test            # builds, then runs every test; no After Effects needed
    `test/server.test.ts` for server behaviour, `test/render-check.test.ts` for ffmpeg checks). A bug fix gets a test
    that fails without the fix.
 2. **Mocks model the After Effects quirk you hit.** When live AE behaves differently from a mock, fix the mock first
-   (so the test fails), then the code. Add the quirk to `CLAUDE.md` and `docs/development.md`.
+   (so the test fails), then the code. Add the quirk to `host/CLAUDE.md`.
 3. **No fixed sleeps in tests.** Poll for the condition with a generous timeout, and make failing checks print the
    values they saw. *Incident: a test that waited a fixed 1.6 s passed on a laptop and failed on CI runners.*
 4. **`npm test` and `npm run typecheck` must both pass locally before every commit.**
@@ -114,7 +115,7 @@ npm test            # builds, then runs every test; no After Effects needed
 ## 6. Documentation
 
 Update in the same change: `docs/tools.md` (tool reference, new tools), `CLAUDE.md`
-(layout, rules, quirks), `docs/development.md` (how-to, quirks) and a `CHANGELOG.md` entry under `## Unreleased`
+(layout, rules), `host/CLAUDE.md` (After Effects quirks), `docs/development.md` (how-to) and a `CHANGELOG.md` entry under `## Unreleased`
 (Added / Changed / Fixed, written for users: what changed and why it matters).
 
 Install and setup docs have one job each; put a change in the one it belongs to:

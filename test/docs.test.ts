@@ -40,7 +40,8 @@ export function brokenLinks(root: string, files: string[]): string[] {
   return bad;
 }
 
-const mdFiles = [...fs.readdirSync(ROOT).filter((f) => f.endsWith(".md")), ...fs.readdirSync(path.join(ROOT, "docs")).filter((f) => f.endsWith(".md")).map((f) => "docs/" + f)];
+const mdIn = (dir: string): string[] => fs.readdirSync(path.join(ROOT, dir)).filter((f) => f.endsWith(".md")).map((f) => (dir === "." ? f : dir + "/" + f));
+const mdFiles = [...mdIn("."), ...mdIn("docs"), ...mdIn("host")];
 const codeFiles = (dir: string): string[] => fs.readdirSync(path.join(ROOT, dir), { recursive: true, encoding: "utf8" })
   .filter((f) => /\.(ts|js)$/.test(f)).map((f) => path.join(dir, f));
 const sources = [...codeFiles("src"), ...codeFiles("scripts"), "panel/main.js"];

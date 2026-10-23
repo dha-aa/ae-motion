@@ -115,39 +115,10 @@ After Effects runs `host.jsx` in ExtendScript, an ES3 engine. `host/` is TypeScr
 
 ## After Effects quirks
 
-Found in live testing; the code relies on all of these.
-
-- Setting a layer's `inPoint` also moves its `outPoint` (the layer keeps its length). Use `setIn(layer, t)` (`host/core/timing.ts`), which puts `outPoint` back. Assigning `outPoint` on its own is safe.
-- Changing `startTime` moves the in and out points with it. `shiftLayer` relies on that but still checks.
-- Using a layer as a track matte hides it (`enabled` becomes false).
-- `app.path` is a Folder object, not a string: use `app.path.fsName` (`appDir()`). `new Folder(app.path)` gives a bogus temp path.
-- `aerender` takes the output file's extension from the output module, so the written file can differ from `-output` (a `.mov` request became `.mp4`). `render_status` looks for the real file once the job is done.
-- Time changes should snap to whole frames (`snapT`); several tools rely on exact frame boundaries.
-- Coordinates are x right, y down, z into the screen: a camera in front of the comp has negative z, and up on screen is negative y. The camera helpers (`yaw`, `elevate`, `rightOf` in `host/core/vector.ts`) rely on this.
-- Rig, shake and look-at expressions are marked on their first line: `// ae-motion rig`, `// ae-motion shake`, `// ae-motion look-at`. `keyTarget` sends keyframes to a rig's control layers, lets keys sit under a shake, and refuses any other expression.
-- Lens maths assumes a 36 mm film width: zoom px = focal length × comp width / 36.
-- `addCamera` and `addLight` leave x and y at 0 even when given a center; `centerLayer` puts them over the comp center.
-- `layer.parent = x` keeps the layer where it is on screen (After Effects compensates its position), and `parent = null` does too. `setParentWithJump` keeps the layer's own values, so the layer moves by the parent's offset.
-- 3D views are run with `app.findMenuCommandId(<menu item>)` + `app.executeCommand`. The active camera item is named `Active Camera (<camera layer name>)`; a plain "Active Camera" is not found. Running a view command clears the layer selection. Check a new menu name against View > Switch 3D View before adding it.
-- `saveFrameToPng` can return before the PNG is fully written (heavy 3D frames); `preview_frame` waits for the file to appear and stop growing.
-- Setting keyframes on time remapping: removing every key switches time remapping off, so `set_keyframes` adds the new keys before removing the old ones.
-- Layer ids and `project.layerByID` exist from After Effects 22.0, the manifest's minimum version.
-- `PropertyGroup.moveTo()` invalidates the object it was called on (and menu commands can invalidate held references): read what you need first, then look the property up again.
-- Menu commands (`app.executeCommand`) act on the selection in the active viewer: `selectOnly` opens the comp and selects just the target layer. Command names are localized, so look them up with `findMenuCommandId` and keep the id as a fallback (Create Shapes from Text 3781, Layer Styles 9000 to 9008).
-- Layer style property groups exist even while the style is off, so parameter names can be checked before running the menu command.
-- Gradient colors (`ADBE Vector Grad Colors`) have no settable value from scripts.
-- Adding the first stroke dash lists all three dash/gap pairs plus the offset (defaults 10); pairs that were never added do not render. They cannot be removed.
-- "Leave all attributes" precompose needs a single layer with a source (not text or shape layers).
-- In mock tests, arrays passed into the vm context must be created there: the host's `v instanceof Array` is false for arrays from another realm (see `inner()` in `test/mock-design.test.ts`).
-- Setting a key's temporal ease switches it to bezier, so `restoreKey` sets the ease first and the interpolation type last.
-- A new text layer takes the Character panel's current settings, i.e. whatever the last text was styled with (tracking 400 made every later title wide-spaced). `add_layer` applies `NEUTRAL_TEXT` before any `text_style`.
-- Footage interpretation: image sequences import at 30 fps whatever they were rendered at (`import_footage` / `set_item` `fps` sets `mainSource.conformFrameRate`); `mainSource.loop` multiplies the duration; stills throw on `loop` and `conformFrameRate`. A layered PSD imported as a comp adds a `<name> Layers` folder of per-layer footage items. Verified in AE 26.3.
-- Part styling through `TextDocument.characterRange(start, end)` (After Effects 24.3+; end exclusive, -1 = to the end, outside the text throws): a range's stroke only shows with `applyStroke` set explicitly, `superscript` / `subscript` are read-only on a range, a whole-document setter restyles every character, and new text gives every character the first one's style. Attributes that differ across a range read as undefined, which is how `get_text` finds styled parts. Verified in AE 26.3.
-- A 3D layer that has ever had a layer style ignores its track matte and is composited in stacking order instead of by depth, even when every style is switched off (the Layer Styles group then has `canSetEnabled` true). 2D layers are fine. Scripts can't remove styles, so `set_track_matte` and `add_layer_style` return a `warning`.
-- `aerender` takes the time span from its render settings template unless `-s`/`-e` are given; one render stopped at 54 of 2,422 frames with exit code 0. `render_start` passes the comp's range (or `start`/`end`) and fails a file shorter than expected.
-- Roving keys re-time themselves whenever any other key changes, so code that rewrites keys (`replaceKeys`) turns roving off first and restores it at the end. After Effects may also rescale a roving key's tangents.
-
-`test/mock-host.test.ts` models the first two; keep the mocks in sync when you find another.
+After Effects has behaviours that only live testing finds (setting `inPoint` moves `outPoint`, `app.path` is a Folder,
+`aerender` picks its own file extension, and about 40 more). The code relies on every one of them. They are listed
+in one place, [host/CLAUDE.md](../host/CLAUDE.md): read it before changing `host/` or a mock, and add a quirk you find
+there, with a mock that models it and a live check.
 
 ## Releasing
 
