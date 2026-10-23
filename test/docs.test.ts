@@ -6,6 +6,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { startClient } from "../scripts/mcp-client.ts";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const results: [name: string, pass: boolean, msg?: string][] = [];
@@ -80,6 +81,24 @@ t("every AE_* environment variable the code reads is documented in docs/setup.md
   const missing = [...vars].filter((v) => !setup.includes("`" + v + "`"));
   if (missing.length) throw new Error("add to the Configuration table: " + missing.join(", "));
 });
+
+// the README's tool table is for people, so it must match what the server really offers (needs the built server)
+try {
+  const client = await startClient();
+  const served = (await client.tools()).map((x) => x.name);
+  client.close();
+  const readme = fs.readFileSync(path.join(ROOT, "README.md"), "utf8");
+  const start = readme.indexOf("## What Claude can do in After Effects");
+  const section = start < 0 ? "" : readme.slice(start, readme.indexOf("\n## ", start + 1));
+  const listed = new Set([...section.matchAll(/`([a-z][a-z0-9_]*)`/g)].map((m) => m[1]));
+  t(`the README's tool table lists exactly the server's ${served.length} tools`, () => {
+    if (!section) throw new Error('README has no "## What Claude can do in After Effects" section');
+    const missing = served.filter((n) => !listed.has(n)), extra = [...listed].filter((n) => !served.includes(n));
+    if (missing.length || extra.length) throw new Error(`missing from the README: ${missing.join(", ") || "none"}; not a tool: ${extra.join(", ") || "none"}`);
+    const count = /(\d+) tools/.exec(section)?.[1];
+    if (count !== String(served.length)) throw new Error(`the README says ${count} tools, the server has ${served.length}`);
+  });
+} catch (e) { results.push(["start the built server for the tool table check (npm run build)", false, e instanceof Error ? e.message : String(e)]); }
 
 let failed = 0;
 for (const [name, pass, msg] of results) { console.log((pass ? "PASS  " : "FAIL  ") + name + (msg ? "\n      " + msg : "")); if (!pass) failed++; }

@@ -120,7 +120,8 @@ Update in the same change: `docs/tools.md` (tool reference, new tools), `CLAUDE.
 Install and setup docs have one job each; put a change in the one it belongs to:
 
 - `README.md`: for people, in plain words. What it is, how it works, what you need, how to install (with Claude or by
-  hand) and the two steps in After Effects. Nothing else: no tool lists, settings, error codes or troubleshooting.
+  hand) and the two steps in After Effects, then at the end the tool table (what you can ask for, by area) and how to
+  contribute. No settings, error codes or troubleshooting.
   Change it only when what a user does to install changes.
 - `INSTALL.md`: the same install for AI agents, step by step, with every command and what to check. Change it with
   any change to the installers, `scripts/update.ts`, `scripts/check.ts` or the requirements.

@@ -22,6 +22,7 @@ All notable changes. Versions follow [semantic versioning](https://semver.org); 
 ### Changed
 - The README is rewritten in plain words for people who just want to use ae-motion: what it does, how it works, what you need, how to install it with Claude or by hand, and the two steps in After Effects. The details (what the installer changes, other MCP clients, configuration, security, troubleshooting, updating and uninstalling) moved, unchanged, to [docs/setup.md](docs/setup.md); the tool list and example prompts are in [docs/tools.md](docs/tools.md).
 - The server instructions are rewritten to fit in the 4,096 characters Claude Code shows (5,599 before, 4,083 now). The last rules (editing footage, framing, text over video, sound, counting, before finishing, run_jsx) used to be cut off, so Claude only saw them after the motion-guide prompt was run; now every rule reaches the model in every session. Same rules and numbers in fewer words; about 380 tokens less per session, and Claude Code's motion-guide is about 570 tokens (was about 1,090) since nothing is left over for it. A test fails if the instructions grow past the cut.
+- The README ends with every tool, grouped by area with an example of what to ask for, and how to contribute (bug reports, CONTRIBUTING.md, AGENTS.md). A test keeps the tool table equal to the tools the server offers.
 
 ## 2.23.0 — 2026-10-21
 
