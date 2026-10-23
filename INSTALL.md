@@ -2,7 +2,7 @@
 
 You are an agent (Claude Code, Claude Desktop, Codex, Cursor or similar) and the user asked you to install
 ae-motion from `https://github.com/dha-aa/ae-motion`. Follow these steps in order. Run the commands yourself; ask the
-user only where a step says so. People installing by hand: see [README.md](README.md#installation).
+user only where a step says so. People installing by hand: see [README.md](README.md#install-by-hand) and [docs/setup.md](docs/setup.md).
 
 ## 1. Check the machine, and install what is missing
 

@@ -8,6 +8,21 @@ that incident. How-to material (setup, adding a tool step by step, the quirk lis
 **Before anything else:** read `CLAUDE.md`, the "After Effects quirks" and "ExtendScript rules" sections of
 `docs/development.md`, and the code you are changing. Search for an existing tool or option before adding one.
 
+## New here? Start here
+
+```bash
+git clone https://github.com/dha-aa/ae-motion.git && cd ae-motion
+npm install
+npm test            # builds, then runs every test; no After Effects needed
+```
+
+1. Read `CLAUDE.md` (what the pieces are and where they live) and skim the rules below.
+2. To try your change in After Effects: `bash scripts/install.sh` (Windows: `.\scripts\install.ps1`), then reopen the
+   AE Motion MCP panel. Not `node scripts/update.ts`: it switches you to the newest release
+   ([docs/development.md](docs/development.md#setup-and-commands)).
+3. Work on a branch, and open a pull request that says what changed, why, and what you checked in After Effects. Not
+   sure an idea fits? Open an issue first: section 1 says what gets built.
+
 ---
 
 ## 1. Design: what to build
@@ -98,21 +113,38 @@ that incident. How-to material (setup, adding a tool step by step, the quirk lis
 
 ## 6. Documentation
 
-Update in the same change: `docs/tools.md` (tool reference), the README group table (new tools), `CLAUDE.md`
+Update in the same change: `docs/tools.md` (tool reference, new tools), `CLAUDE.md`
 (layout, rules, quirks), `docs/development.md` (how-to, quirks) and a `CHANGELOG.md` entry under `## Unreleased`
 (Added / Changed / Fixed, written for users: what changed and why it matters).
 
+Install and setup docs have one job each; put a change in the one it belongs to:
+
+- `README.md`: for people, in plain words. What it is, how it works, what you need, how to install (with Claude or by
+  hand) and the two steps in After Effects. Nothing else: no tool lists, settings, error codes or troubleshooting.
+  Change it only when what a user does to install changes.
+- `INSTALL.md`: the same install for AI agents, step by step, with every command and what to check. Change it with
+  any change to the installers, `scripts/update.ts`, `scripts/check.ts` or the requirements.
+- `docs/setup.md`: everything else about setup. A new environment variable goes in its Configuration table, a new
+  error or common problem in Troubleshooting, anything the installer changes on the computer in What the installer
+  does.
+
+`test/docs.test.ts` fails on a broken link or `#section` link in these files, and on an environment variable the code
+reads but `docs/setup.md` doesn't document.
+
 ## 7. Shipping
 
+**Contributors** (and their agents) do steps 1 and 3 and stop at the pull request: never bump the version, tag or
+release. The maintainer merges (step 4) and releases (steps 2 and 5).
+
 1. Work on a branch, never on `main`.
-2. Release: bump the version in `package.json` and both places in `panel/CSXS/manifest.xml`, turn `## Unreleased`
+2. Release (maintainer): bump the version in `package.json` and both places in `panel/CSXS/manifest.xml`, turn `## Unreleased`
    into `## X.Y.Z — date`, then `npm install --package-lock-only`, `npm run typecheck`, `npm test`, and the live tests
    (`node test/live/run.ts --yes`) when After Effects is available.
 3. Commit with the attribution line, push, open a PR whose description says what changed, why, and how it was
    tested (including live checks).
 4. **Merge only when CI is green on every runner** (`gh pr checks <n> --watch`). *Incident: 2.11.1 was merged
    without waiting and `main` went red.*
-5. Tag `vX.Y.Z` on the merged `main`, push the tag, create the GitHub release with the changelog section as notes,
+5. Release (maintainer): tag `vX.Y.Z` on the merged `main`, push the tag, create the GitHub release with the changelog section as notes,
    then reinstall locally (`bash scripts/install.sh`).
 6. Semantic versioning: removing or renaming a tool or argument is a major bump; new tools or options are minor;
    fixes are patch.

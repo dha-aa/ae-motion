@@ -34,7 +34,7 @@ function main(): number {
     const dirty = status.split("\n").filter(Boolean).map((l) => l.slice(3));
     if (dirty.length === 1 && dirty[0] === "package-lock.json") { git("checkout", "--", "package-lock.json"); dirty.length = 0; }
     if (dirty.length) {
-      console.error(`Local changes in ${dirty.join(", ")}: commit or stash them, or update by hand (README, Updating).`);
+      console.error(`Local changes in ${dirty.join(", ")}: commit or stash them, or update by hand (docs/setup.md, Updating).`);
       return 1;
     }
     console.log("Fetching release tags...");

@@ -12,11 +12,15 @@ All notable changes. Versions follow [semantic versioning](https://semver.org); 
 
 - Install with an agent installs a missing Node.js or git for you, after asking: Homebrew, or Apple's own installers, on macOS, and `winget` on Windows. It checks After Effects is installed too. The README's Requirements say how to check and install each one by hand.
 
+- `AGENTS.md` points AI agents other than Claude Code (Codex, Cursor and others) to INSTALL.md for installing and to CLAUDE.md and CONTRIBUTING.md for changes. CONTRIBUTING.md now says which doc gets what (README for people, INSTALL.md for agents, docs/setup.md for everything else), and a test keeps the docs' links and sections working and every setting documented.
+
 ### Fixed
+- `AE_MCP_FFMPEG` (where ffmpeg is, for render checks and `deliver`) and `AE_MCP_UPDATE_URL` were read by the server but not documented; both are in the Configuration table now.
 - Installing by following INSTALL.md or the README put you on `main`, and the panel's Update button, which installs the newest release, then moved you back to that older release (dropping changes not released yet, such as the Claude Desktop / Claude Code registration). Both now install with `node scripts/update.ts`, which checks out the newest release and runs the installer for your OS, so installing and updating agree.
 - The installer's `Claude Code:` line and INSTALL.md say how to load the server in a running Claude Code session (`/mcp`, ae-motion, Reconnect) instead of only "start a new session".
 
 ### Changed
+- The README is rewritten in plain words for people who just want to use ae-motion: what it does, how it works, what you need, how to install it with Claude or by hand, and the two steps in After Effects. The details (what the installer changes, other MCP clients, configuration, security, troubleshooting, updating and uninstalling) moved, unchanged, to [docs/setup.md](docs/setup.md); the tool list and example prompts are in [docs/tools.md](docs/tools.md).
 - The server instructions are rewritten to fit in the 4,096 characters Claude Code shows (5,599 before, 4,083 now). The last rules (editing footage, framing, text over video, sound, counting, before finishing, run_jsx) used to be cut off, so Claude only saw them after the motion-guide prompt was run; now every rule reaches the model in every session. Same rules and numbers in fewer words; about 380 tokens less per session, and Claude Code's motion-guide is about 570 tokens (was about 1,090) since nothing is left over for it. A test fails if the instructions grow past the cut.
 
 ## 2.23.0 — 2026-10-21
