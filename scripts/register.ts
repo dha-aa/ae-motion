@@ -88,7 +88,7 @@ function registerClaudeCode(serverJs: string): string {
   const env = Object.entries(old?.env ?? {}).flatMap(([k, v]) => ["-e", `${k}=${v}`]);
   const r = claude(["mcp", "add", "-s", "user", NAME, ...env, "--", "node", serverJs]);
   if (r.status !== 0) return `Claude Code: \`claude mcp add\` failed (${r.out || "exit " + r.status}). Add it by hand: ${manual}`;
-  return "Claude Code: registered at user scope (every project; new sessions load it).";
+  return "Claude Code: registered at user scope (every project; new sessions load it, or /mcp > ae-motion > Reconnect in a running one).";
 }
 
 function main(): number {

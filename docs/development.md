@@ -172,7 +172,7 @@ Use semantic versioning: a breaking change (a removed or renamed tool or argumen
 | `aerender-discovery.test.ts` | `findAerender` against fake install layouts |
 | `preview-image.test.ts` | Shrinking preview PNGs and tiling contact sheets (`src/render/image.ts`) |
 | `server.test.ts` | The built server end to end over stdio, with a fake bridge and a fake `aerender`: render lifecycle (failed start keeps old output, jobs stop on disconnect, the real output file is reported), `preview_frame` waiting, path sandboxing, the `run_jsx` gate. Skipped on Windows (uses a bash script) |
-| `panel.test.ts`, `update-script.test.ts`, `register.test.ts` | The panel bridge in a vm; `scripts/update.ts` against throwaway git repos; `scripts/register.ts` (the installers' Claude Desktop / Claude Code registration) with a throwaway HOME and a fake `claude` |
+| `panel.test.ts`, `update-script.test.ts`, `register.test.ts`, `check-script.test.ts` | The panel bridge in a vm; `scripts/update.ts` against throwaway git repos; `scripts/register.ts` (the installers' Claude Desktop / Claude Code registration) with a throwaway HOME and a fake `claude`; `scripts/check.ts` (the install check) with fake After Effects prefs files and a fake bridge |
 
 CI (`.github/workflows/ci.yml`) runs `npm run typecheck` and `npm test` on macOS, Linux and Windows with Node 22 and 24.
 
