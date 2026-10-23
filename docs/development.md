@@ -8,15 +8,15 @@ The rules every change must meet (and why) are in [CONTRIBUTING.md](../CONTRIBUT
 npm install
 npm run build        # clean, then build panel/host/host.jsx (from host/) and dist/ (from src/)
 npm test             # build, then run every test in test/ (no After Effects needed)
-npm run typecheck    # tsc --noEmit for src/, plus tsconfig.tools.json for scripts/ and test/
+npm run typecheck    # TypeScript 7 over src/, scripts/ + test/ (tsconfig.tools.json) and host/ (tsconfig.host.json)
 npm start            # run the server on stdio (normally your MCP client launches it)
 ```
 
 | Script | Does |
 |---|---|
-| `build:host` | `node scripts/build-host.ts`: concatenate `host/` into `panel/host/host.jsx` |
-| `build:server` | `tsc`: compile `src/` into `dist/` |
-| `clean` | remove `dist/` |
+| `build:host` | `scripts/host-args.ts` (generate `host/args.d.ts` from the tool schemas), TypeScript 5.9 compiles `host/` to ES5 in `build/host/`, then `scripts/build-host.ts` joins it into `panel/host/host.jsx` |
+| `build:server` | TypeScript 7 compiles `src/` into `dist/` |
+| `clean` | remove `dist/` and `build/` |
 
 What a change needs before you can see it in After Effects:
 
@@ -26,6 +26,10 @@ What a change needs before you can see it in After Effects:
 | `host/` or `panel/` | `npm run build`, re-run the installer (copies `panel/` into the CEP folder), close and reopen the panel |
 
 `panel/host/host.jsx` is generated and gitignored. Edit the files in `host/`, never the generated file.
+
+**While developing, install with `bash scripts/install.sh` (or `.\scripts\install.ps1`), never `node scripts/update.ts`
+or the panel's Update button.** Those install the newest release: they check out its tag and leave your branch (they
+refuse only when you have uncommitted changes), so After Effects would run the release instead of your code.
 
 ## Which files are TypeScript, and why
 
@@ -91,7 +95,7 @@ A tool has two halves with the same name: a schema on the server and a command i
 
 3. **Tests**: bump `EXPECTED_TOOLS` in `test/static-checks.ts`, and add logic tests to `test/mock-host.test.ts` or `test/mock-camera.test.ts` when the command has real logic.
 
-4. **Docs**: add the tool to the table in `docs/tools.md` and the group list in `README.md`.
+4. **Docs**: add the tool to the table in `docs/tools.md`.
 
 5. **Verify in real After Effects.** The mocks only model behavior already seen in AE. Note anything surprising under [After Effects quirks](#after-effects-quirks).
 
@@ -173,6 +177,7 @@ Use semantic versioning: a breaking change (a removed or renamed tool or argumen
 | `preview-image.test.ts` | Shrinking preview PNGs and tiling contact sheets (`src/render/image.ts`) |
 | `server.test.ts` | The built server end to end over stdio, with a fake bridge and a fake `aerender`: render lifecycle (failed start keeps old output, jobs stop on disconnect, the real output file is reported), `preview_frame` waiting, path sandboxing, the `run_jsx` gate. Skipped on Windows (uses a bash script) |
 | `panel.test.ts`, `update-script.test.ts`, `register.test.ts`, `check-script.test.ts` | The panel bridge in a vm; `scripts/update.ts` against throwaway git repos; `scripts/register.ts` (the installers' Claude Desktop / Claude Code registration) with a throwaway HOME and a fake `claude`; `scripts/check.ts` (the install check) with fake After Effects prefs files and a fake bridge |
+| `docs.test.ts` | Links and `#section` links in the Markdown, docs sections named in messages, every `AE_*` variable documented in `docs/setup.md` |
 
 CI (`.github/workflows/ci.yml`) runs `npm run typecheck` and `npm test` on macOS, Linux and Windows with Node 22 and 24.
 

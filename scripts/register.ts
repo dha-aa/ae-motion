@@ -59,7 +59,7 @@ function registerDesktop(serverJs: string): string {
   const text = fs.existsSync(file) ? fs.readFileSync(file, "utf8") : null;
   let merged;
   try { merged = mergeDesktopConfig(text, node, [serverJs]); } catch (e) {
-    return `Claude Desktop: ${file} is not valid JSON (${(e as Error).message}); left it alone. Add ae-motion by hand (README).`;
+    return `Claude Desktop: ${file} is not valid JSON (${(e as Error).message}); left it alone. Add ae-motion by hand (docs/setup.md).`;
   }
   if (!merged.changed) return "Claude Desktop: already registered.";
   // write next to it, then rename: the app reads this file too, and must never see half of it

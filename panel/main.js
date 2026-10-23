@@ -145,7 +145,7 @@
       return showLog("Cannot find the ae-motion folder: re-run the installer once from it (scripts/install.sh or install.ps1) to enable this button.", false);
     }
     if (!fs.existsSync(path.join(inst.repo, "scripts", "update.ts"))) {
-      return showLog("This ae-motion folder has no scripts/update.ts: update by hand (README, Updating).", false);
+      return showLog("This ae-motion folder has no scripts/update.ts: update by hand (docs/setup.md, Updating).", false);
     }
     // the newest release tag, never unreleased work on main; then the installer (scripts/update.ts)
     cmd = "node";
@@ -168,7 +168,7 @@
     child.on("close", function (code) {
       updating = false;
       $("update-btn").disabled = false;
-      if (code !== 0) return showLog(out + "\nUpdate failed (exit " + code + "). Fix the error above, or update by hand (README, Updating).", false);
+      if (code !== 0) return showLog(out + "\nUpdate failed (exit " + code + "). Fix the error above, or update by hand (docs/setup.md, Updating).", false);
       try { window.localStorage.setItem("aem-updated", "1"); } catch (e) {}
       showLog("Installed. Restarting the panel...");
       setTimeout(restartPanel, 800);
