@@ -2,7 +2,7 @@
 
 All notable changes. Versions follow [semantic versioning](https://semver.org); each release is a git tag `vX.Y.Z`, which is what the update check looks for.
 
-## Unreleased
+## 2.24.0 — 2026-10-23
 
 ### Added
 - The installers (`scripts/install.sh`, `scripts/install.ps1`) register ae-motion with Claude Desktop and Claude Code themselves (`scripts/register.ts`), so there is no command left to copy. Claude Desktop gets an absolute `node` path (it starts with a minimal PATH that misses Homebrew and nvm); Claude Code gets the server at user scope, so it works in every project instead of only the folder the old printed command was run in. Other servers, app settings and an `env` you added are kept; an entry that is already right is left alone (the panel's Update button re-runs the installer); a config file that isn't valid JSON is never overwritten. `AE_MCP_REGISTER=0` skips it.
