@@ -35,8 +35,11 @@ MCP client --stdio--> MCP server (Node) --HTTP 127.0.0.1 + token--> CEP panel in
 ## Requirements
 
 - After Effects 2022 (22.0) or later, on macOS or Windows
-- Node.js 22.18 or later (the build and tests run TypeScript directly through Node's type stripping)
+- Node.js 22.18 or later (the build and tests run TypeScript directly through Node's type stripping). Check with `node --version`. Install the LTS from [nodejs.org](https://nodejs.org), or `brew install node` (macOS, Homebrew) or `winget install -e --id OpenJS.NodeJS.LTS` (Windows).
+- git, so the panel's Update button can update. Check with `git --version`. macOS: `xcode-select --install` or `brew install git`; Windows: `winget install -e --id Git.Git` or [git-scm.com](https://git-scm.com).
 - An MCP client such as Claude Code or Claude Desktop
+
+Installing with an agent ([below](#install-with-an-agent)) checks all of these and, with your OK, installs Node.js and git for you.
 
 ## Installation
 
@@ -50,7 +53,7 @@ In Claude Code, the Code tab of Claude Desktop, or any agent that can run comman
 Install the After Effects MCP server from https://github.com/dha-aa/ae-motion. Follow its INSTALL.md.
 ```
 
-The agent checks Node.js, clones the repo to `~/ae-motion`, runs the installer and registers the server. [INSTALL.md](INSTALL.md) holds its exact steps. It then hands you the two things only you can do, inside After Effects: turn on **Allow Scripts to Write Files and Access Network** ([step 2](#2-allow-scripts-in-after-effects)) and open the panel ([step 3](#3-open-the-panel)). Restart Claude Desktop if it was open.
+The agent checks for After Effects, Node.js and git (installing the missing ones once you say yes), clones the repo to `~/ae-motion`, installs the newest release, checks the server starts and registers it. [INSTALL.md](INSTALL.md) holds its exact steps. It then hands you the two things only you can do, inside After Effects: turn on **Allow Scripts to Write Files and Access Network** ([step 2](#2-allow-scripts-in-after-effects)) and open the panel ([step 3](#3-open-the-panel)), and checks both once you are done. Restart Claude Desktop if it was open.
 
 ### Install by hand
 
@@ -59,23 +62,14 @@ The agent checks Node.js, clones the repo to `~/ae-motion`, runs the installer a
 ```bash
 git clone https://github.com/dha-aa/ae-motion.git
 cd ae-motion
+node scripts/update.ts
 ```
 
-macOS:
-
-```bash
-bash scripts/install.sh
-```
-
-Windows (PowerShell):
-
-```powershell
-./scripts/install.ps1
-```
+`scripts/update.ts` checks out the newest release (the panel's Update button installs releases too, so it never moves you back from unreleased `main`) and runs the installer for your OS: `scripts/install.sh` on macOS, `scripts/install.ps1` on Windows. Run the installer directly to install whatever is checked out.
 
 The installer:
 
-1. Runs `npm install && npm run build`, which produces the server (`dist/`) and the panel's host script (`panel/host/host.jsx`).
+1. Runs `npm install && npm run build`, which produces the server (`dist/`) and the panel's host script (`panel/host/host.jsx`), then checks the built server starts (`scripts/check.ts`), so a broken build fails the install instead of the first tool call.
 2. Copies `panel/` into the CEP extensions folder:
    - macOS: `~/Library/Application Support/Adobe/CEP/extensions/com.aemotion.mcp`
    - Windows: `%APPDATA%\Adobe\CEP\extensions\com.aemotion.mcp`
@@ -139,7 +133,7 @@ To set [environment variables](#configuration), add an `env` object next to `arg
 
 ## Verify it works
 
-1. The panel status line shows `127.0.0.1:<port>`, and `~/.ae-motion-mcp/bridge.json` exists.
+1. In the repo folder run `node scripts/check.ts --ae`. It checks the server starts, the scripting setting is on (from After Effects' prefs file, saved when After Effects quits) and the panel answers, and names the step still missing. The panel status line shows `127.0.0.1:<port>` too.
 2. In your client, ask: **"get the project info"**. You should get the project's comps, footage and the After Effects version.
 3. Then try something visible: "create a 1920x1080 comp at 30 fps, 5 seconds, with a white solid background, and show me frame 0".
 
@@ -228,7 +222,7 @@ How the check works: the MCP server asks GitHub for the repository's version tag
 
 **Update from the panel:** click **Update to vX.Y.Z** (or **Reinstall**) in the AE Motion MCP panel, then click again to confirm. It runs `scripts/update.ts` in your ae-motion folder, which checks out the newest release tag (never unreleased work on `main`) and runs the installer, shows the output, and restarts the panel with the new version; then restart your AI client so it uses the new server. The checkout is left on that tag (`git switch main` goes back). The panel finds the folder and your `git` / `node` / `npm` through `install.json`, which the installer writes, so a panel installed before this button existed needs one manual update first. If you have local changes, it stops and says so: commit or stash them, or update by hand.
 
-**Update by hand:** in the repo folder, `node scripts/update.ts` (the newest release, then the installer). Or `git pull` for the latest `main`, then run the installer again (`bash scripts/install.sh`, or `./scripts/install.ps1` on Windows; it rebuilds and replaces the installed panel). Reopen the AE Motion MCP panel (or restart After Effects) and restart the MCP server from your client. The panel's Version line shows the new version.
+**Update by hand:** in the repo folder, `node scripts/update.ts` (the newest release, then the installer; the same command installs). Or `git pull` for the latest `main`, then run the installer again (`bash scripts/install.sh`, or `./scripts/install.ps1` on Windows; it rebuilds and replaces the installed panel). Reopen the AE Motion MCP panel (or restart After Effects) and restart the MCP server from your client. The panel's Version line shows the new version.
 
 **Uninstall:**
 

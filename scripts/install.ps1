@@ -2,7 +2,8 @@
 #   1. npm install; npm run build   (dist\ and panel\host\host.jsx)
 #   2. copy panel\ into the CEP extensions folder, plus install.json (repo path, PATH) for the panel's Update button
 #   3. allow unsigned CEP panels (PlayerDebugMode)
-#   4. register the server with Claude Desktop and Claude Code (scripts\register.ts; AE_MCP_REGISTER=0 skips it)
+#   4. check the built server starts (scripts\check.ts)
+#   5. register the server with Claude Desktop and Claude Code (scripts\register.ts; AE_MCP_REGISTER=0 skips it)
 $ErrorActionPreference = "Stop"
 $here = Split-Path -Parent $PSScriptRoot
 $dest = Join-Path $env:APPDATA "Adobe\CEP\extensions\com.aemotion.mcp"
@@ -23,6 +24,9 @@ try {
 } finally {
   Pop-Location
 }
+# Fail here, not at the first tool call, if the build does not start
+node (Join-Path $here "scripts\check.ts")
+if ($LASTEXITCODE -ne 0) { throw "the built server does not start" }
 
 if (Test-Path $dest) { Remove-Item -Recurse -Force $dest }
 New-Item -ItemType Directory -Force -Path $dest | Out-Null
@@ -46,5 +50,6 @@ Done. Panel installed to:
 1. In After Effects: Edit > Preferences > Scripting & Expressions > enable
    "Allow Scripts to Write Files and Access Network".
 2. Restart After Effects, then open Window > Extensions > AE Motion MCP and keep it open (dock it).
+   node "$here\scripts\check.ts" --ae then says what, if anything, is still missing.
 3. Other MCP clients: run node "$here\dist\index.js" as a stdio server.
 "@
