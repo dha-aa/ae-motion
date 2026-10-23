@@ -12,7 +12,7 @@ MCP client --stdio--> MCP server (src/, TypeScript) --HTTP 127.0.0.1 + token--> 
 
 **Before changing code, follow `CONTRIBUTING.md`** (strict rules and the pre-merge checklist, each backed by an incident).
 
-Full docs: `docs/setup.md` (install details, configuration, security, troubleshooting, updating), `INSTALL.md` (the install steps for AI agents), `README.md` (for people, plain words, kept short on purpose: CONTRIBUTING.md section 6 says which doc gets what), `docs/architecture.md` (layout, protocol, lifecycle), `docs/tools.md` (tool reference), `docs/development.md` (adding a tool, quirks, tests), `docs/future.md` (Adobe's CEP → UXP move and what it would touch).
+Full docs: `docs/setup.md` (install details, configuration, security, troubleshooting, updating), `INSTALL.md` (the install steps for AI agents), `README.md` (for people, plain words, kept short on purpose: CONTRIBUTING.md section 6 says which doc gets what), `docs/architecture.md` (layout, protocol, lifecycle), `docs/tools.md` (tool reference), `docs/development.md` (adding a tool, tests), `host/CLAUDE.md` (After Effects quirks), `docs/future.md` (Adobe's CEP → UXP move and what it would touch).
 
 ## Commands
 
@@ -71,48 +71,11 @@ Tests, `scripts/` and the skill driver are TypeScript that Node (22.18+) runs di
 - Conventions for tools: time in seconds, sizes in pixels, colors `[r,g,b]` 0–1, scale in percent; comps/layers by numeric id; properties by alias (`position|scale|rotation|opacity|anchor`) or match-name arrays.
 - Changes to `host/` or `panel/` need `npm run build` **and** the installer re-run (`scripts/install.sh` / `.ps1`) plus reopening the panel. `host/` is the first place to look when a tool behaves differently on another AE version.
 
-## After Effects quirks (found in live testing)
+## After Effects quirks
 
-- Setting `inPoint` also moves `outPoint` (layer keeps its length): use `setIn(layer, t)` (`host/core/timing.ts`). Assigning `outPoint` alone is safe.
-- Changing `startTime` moves in/out with it; `shiftLayer` relies on that but still checks.
-- Using a layer as a track matte hides it (`enabled` becomes false).
-- `app.path` is a Folder: use `app.path.fsName` (`appDir()`); `new Folder(app.path)` gives a bogus temp path.
-- `aerender` takes the extension from the output module (`.mov` request → `.mp4`); `render_status` finds the real file.
-- Snap time changes to whole frames (`snapT`).
-- Coordinates: x right, y DOWN, z into the screen; a camera in front of the comp has negative z. `yaw`, `elevate`, `rightOf` rely on this.
-- Camera expressions we add are marked on line 1: `// ae-motion rig`, `// ae-motion shake`, `// ae-motion look-at`. `keyTarget` keys a rig's controls, lets keys sit under a shake, refuses other expressions.
-- Lens maths assumes 36 mm film width: zoom px = focal length × comp width / 36.
-- `addCamera`/`addLight` leave x,y at 0 even with a center; `centerLayer` fixes it.
-- `layer.parent = x` (and `= null`) keeps the layer in place on screen; `setParentWithJump` keeps its values. `link_layers` uses the first unless `jump: true`.
-- 3D views: `app.findMenuCommandId(<menu item>)` + `app.executeCommand`; the active camera item is `Active Camera (<camera name>)`. Running one clears the selection. Verify new names against View > Switch 3D View.
-- `saveFrameToPng` can return before the PNG is written; `preview_frame` waits for it to stop growing.
-- Removing every time-remap key turns time remapping off; `set_keyframes` adds new keys first.
-- Path keyframes morph vertex i into vertex i. `boxShape` puts ellipse vertices on the diagonals, matching a rect's corners (top-left first, clockwise), so rect <-> ellipse morphs don't twist; AE's own ellipses start at the top and would.
-- A layer's motion blur switch does nothing until the comp's `motionBlur` is on too (`set_comp motion_blur`); frame blending likewise needs `comp.frameBlending` (`set_comp frame_blending`).
-- A `MarkerValue` from `keyValue` is a copy: change it, then write it back with `setValueAtTime` (`update_marker`).
-- `moveTo()` on a property invalidates that object, and menu commands can invalidate held references: read first, re-fetch after.
-- Menu commands act on the selection in the viewer (`selectOnly`); names are localized, so `findMenuCommandId(name) || id` (Create Shapes from Text 3781, Layer Styles 9000-9008: drop shadow, inner shadow, outer glow, inner glow, bevel, satin, color overlay, gradient overlay, stroke).
-- Gradient colors can't be set by script. First stroke dash lists all 3 pairs (unused ones don't render, can't be removed). Leave-attributes precompose needs one layer with a source.
-- Convert Audio to Keyframes (`amplitudeNull`, `host/commands/audio.ts`) analyses the comp's audible audio in the work area, so it runs with only the chosen layer audible and the work area set to it, then restores both; it adds a null with Left/Right/Both Channels sliders keyed per frame (found by index: names are localized), whose source solid stays in the project unless removed too (`removeAmplitude`). Verified live in AE 26.3 (120 BPM test track: 16/16 beats within half a frame, tempo 120).
-- Setting `workAreaStart` keeps the work area's end (AE 26.3); a start past the end moves the end instead and leaves the start, so a work area shrunk to one frame and then moved stays at 0. `setWorkArea` (`host/core/timing.ts`) opens it to the whole comp, sets start then duration, and checks; the mocks model this.
-- aerender exits 0 after "failure (code: 19969) related to GPU-enabled effects" (GPU out of memory, e.g. heavy Motion Tile, blur and 3D): every later frame is black and the audio drops out. `RenderManager` collects error lines and fails the job; `render_start software: true` (Mercury Software Only, saved in the project) avoids it.
-- Motion expressions are marked on line 1: `// ae-motion spring` (helpers in `host/core/keys.ts`; `set_keyframes` / `edit_keyframes` `interp: spring|bounce` and `animate` share it; its `var S=[[t0,a,b,fold],...]` lists the sprung key segments by start time, so a property can spring in and ease out), `// ae-motion reveal` (text_reveal's expression-selector Amount). Springs are closed-form step responses normalised to land exactly on the next key; bounce uses b = 4.5 pi so it never passes rest. Verified live in AE 26.3: pop/slide/drop springs, exits, rise-with-mask and word-based pop reveals (the expression selector's Based On, textIndex / textTotal), bars and iris transitions, and review_motion's holds / linear checks.
-- Mock tests: arrays created outside the vm context fail the host's `instanceof Array`; build them in the context (`inner()` in mock-design).
-- Setting a key's temporal ease switches it to bezier: restore ease first, interpolation type last (`restoreKey`).
-- A new text layer takes the Character panel's current settings (the last text's tracking, caps, faux styles): `add_layer` resets them (`NEUTRAL_TEXT`, `host/commands/layers.ts`) before `text_style`.
-- Part styling (`set_text` `ranges`, `TextDocument.characterRange`, AE 24.3+): a range's stroke only shows with `applyStroke` set explicitly (a stroke colour alone does not turn it on, although the docs say so); `superscript` / `subscript` are read-only on a range; a whole-document setter applies that attribute to every character; new text gives every character the first one's style (part styling is lost: `ranges_cleared`); reading an attribute that differs across a range gives undefined. Verified in AE 26.3; the text mock in `test/mock-design.test.ts` models it.
-- Audio Levels go down to -192 dB (AE 26.3); fades end at -96 under the layer's level (`audioFade`, `host/commands/audio.ts`, equal power so crossfades hold the level). The duck expression (`// ae-motion duck`, `DUCK_TAG` / `isDuck` in `host/core/keys.ts`) adds ducks and `"dip <amount> <fade>"` markers to the value, so `set_keyframes` may key under it (springs are refused: they would replace it). A dip measured live: -100 dB through a 0.35 s pause.
-- Footage interpretation (`import_footage` / `set_item`, `host/commands/project.ts`): image sequences import at 30 fps whatever they were rendered at; `mainSource.loop` multiplies the duration; stills throw on `loop` and `conformFrameRate` (reported in `skipped`); a layered PSD imported as a comp also adds a `<name> Layers` folder with one footage item per layer. `native` is reserved even as an object key in ExtendScript. Verified in AE 26.3.
-- A 3D layer that has ever had a layer style (even switched off: its Layer Styles group `canSetEnabled`) ignores its track matte and is drawn in stacking order, not by depth. Styles can't be removed by script; `hasLayerStyles` (`host/commands/design.ts`) drives the warnings. Verified live in AE 26.3; 2D layers are unaffected.
-- `aerender` without `-s`/`-e` takes the time span from its render settings template; it once rendered 54 of 2,422 frames and exited 0. `render_start` always passes the range and fails a file shorter than it.
-- Roving keys re-time whenever other keys change; `replaceKeys` un-roves first and re-applies roving at the end, or old keys can't be found and get duplicated. Copy/move keys with `snapKey`/`restoreKey`/`replaceKeys` (`host/core/keys.ts`) so no key setting is lost.
-- Layer ids / `project.layerByID` exist from AE 22.0 (manifest minimum); `getLayer` uses `layerByID` only, so mocks must define it.
-- `saveFrameToPng` writes the comp background as alpha 0 with its colour already in RGB, and edges already blended over it: shown as is, clients draw it white (light text looked invisible). `shrinkPng` / `contactSheet` (`src/render/image.ts`) make every pixel opaque, which gives exactly what the comp shows. Verified in AE 26.3 from pixel values.
-- An `import_footage` `as: sequence` of an unnumbered file made After Effects take every image in the folder as one sequence named after the folder: the name must end in a frame number. A layered PSD imported as a comp takes its duration from the still-footage preference (102.9 s here) and adds a `<name> Layers` folder (moved along with `folder`).
-- `saveFrameToPng` renders at the comp's viewer resolution (`resolutionFactor`), which After Effects lowers on heavy comps; `preview_frame` sets the coarsest factor that still covers the returned image (`max_edge`) and restores it right after the call: the factor is read when `saveFrameToPng` is called, though the PNG is written 35-50 ms later (verified in AE 26.3 from the PNG's size). The server waits for the PNG's IEND chunk, not a stable size.
-- Read-only commands must not add layers or expressions: an earlier `review_motion` scene check put a probe null with `toComp` expressions on a 211-layer 3D comp and After Effects crashed. The scene checks now do the projection maths in ExtendScript (`worldMatrix`, `viewAt`, `screenBox` in `host/commands/motion.ts`).
-- ExtendScript objects inherit `watch` / `unwatch` / `toSource` from `Object.prototype` (old Mozilla JavaScript), so a JSON argument named `watch` is always truthy: test flags with `=== true`. ES3 also reserves Java's words (`long`, `int`, `char`, `final` and so on): one as a variable name stops `host.jsx` loading at all (the static check's lint catches declarations).
-- The mock in `test/mock-host.test.ts` models the first two quirks; keep mocks in sync when you find another.
+40 behaviours of After Effects found in live testing, which `host/` and the mocks rely on, are in `host/CLAUDE.md`
+(Claude Code loads it when you work in `host/`). **Read it before changing `host/` or a mock in `test/`**, and add new
+quirks there.
 
 ## Verification status
 
