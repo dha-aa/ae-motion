@@ -95,7 +95,7 @@ A tool has two halves with the same name: a schema on the server and a command i
 
 3. **Tests**: bump `EXPECTED_TOOLS` in `test/static-checks.ts`, and add logic tests to `test/mock-host.test.ts` or `test/mock-camera.test.ts` when the command has real logic.
 
-4. **Docs**: add the tool to the table in `docs/tools.md`.
+4. **Docs**: add the tool to the table in `docs/tools.md` and to its area in the README's tool table (`npm test` fails until the README lists exactly the server's tools).
 
 5. **Verify in real After Effects.** The mocks only model behavior already seen in AE. Note anything surprising under [After Effects quirks](#after-effects-quirks).
 

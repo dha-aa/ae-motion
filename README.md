@@ -65,10 +65,43 @@ Both ways of installing end with these. Only you can do them.
 Then restart Claude Desktop, or start a new Claude Code session. Now ask in any chat, with your project open in After
 Effects: *"Create a 1920x1080 comp, 5 seconds, with a title that slides in, and show me a frame."*
 
+## What Claude can do in After Effects
+
+78 tools, grouped by what they're for. You never call them yourself: ask in plain words, and Claude picks the right
+ones.
+
+| Area | Ask for things like | Tools |
+|---|---|---|
+| **Look around** | "What's in this project?" | `get_project` `get_comp` `get_layer` `list_properties` `get_keyframes` `find_effects` |
+| **Project and comps** | "Make a 1080x1920 comp for Reels" | `open_project` `save_project` `create_comp` `set_comp` `import_footage` `set_item` `delete_item` |
+| **Layers** | "Add a title and a logo, parent the logo to it" | `add_layer` `set_layer` `link_layers` `replace_source` `delete_layer` `duplicate_layer` `reorder_layer` `precompose` |
+| **Timeline and editing** | "Cut 3s to 5s out and close the gap" | `split_layer` `delete_range` `insert_time` `shift_layers` `sequence_layers` `align_to_markers` `trim_comp` `set_playhead` `add_marker` `update_marker` `list_markers` `delete_marker` |
+| **Masks and mattes** | "Reveal the text through a wipe" | `add_mask` `set_track_matte` |
+| **Layout and design** | "Center the title and give it a soft shadow" | `align_layers` `set_anchor` `add_shape` `add_layer_style` `text_to_shapes` |
+| **Animation and effects** | "Ease the logo in, then add a glow" | `set_property` `set_keyframes` `edit_keyframes` `copy_animation` `set_expression` `add_property` `apply_effect` `edit_effect` `apply_preset` `set_text` `get_text` `find_fonts` `stagger` `add_shape_modifier` |
+| **Ready-made motion** | "Pop the cards in with a spring" | `animate` `text_reveal` `transition` `review_motion` |
+| **3D and camera** | "Orbit the camera around the product" | `get_camera` `set_camera` `camera_move` `camera_shake` `camera_rig` `set_3d` `set_light` `set_3d_view` |
+| **Audio** | "Cut the clips to the beat, duck the music under the voice" | `beat_markers` `audio_react` `find_sound_cues` `add_sfx` `duck_music` |
+| **Preview and render** | "Show me frame 2s, then render an MP4" | `preview_frame` `render_start` `render_status` `render_cancel` |
+| **Power tools** | "Check for updates" | `batch` `check_for_updates` `run_jsx` (off unless you turn it on) |
+
+How each one works: [docs/tools.md](docs/tools.md).
+
+## Contributing
+
+Bug reports, ideas and code are all welcome.
+
+- **Found a bug?** [Open an issue](https://github.com/dha-aa/ae-motion/issues) with your After Effects version, Mac
+  or Windows, what you asked Claude, and what `node scripts/check.ts --ae` prints.
+- **Want to change the code?** Start with [CONTRIBUTING.md](CONTRIBUTING.md): it gets you set up in three commands,
+  and the tests run without After Effects.
+- **Working with an AI agent?** Point it at [AGENTS.md](AGENTS.md): it says what to read first.
+
+If ae-motion saves you time, a star on GitHub helps other editors find it.
+
 ## Need more?
 
 Problems, updating, uninstalling and all the settings: [docs/setup.md](docs/setup.md).
-Every command Claude can use: [docs/tools.md](docs/tools.md).
 
 ## License
 
