@@ -67,8 +67,8 @@ Effects: *"Create a 1920x1080 comp, 5 seconds, with a title that slides in, and 
 
 ## What Claude can do in After Effects
 
-78 tools, grouped by what they're for. You never call them yourself: ask in plain words, and Claude picks the right
-ones.
+78 tools, grouped by what they're for, plus a helper that loads them on demand in apps that start with fewer. You
+never call them yourself: ask in plain words, and Claude picks the right ones.
 
 | Area | Ask for things like | Tools |
 |---|---|---|

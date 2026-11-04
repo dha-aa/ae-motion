@@ -60,7 +60,7 @@ export const CORE: readonly Toolset[] = ["project", "layers", "animate", "motion
 
 /**
  * Which tool groups to register at startup (AE_MCP_TOOLSETS, comma separated; default: core, "all" for every group).
- * The tool list goes to the model on every request: core is 46 tools instead of 78, about 7k tokens less each time.
+ * The tool list goes to the model on every request: core is 46 tools (45 and load_tools) instead of 78, about 8k tokens less each time.
  * The other groups are named in the instructions and load_tools, and a batch step that names one of their tools
  * loads its group first. inspect and meta are always on.
  */

@@ -76,7 +76,7 @@ In a running Claude Code session, `/mcp` > ae-motion > **Reconnect** loads it; n
 }
 ```
 
-Claude Desktop (and any client that sends every tool definition with every message) is shown the core tools only: about 11k tokens of definitions per message instead of 18k. The other tools are named in the server instructions; a `batch` step that uses one shows its group, or the model calls `load_tools`. Claude Code is shown every tool, because it loads tool definitions only when a tool is used. Set `AE_MCP_TOOLSETS` to choose the groups yourself (`all` for everything).
+Claude Desktop (and any client that sends every tool definition with every message) is shown the core tools only: about 12k tokens of definitions per message instead of 21k. The other tools are named in the server instructions; a `batch` step that uses one shows its group, or the model calls `load_tools`. Claude Code is shown every tool, because it loads tool definitions only when a tool is used. Set `AE_MCP_TOOLSETS` to choose the groups yourself (`all` for everything).
 
 **Other clients**: any client that can launch a stdio MCP server works with `node /absolute/path/to/ae-motion/dist/index.js`.
 

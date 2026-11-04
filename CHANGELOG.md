@@ -2,6 +2,11 @@
 
 All notable changes. Versions follow [semantic versioning](https://semver.org); each release is a git tag `vX.Y.Z`, which is what the update check looks for.
 
+## Unreleased
+
+### Fixed
+- The docs now give the full tool count, 79: the 78 a client sees with every group shown, plus `load_tools`, listed only while some groups are hidden. The token figures for the core tool list are measured again: about 12k tokens per message instead of 21k (they said 11k and 18k).
+
 ## 2.25.0 — 2026-11-04
 
 ### Added
