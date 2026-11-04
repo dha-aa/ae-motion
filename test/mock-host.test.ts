@@ -228,6 +228,9 @@ t("duplicate_layer makes offset copies", () => {
   assert.equal(c.numLayers, 3); assert.deepEqual(r.result.layers.map((l) => l.name), ["copy 1", "copy 2"]);
   near(r.result.layers[0].in, 1); near(r.result.layers[1].in, 2);
   fails(w.call("duplicate_layer", { layer_id: a.id, count: 99 }), "BAD_ARGS");
+  assert.equal(r.result.id, undefined, "several copies have no single id");
+  const one = w.call("duplicate_layer", { layer_id: a.id, name: "solo" }); ok(one);
+  assert.equal(one.result.id, one.result.layers[0].id, "one copy: its id at the top, for $1.id in a batch");
 });
 
 t("markers: add, list, delete on layers and comps", () => {

@@ -34,12 +34,40 @@ var NEUTRAL_TEXT: { [field: string]: number | boolean } = {
   all_caps: false, small_caps: false, superscript: false, subscript: false, auto_leading: true
 };
 
+// The only renderer that draws parametric meshes; on the others (a new comp's "ADBE Advanced 3d") a mesh draws nothing,
+// with no error. Verified in After Effects 26.5.
+var MESH_RENDERER = "ADBE Calder";
+
+// Refuse a mesh request before anything changes: no API (before After Effects 26.3) or no renderer for it.
+function checkMesh(comp: CompItem, o: NonNullable<Args["add_layer"]["options"]>): void {
+  var type = o.mesh && o.mesh.type, i, found = false;
+  if (typeof ParametricMeshType === "undefined" || typeof comp.layers.addParametricMesh !== "function") fail("UNSUPPORTED", "Mesh layers need After Effects 26.3 or newer", "Update After Effects, or build the object from shape layers");
+  if (type && !MESH_TYPES.hasOwnProperty(type)) fail("BAD_ARGS", "mesh.type must be cube, sphere, plane, cylinder, cone or torus");
+  if (o.anchor) fail("BAD_ARGS", "anchor needs content bounds, which a mesh does not have", "Leave anchor out: position places the mesh's centre");
+  if (o.three_d === false) fail("BAD_ARGS", "A mesh is always 3D", "Leave three_d out");
+  for (i = 0; i < comp.renderers.length; i++) { if (comp.renderers[i] === MESH_RENDERER) found = true; }
+  if (!found) fail("UNSUPPORTED", "This After Effects has no renderer that draws meshes (" + MESH_RENDERER + ")", "Installed: " + comp.renderers.join(", "));
+}
+
+// Base color and material of a new mesh. Emission intensity starts at 0, so an emission color alone would not show.
+function setMeshMaterial(l: AVLayer, color: number[] | undefined, mesh: NonNullable<NonNullable<Args["add_layer"]["options"]>["mesh"]>): void {
+  var mat = l.property("ADBE3D Para Mat Parade").property(1);
+  if (color) mat.property("ADBE3D Base Color").setValue([color[0], color[1], color[2], 1]);
+  if (has(mesh, "roughness")) mat.property("ADBE3D Roughness").setValue(mesh.roughness);
+  if (has(mesh, "metallic")) mat.property("ADBE3D Metallic").setValue(mesh.metallic);
+  if (mesh.emission) mat.property("ADBE3D Emission").setValue([mesh.emission[0], mesh.emission[1], mesh.emission[2], 1]);
+  if (has(mesh, "emission_intensity")) mat.property("ADBE3D Emission Intensity").setValue(mesh.emission_intensity);
+  else if (mesh.emission) mat.property("ADBE3D Emission Intensity").setValue(100);
+}
+
 C.add_layer = function (a: Args["add_layer"]) {
   need(a, ["comp_id", "kind"]);
   var comp = getComp(a.comp_id), o = a.options || {}, kind = a.kind, dur = has(o, "duration") ? o.duration : comp.duration,
     center = o.center || [comp.width / 2, comp.height / 2], l, item, col, size, lt, styled = null, styleArgs: Obj, k, kept, out, fit: AVLayer | null = null,
-    src: AVItem, sw: number, fitScale: number | null = null;
+    src: AVItem, sw: number, fitScale: number | null = null, rendererWas: string | null = null;
   if (o.text_style && kind !== "text") fail("BAD_ARGS", "text_style is for text layers", "Use kind: text, or leave text_style out");
+  if (o.mesh && kind !== "mesh") fail("BAD_ARGS", "mesh is for mesh layers", "Use kind: mesh, or leave mesh out");
+  if (kind === "mesh") checkMesh(comp, o);
   if (o.text_style && o.text_style.font) checkFont(o.text_style.font as string); // before the layer exists
   if (kind === "shape" && o.shape && o.shape.type && " rect ellipse star polygon path ".indexOf(" " + o.shape.type + " ") === -1) fail("BAD_ARGS", "shape.type must be rect, ellipse, star, polygon or path");
   if (kind === "light" && o.light_type) {
@@ -85,6 +113,14 @@ C.add_layer = function (a: Args["add_layer"]) {
     l = comp.layers.addLight(o.name || "Light 1", [center[0], center[1]]);
     centerLayer(l, center);
     if (lt) l.lightType = (LightType as any)[lt];
+  } else if (kind === "mesh") {
+    if (comp.renderer !== MESH_RENDERER) {
+      rendererWas = comp.renderer; comp.renderer = MESH_RENDERER;
+      if (comp.renderer !== MESH_RENDERER) fail("AE_ERROR", "After Effects kept the comp on " + comp.renderer + ", which draws no meshes");
+    }
+    l = comp.layers.addParametricMesh!(o.name || "Mesh", (ParametricMeshType as any)[MESH_TYPES[(o.mesh && o.mesh.type) || "cube"]]);
+    setMeshMaterial(l, o.color, o.mesh || {});
+    if (has(o, "duration")) l.outPoint = l.inPoint + o.duration!;
   } else { fail("BAD_ARGS", "Unknown layer kind: " + kind); }
   if (o.name) l.name = o.name;
   if (has(o, "three_d")) (l as AVLayer).threeDLayer = o.three_d;
@@ -125,6 +161,7 @@ C.add_layer = function (a: Args["add_layer"]) {
   out = layerRef(l);
   if (fitScale !== null) out.scale = Math.round(fitScale * 1000) / 1000;
   if (styled && styled.skipped) out.skipped = styled.skipped;
+  if (rendererWas !== null) out.renderer_changed = { from: rendererWas, to: MESH_RENDERER }; // it changes how the comp's other 3D layers draw
   return out;
 };
 
@@ -270,7 +307,8 @@ C.duplicate_layer = function (a: Args["duplicate_layer"]) {
     if (has(a, "offset_seconds")) shiftLayer(d, a.offset_seconds * (i + 1));
     out.push(layerTiming(d as AVLayer));
   }
-  return { layers: out };
+  // one copy: its id at the top too, as every other tool that makes a layer returns it ("$1.id" in a batch)
+  return n === 1 ? { id: out[0].id, layers: out } : { layers: out };
 };
 
 C.reorder_layer = function (a: Args["reorder_layer"]) {

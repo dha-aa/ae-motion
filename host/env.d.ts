@@ -40,6 +40,11 @@ interface AVLayer {
 }
 interface Project { /** The project has unsaved changes. */ dirty: boolean }
 
+// After Effects 26.3+ parametric meshes (feature-checked with typeof before use: older versions have no such globals).
+declare var ParametricMeshType: { CUBE: number; SPHERE: number; PLANE: number; CYLINDER: number; CONE: number; TORUS: number };
+declare class ParametricMeshLayer extends AVLayer { readonly parametricMeshType: number }
+interface LayerCollection { addParametricMesh?(name: string, meshType: number): ParametricMeshLayer }
+
 // After Effects 24.0+ text and font APIs (feature-checked before use).
 declare var FontCapsOption: { FONT_NORMAL_CAPS: number; FONT_SMALL_CAPS: number; FONT_ALL_CAPS: number };
 /** Member names differ between versions (text.ts baseEnum looks them up). */

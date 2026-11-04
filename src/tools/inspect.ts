@@ -26,7 +26,7 @@ export function registerInspectTools(r: ToolRegistry): void {
     "get_comp",
     "Get composition settings and its layers, top first (id, name, kind, non-default in/out/start, parent, blend mode, flags). Big comps: filter by name (substring), kind or at (seconds: layers visible then), page with limit (default 150) / offset; kinds counts all layers.",
     {
-      comp_id: id("Comp"), name: z.string().optional(), kind: z.enum(["text", "shape", "solid", "footage", "precomp", "null", "adjustment", "camera", "light"]).optional(),
+      comp_id: id("Comp"), name: z.string().optional(), kind: z.enum(["text", "shape", "solid", "footage", "precomp", "null", "adjustment", "camera", "light", "mesh"]).optional(),
       at: z.number().min(0).optional(), limit: z.number().int().min(1).max(500).optional(), offset: z.number().int().min(0).optional(),
     },
     ro,

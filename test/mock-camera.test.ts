@@ -65,7 +65,20 @@ const transformGroup = () => new Group({
   "ADBE Orientation": new Prop([0, 0, 0], true), "ADBE Rotate X": new Prop(0), "ADBE Rotate Y": new Prop(0), "ADBE Rotate Z": new Prop(0),
 });
 
-function makeWorld() {
+// Walkable pieces for a mesh layer (list_properties): named or indexed lookups, like a real property tree.
+class MeshProp extends Prop {
+  constructor(matchName, value, layer) { super(value); this.matchName = matchName; this.name = matchName; this.layer = layer; this.propertyValueType = Array.isArray(value) && value.length === 4 ? 4 : 1; this.propertyDepth = 3; }
+  propertyGroup() { return this.layer; }
+}
+class MeshGroup {
+  constructor(matchName, children, layer, indexed = false) { this.matchName = matchName; this.name = matchName; this.children = children; this.layer = layer; this.propertyType = indexed ? 2 : 3; this.propertyDepth = 2; }
+  get numProperties() { return this.children.length; }
+  property(n) { return typeof n === "number" ? this.children[n - 1] : this.children.find((c) => c.matchName === n); }
+  propertyGroup() { return this.layer; }
+}
+const MESH_WORDS = ["Cube", "Sphere", "Plane", "Torus", "Cone", "Cylinder"];
+
+function makeWorld({ noMesh = false } = {}) {
   let nextId = 100;
   const world = { items: [], executed: [], noMenu: false };
   const MENU = {}; ["Active Camera", "Active Camera (Cam)", "Default", "Front", "Left", "Top", "Back", "Right", "Bottom", "Custom View 1", "Custom View 2", "Custom View 3"].forEach((n, i) => { MENU[n] = 2000 + i; });
@@ -73,11 +86,14 @@ function makeWorld() {
   class CompItem extends Item {
     constructor(name) {
       super(); this.name = name; this.width = 1280; this.height = 720; this.frameRate = 30; this.frameDuration = 1 / 30; this.duration = 10; this._layers = [];
+      // What a new comp reports in After Effects 26.5: "ADBE Advanced 3d" draws no mesh at all, and raises no error.
+      this.renderer = "ADBE Advanced 3d"; this.renderers = ["ADBE Advanced 3d", "ADBE Calder", "ADBE Ernst"];
       const comp = this;
       this.layers = {
         addNull() { const l = new Layer(comp, "Null " + (comp._layers.length + 1)); l.nullLayer = true; comp._layers.unshift(l); return l; },
         addCamera(name, c) { const l = new CameraLayer(comp, name); l.groups["ADBE Transform Group"].property("ADBE Position").setValue([0, 0, -1777.78]); l.groups["ADBE Transform Group"].property("ADBE Anchor Point").setValue([c[0], c[1], 0]); comp._layers.unshift(l); return l; },
         addSolid() { const l = new Layer(comp, "Solid"); comp._layers.unshift(l); return l; },
+        ...(noMesh ? {} : { addParametricMesh(name, type) { const l = new ParametricMeshLayer(comp, name, type); comp._layers.unshift(l); return l; } }),
       };
     }
     get numLayers() { return this._layers.length; }
@@ -130,6 +146,22 @@ function makeWorld() {
       });
     }
   }
+  // Every mesh layer carries the groups of all six mesh types, as in After Effects 26.5, and reports a comp-sized box
+  // from sourceRectAtTime that has nothing to do with the mesh.
+  class ParametricMeshLayer extends Layer {
+    constructor(comp, name, type) {
+      super(comp, name); this.parametricMeshType = type; this.threeDLayer = true; this.propertyType = 3;
+      const atom = new MeshGroup("ADBE3D Param Mat Atom", [["ADBE3D Base Color", [0.8, 0.8, 0.8, 1]], ["ADBE3D Roughness", 30], ["ADBE3D Metallic", 30], ["ADBE3D Emission", [1, 1, 1, 1]], ["ADBE3D Emission Intensity", 0]].map(([m, v]) => new MeshProp(m, v, this)), this);
+      this.tree = [new MeshGroup("ADBE3D Para Mat Parade", [atom], this, true)];
+      for (const w of MESH_WORDS) this.tree.push(new MeshGroup("ADBE " + w + "MeshOptionsSGrp", [new MeshProp("ADBE " + w + "SidesStrm", 48, this)], this));
+      for (const m of ["ADBE CubeBevelOptionsSGrp", "ADBE ConeBevelBevelSGrp", "ADBE CylinderBevelOptionsSGrp"]) this.tree.push(new MeshGroup(m, [], this));
+    }
+    get numProperties() { return this.tree.length; }
+    property(n) { return typeof n === "number" ? this.tree[n - 1] : (this.groups[n] || this.tree.find((g) => g.matchName === n)); }
+    sourceRectAtTime() { return { left: 0, top: 0, width: this.comp.width, height: this.comp.height }; }
+    // what the viewer shows: nothing unless the comp is on the one renderer that draws meshes
+    get drawn() { return this.comp.renderer === "ADBE Calder"; }
+  }
   class Stub {}
   class KeyframeEase { constructor(speed, influence) { this.speed = speed; this.influence = influence; } }
   const AutoOrientType = { CAMERA_OR_POINT_OF_INTEREST: 4212, NO_AUTO_ORIENT: 4213 };
@@ -145,6 +177,7 @@ function makeWorld() {
     KeyframeInterpolationType: { LINEAR: 6612, BEZIER: 6613, HOLD: 6614 }, PropertyType: { PROPERTY: 1, INDEXED_GROUP: 2, NAMED_GROUP: 3 },
     PropertyValueType: { OneD: 1, TwoD: 2, ThreeD: 3, COLOR: 4, TwoD_SPATIAL: 5, ThreeD_SPATIAL: 6, SHAPE: 7, TEXT_DOCUMENT: 8, NO_VALUE: 9, MARKER: 10, LAYER_INDEX: 11, MASK_INDEX: 12, CUSTOM_VALUE: 13 },
     console,
+    ...(noMesh ? {} : { ParametricMeshLayer, ParametricMeshType: { CUBE: 14612, SPHERE: 14613, PLANE: 14614, TORUS: 14615, CYLINDER: 14617, CONE: 14616 } }),
   };
   vm.createContext(ctx);
   vm.runInContext(SRC, ctx);
@@ -475,6 +508,144 @@ t("set_3d_view runs the matching View menu command and validates", () => {
   fails(w.call("set_3d_view", { view: "sideways", comp_id: c.id }), "BAD_ARGS"); fails(w.call("set_3d_view", { view: "constructor", comp_id: c.id }), "BAD_ARGS");
   const w2 = makeWorld(); fails(w2.call("set_3d_view", { view: "top" }), "BAD_ARGS", "no active comp");
   const w3 = makeWorld(); const c3 = w3.comp(); w3.world.noMenu = true; fails(w3.call("set_3d_view", { view: "top", comp_id: c3.id }), "UNSUPPORTED");
+});
+
+const material = (l, m) => l.property("ADBE3D Para Mat Parade").property(1).property(m).value;
+
+t("add_layer mesh: picks the renderer that draws meshes, and says so when it changed the comp's", () => {
+  const w = makeWorld(); const c = w.comp();
+  const r = w.call("add_layer", { comp_id: c.id, kind: "mesh", options: { name: "Box" } }); ok(r);
+  const box = c.layer("Box");
+  assert.equal(box.parametricMeshType, 14612, "cube by default");
+  assert.equal(box.drawn, true, "on the default renderer a mesh draws nothing, without an error");
+  assert.deepEqual(r.result.renderer_changed, { from: "ADBE Advanced 3d", to: "ADBE Calder" });
+  const r2 = w.call("add_layer", { comp_id: c.id, kind: "mesh", options: { mesh: { type: "torus" } } }); ok(r2);
+  assert.equal(r2.result.renderer_changed, undefined, "nothing to report the second time");
+  assert.equal(c.layer("Mesh").parametricMeshType, 14615, "a nameless mesh is called Mesh");
+});
+
+t("add_layer mesh: color and material; emission without an intensity still shows", () => {
+  const w = makeWorld(); const c = w.comp();
+  ok(w.call("add_layer", { comp_id: c.id, kind: "mesh", options: { name: "A", color: [1, 0, 0], mesh: { roughness: 60, metallic: 90 } } }));
+  const a = c.layer("A");
+  assert.deepEqual(Array.from(material(a, "ADBE3D Base Color")), [1, 0, 0, 1], "colors get an alpha");
+  assert.equal(material(a, "ADBE3D Roughness"), 60); assert.equal(material(a, "ADBE3D Metallic"), 90);
+  assert.equal(material(a, "ADBE3D Emission Intensity"), 0, "no glow unless asked");
+  ok(w.call("add_layer", { comp_id: c.id, kind: "mesh", options: { name: "B", mesh: { emission: [1, 0.8, 0.2] } } }));
+  assert.deepEqual(Array.from(material(c.layer("B"), "ADBE3D Emission")), [1, 0.8, 0.2, 1]);
+  assert.equal(material(c.layer("B"), "ADBE3D Emission Intensity"), 100, "intensity 0 would hide the emission just asked for");
+  ok(w.call("add_layer", { comp_id: c.id, kind: "mesh", options: { name: "C", mesh: { emission: [1, 1, 1], emission_intensity: 25 } } }));
+  assert.equal(material(c.layer("C"), "ADBE3D Emission Intensity"), 25);
+});
+
+t("add_layer mesh: position, duration; bad requests change nothing", () => {
+  const w = makeWorld(); const c = w.comp();
+  ok(w.call("add_layer", { comp_id: c.id, kind: "mesh", options: { name: "P", position: [10, 20, 30], duration: 2 } }));
+  nearV(w.pos(c.layer("P")).value, [10, 20, 30]); near(c.layer("P").outPoint, 2, "duration");
+  const w2 = makeWorld(); const c2 = w2.comp();
+  fails(w2.call("add_layer", { comp_id: c2.id, kind: "mesh", options: { mesh: { type: "teapot" } } }), "BAD_ARGS");
+  fails(w2.call("add_layer", { comp_id: c2.id, kind: "mesh", options: { mesh: { type: "constructor" } } }), "BAD_ARGS", "an inherited name is not a mesh type");
+  fails(w2.call("add_layer", { comp_id: c2.id, kind: "mesh", options: { anchor: "center" } }), "BAD_ARGS", "no content box to measure");
+  fails(w2.call("add_layer", { comp_id: c2.id, kind: "mesh", options: { three_d: false } }), "BAD_ARGS", "a mesh is always 3D");
+  fails(w2.call("add_layer", { comp_id: c2.id, kind: "null", options: { mesh: { type: "cube" } } }), "BAD_ARGS", "mesh on another kind");
+  assert.equal(c2.numLayers, 0); assert.equal(c2.renderer, "ADBE Advanced 3d", "a refused call leaves the renderer alone");
+  const old = makeWorld({ noMesh: true }); const c3 = old.comp();
+  fails(old.call("add_layer", { comp_id: c3.id, kind: "mesh" }), "UNSUPPORTED", "before After Effects 26.3");
+  assert.equal(c3.renderer, "ADBE Advanced 3d");
+  const noCalder = makeWorld(); const c4 = noCalder.comp(); c4.renderers = ["ADBE Advanced 3d"];
+  fails(noCalder.call("add_layer", { comp_id: c4.id, kind: "mesh" }), "UNSUPPORTED", "the renderer is not installed");
+  assert.equal(c4.numLayers, 0);
+});
+
+t("mesh layers: kind mesh, no content box, list_properties shows only their own type's groups", () => {
+  const w = makeWorld(); const c = w.comp();
+  const id = w.call("add_layer", { comp_id: c.id, kind: "mesh", options: { name: "S", mesh: { type: "sphere" } } }).result.id;
+  const got = w.call("get_layer", { layer_id: id }); ok(got);
+  assert.equal(got.result.kind, "mesh"); assert.equal(got.result.bounds, null, "its comp-sized box says nothing about the mesh");
+  const names = (r) => r.result.properties.map((p) => p.match_name);
+  const shown = names(w.call("list_properties", { layer_id: id, depth: 1 }));
+  assert.ok(shown.includes("ADBE SphereMeshOptionsSGrp"), "own group: " + shown);
+  assert.ok(shown.includes("ADBE3D Para Mat Parade"), "materials: " + shown);
+  for (const hidden of ["ADBE CubeMeshOptionsSGrp", "ADBE TorusMeshOptionsSGrp", "ADBE CubeBevelOptionsSGrp", "ADBE ConeBevelBevelSGrp"]) assert.ok(!shown.includes(hidden), hidden + " is another type's: " + shown);
+  const every = names(w.call("list_properties", { layer_id: id, depth: 1, all: true }));
+  assert.ok(every.includes("ADBE CubeMeshOptionsSGrp"), "all lists them");
+  const anchored = w.call("set_anchor", { layer_id: id, anchor: "center" });
+  fails(anchored, "UNSUPPORTED", "set_anchor must not centre on the comp-sized box"); assert.ok(/point/.test(anchored.error.hint), "hint names point: " + anchored.error.hint);
+});
+
+// An effect with a dropdown, modelled as After Effects 26.5 reads one: valueText and propertyParameters work on the
+// dropdown and throw on anything else, whatever isDropdownEffect says.
+class Dropdown extends MeshProp {
+  constructor(matchName, items, layer) { super(matchName, 1, layer); this.items = items; this.isDropdownEffect = false; }
+  get valueText() { return this.items[this.value - 1]; }
+  get propertyParameters() { return this.items; }
+}
+class PlainProp extends MeshProp {
+  get valueText() { throw new Error("This property does not have dropdown menu options."); }
+  get propertyParameters() { throw new Error("This property does not have dropdown menu options."); }
+}
+function effectLayer() {
+  const w = makeWorld(); const c = w.comp();
+  const id = w.call("add_layer", { comp_id: c.id, kind: "mesh", options: { name: "L" } }).result.id;
+  const l = c.layer("L");
+  const type = new Dropdown("Type", ["Basic", "(-", "Dynamic", "(-", "Max"], l), amount = new PlainProp("Amount", 10, l), other = new PlainProp("Other", 5, l);
+  const fx = new MeshGroup("Fx", [type, amount, other], l);
+  l.tree.push(new MeshGroup("ADBE Effect Parade", [fx], l, true));
+  return { w, id, type, amount, other };
+}
+
+t("list_properties names a dropdown's selection; all lists its items; other properties get neither", () => {
+  const { w, id } = effectLayer();
+  const props = (all) => w.call("list_properties", { layer_id: id, group_path: ["ADBE Effect Parade", 1], depth: 1, all }).result.properties;
+  const [t1, a1] = props(false);
+  assert.equal(t1.value_name, "Basic"); assert.equal(t1.options, undefined, "items cost tokens: only when all is asked for");
+  assert.equal(a1.value_name, undefined); assert.equal(a1.options, undefined);
+  const [t2, a2] = props(true);
+  assert.deepEqual(Array.from(t2.options), ["Basic", "Dynamic", "Max"], "separators are not items"); assert.equal(a2.options, undefined);
+});
+
+t("a dropdown's separator is refused by number and by name; values still count them", () => {
+  const { w, id, type, amount } = effectLayer();
+  const path = ["ADBE Effect Parade", 1, "Type"];
+  const num = w.call("set_property", { layer_id: id, path, value: 2 });
+  fails(num, "BAD_ARGS", "After Effects would accept it and render black"); assert.match(num.error.hint, /Basic, Dynamic, Max/); assert.equal(type.value, 1);
+  fails(w.call("set_property", { layer_id: id, path, value: "(-" }), "BAD_ARGS");
+  fails(w.call("edit_effect", { layer_id: id, effect_index: 1, action: "set", params: { Type: 4 } }), "BAD_ARGS");
+  ok(w.call("set_property", { layer_id: id, path, value: "Max" })); assert.equal(type.value, 5, "Max is value 5, counting the two separators");
+  ok(w.call("set_property", { layer_id: id, path, value: 3 })); assert.equal(type.value, 3, "a real item by number still works");
+  ok(w.call("set_property", { layer_id: id, path: ["ADBE Effect Parade", 1, "Amount"], value: 2 })); assert.equal(amount.value, 2, "a slider is not affected");
+});
+
+t("set_property takes a dropdown item's name in any case; an unknown name lists the items and changes nothing", () => {
+  const { w, id, type } = effectLayer();
+  const path = ["ADBE Effect Parade", 1, "Type"];
+  ok(w.call("set_property", { layer_id: id, path, value: "dynamic" })); assert.equal(type.value, 3, "Dynamic is value 3, counting the separator");
+  const bad = w.call("set_property", { layer_id: id, path, value: "Nope" });
+  fails(bad, "BAD_ARGS"); assert.match(bad.error.hint, /Basic, Dynamic, Max/); assert.equal(type.value, 3);
+  fails(w.call("set_property", { layer_id: id, path: ["ADBE Effect Parade", 1, "Amount"], value: "Basic" }), "BAD_ARGS", "a name on a property with no menu");
+});
+
+t("edit_effect set: changes params by name; a wrong one changes nothing and keeps the effect", () => {
+  const { w, id, type, amount, other } = effectLayer();
+  const r = w.call("edit_effect", { layer_id: id, effect_index: 1, action: "set", params: { Amount: 50, Type: "Dynamic" } }); ok(r);
+  assert.equal(amount.value, 50); assert.equal(type.value, 3);
+  const bad = w.call("edit_effect", { layer_id: id, effect_index: 1, action: "set", params: { Other: 9, Missing: 1 } });
+  fails(bad, "BAD_ARGS"); assert.match(bad.error.message, /Missing/);
+  assert.equal(other.value, 5, "the good param was not applied either");
+  fails(w.call("edit_effect", { layer_id: id, effect_index: 1, action: "set" }), "BAD_ARGS", "set needs params");
+  amount.setValueAtTime(0, 1);
+  fails(w.call("edit_effect", { layer_id: id, effect_index: 1, action: "set", params: { Other: 9, Amount: 2 } }), "BAD_ARGS", "keyframed");
+  assert.equal(other.value, 5, "nothing applied when one is keyframed");
+});
+
+t("set_comp renderer: an installed one only; comp results name it unless it is the default", () => {
+  const w = makeWorld(); const c = w.comp();
+  Object.assign(c, { bgColor: [0, 0, 0], pixelAspect: 1, workAreaStart: 0, workAreaDuration: 10, time: 0, markerProperty: { numKeys: 0 } });
+  const bad = w.call("set_comp", { comp_id: c.id, renderer: "Nope" });
+  fails(bad, "BAD_ARGS"); assert.match(bad.error.hint, /ADBE Calder/); assert.equal(c.renderer, "ADBE Advanced 3d");
+  assert.equal(w.call("set_comp", { comp_id: c.id, name: "x" }).result.renderer, undefined, "the default is left out");
+  const r = w.call("set_comp", { comp_id: c.id, renderer: "ADBE Calder" }); ok(r);
+  assert.equal(c.renderer, "ADBE Calder"); assert.equal(r.result.renderer, "ADBE Calder");
 });
 
 for (const [name, pass, msg] of results) console.log((pass ? "PASS" : "FAIL") + "  " + name + (pass ? "" : "\n      " + msg));

@@ -12,11 +12,15 @@ type LayerJson = {
 var MASKMODES: { [name: string]: string } = { none: "NONE", add: "ADD", subtract: "SUBTRACT", intersect: "INTERSECT", lighten: "LIGHTEN", darken: "DARKEN", difference: "DIFFERENCE" };
 var MATTES: { [name: string]: string } = { alpha: "ALPHA", alpha_inverted: "ALPHA_INVERTED", luma: "LUMA", luma_inverted: "LUMA_INVERTED" };
 
+// A parametric mesh (After Effects 26.3+)? The class doesn't exist in older versions, so typeof comes first.
+function isMesh(l: Layer): boolean { return typeof ParametricMeshLayer !== "undefined" && l instanceof ParametricMeshLayer; }
+
 function layerKind(l: Layer): string {
   if (l instanceof TextLayer) return "text";
   if (l instanceof ShapeLayer) return "shape";
   if (l instanceof CameraLayer) return "camera";
   if (l instanceof LightLayer) return "light";
+  if (isMesh(l)) return "mesh";
   if ((l as AVLayer).nullLayer) return "null";
   if ((l as AVLayer).adjustmentLayer) return "adjustment";
   if ((l as AVLayer).source instanceof CompItem) return "precomp";
@@ -98,13 +102,16 @@ function layerFieldsSet(l: AVLayer, args: Obj): Obj {
   return o;
 }
 
+// What a new comp reports (After Effects 26.5); it draws no parametric meshes.
+var DEFAULT_RENDERER = "ADBE Advanced 3d";
+
 // A comp as JSON, leaving out settings at their defaults (square pixels, work area = whole comp, playhead at 0,
-// motion blur and frame blending off, no markers; the shutter only when motion blur is on).
+// motion blur and frame blending off, no markers, the default renderer; the shutter only when motion blur is on).
 function compInfo(c: CompItem, withLayers?: boolean): Obj {
   var o: Obj = {
     id: c.id, name: c.name, width: c.width, height: c.height, fps: c.frameRate, duration: c.duration,
     bg_color: [c.bgColor[0], c.bgColor[1], c.bgColor[2]], num_layers: c.numLayers
-  }, nm = safe(function () { return c.markerProperty.numKeys; });
+  }, nm = safe(function () { return c.markerProperty.numKeys; }), rn;
   if (c.pixelAspect !== 1) o.pixel_aspect = c.pixelAspect;
   if (c.workAreaStart !== 0 || Math.abs(c.workAreaDuration - c.duration) > 1e-6) { o.work_area_start = c.workAreaStart; o.work_area_duration = c.workAreaDuration; }
   if (c.time !== 0) o.time = c.time;
@@ -112,6 +119,8 @@ function compInfo(c: CompItem, withLayers?: boolean): Obj {
   if (c.motionBlur) { o.shutter_angle = c.shutterAngle; o.shutter_phase = c.shutterPhase; } // they only matter with blur on
   if (c.frameBlending) o.frame_blending = true;
   if (nm) o.num_markers = nm;
+  rn = safe(function () { return c.renderer; });
+  if (rn && rn !== DEFAULT_RENDERER) o.renderer = rn;
   if (withLayers) { o.layers = []; for (var i = 1; i <= c.numLayers; i++) o.layers.push(layerBrief(c.layer(i) as AVLayer, c)); }
   return o;
 }
@@ -176,6 +185,16 @@ var WALK_SKIP: { [matchName: string]: number } = { "ADBE Marker": 1, "ADBE Vecto
 // 3D-only groups, listed for 3D layers only
 var WALK_3D: { [matchName: string]: number } = { "ADBE Material Options Group": 1, "ADBE Extrsn Options Group": 1, "ADBE Plane Options Group": 1 };
 var WALK_EXPR = 160; // longer expressions are cut (get_keyframes returns them whole)
+// Every mesh layer carries the option groups of all six mesh types; only its own type's do anything.
+var MESH_GROUP = /^ADBE (Cube|Sphere|Plane|Torus|Cone|Cylinder)(Mesh|Bevel)/;
+var MESH_TYPES: { [name: string]: string } = { cube: "CUBE", sphere: "SPHERE", plane: "PLANE", cylinder: "CYLINDER", cone: "CONE", torus: "TORUS" };
+
+// Is this match name one of a mesh layer's option groups for another mesh type?
+function otherMeshGroup(m: string, layer: AVLayer): boolean {
+  var hit = MESH_GROUP.exec(m);
+  if (!hit || !isMesh(layer)) return false;
+  return (ParametricMeshType as any)[hit[1].toUpperCase()] !== (layer as ParametricMeshLayer).parametricMeshType;
+}
 
 // Is any layer style turned on? (the Layer Styles group lists all nine styles' settings even when none is)
 function stylesOn(g: PropertyGroup): boolean {
@@ -192,9 +211,17 @@ function walkShows(p: any, layer: AVLayer): boolean {
   if (WALK_SKIP[m]) return false;
   if (WALK_3D[m] && !safe(function () { return layer.threeDLayer; })) return false;
   if (m === "ADBE Layer Styles" && !stylesOn(p)) return false;
+  if (otherMeshGroup(m, layer)) return false;
   if (/^ADBE Position_\d$/.test(m) && !safe(function () { return p.propertyGroup(1).property("ADBE Position").dimensionsSeparated; })) return false;
   if (p.propertyType !== PropertyType.PROPERTY && p.numProperties === 0) return false;
   return true;
+}
+
+// The selected item's name when p is a dropdown, else null. valueText (After Effects 26.0+) throws on a property with
+// no menu, and is the only test that works: a native effect's dropdown says isDropdownEffect false.
+function dropdownName(p: any): string | null {
+  var s = safe(function () { return p.valueText; });
+  return typeof s === "string" && s.length > 0 ? s : null;
 }
 
 // Walk a property group down to maxDepth (list_properties). Groups have type group | indexed_group. Children of an
@@ -202,7 +229,7 @@ function walkShows(p: any, layer: AVLayer): boolean {
 // the WALK_SKIP groups are left out unless all is set.
 // all: truthy to list everything (list_properties passes "" for an empty group_path)
 function walk(g: PropertyGroup, depth: number, maxDepth: number, time: number, all?: boolean | ""): Obj[] {
-  var out: Obj[] = [], i, p: any, node: Obj, v, indexed = g.propertyType === PropertyType.INDEXED_GROUP;
+  var out: Obj[] = [], i, p: any, node: Obj, v, dn, indexed = g.propertyType === PropertyType.INDEXED_GROUP;
   for (i = 1; i <= g.numProperties; i++) {
     p = g.property(i);
     if (!all && !walkShows(p, layerOf(p))) continue;
@@ -213,6 +240,10 @@ function walk(g: PropertyGroup, depth: number, maxDepth: number, time: number, a
       node.value_type = vt(p); if (p.numKeys) node.num_keys = p.numKeys;
       if (p.canSetExpression && p.expressionEnabled) node.expression = all || p.expression.length <= WALK_EXPR ? p.expression : p.expression.substr(0, 120) + " [cut: " + p.expression.length + " chars, get_keyframes has it all]";
       v = safeVal(p, time); if (v !== undefined) node.value = v;
+      if (p.propertyValueType === PropertyValueType.OneD) {
+        dn = dropdownName(p);
+        if (dn !== null) { node.value_name = dn; if (all) node.options = dropdownItems(p.propertyParameters); }
+      }
     } else {
       node.type = p.propertyType === PropertyType.INDEXED_GROUP ? "indexed_group" : "group";
       if (depth < maxDepth) node.children = walk(p, depth + 1, maxDepth, time, all); else node.num_children = p.numProperties;

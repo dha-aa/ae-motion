@@ -231,6 +231,25 @@ function setParams(owner: PropertyBase, params: { [name: string]: any }, what: s
   if (errs.length) { owner.remove(); fail("BAD_ARGS", what + " params failed: " + errs.join("; "), "Use list_properties on an existing " + what.toLowerCase() + " to see parameter names"); }
 }
 
+// Change an existing effect's params: every name and value is checked before any changes, and unlike setParams the
+// effect stays when one is wrong (it was there before this call).
+function setEffectParams(e: PropertyGroup, params: { [name: string]: any }): void {
+  var key: string, p: any, errs: string[] = [], todo: { p: any; v: any }[] = [], i;
+  for (key in params) {
+    if (!params.hasOwnProperty(key)) continue;
+    try {
+      p = e.property(/^\d+$/.test(key) ? parseInt(key, 10) : key);
+      if (!p) throw new Error("no such parameter");
+      todo.push({ p: p, v: coerce(p, params[key]) });
+    } catch (x: any) { errs.push(key + ": " + (x && x.message ? x.message : String(x))); }
+  }
+  if (errs.length) fail("BAD_ARGS", "Effect params failed, nothing changed: " + errs.join("; "), "list_properties shows the names");
+  for (i = 0; i < todo.length; i++) {
+    if (todo[i].p.numKeys > 0) fail("BAD_ARGS", todo[i].p.name + " is keyframed", "Use set_keyframes or edit_keyframes");
+  }
+  for (i = 0; i < todo.length; i++) todo[i].p.setValue(todo[i].v);
+}
+
 C.apply_effect = function (a: Args["apply_effect"]) {
   need(a, ["layer_id", "match_name"]);
   var l = getLayer(a.layer_id), parade = l.property("ADBE Effect Parade"), fx;
@@ -248,10 +267,15 @@ C.edit_effect = function (a: Args["edit_effect"]) {
   if (!fx || a.effect_index < 1 || a.effect_index > fx.numProperties) fail("NOT_FOUND", "No effect at index " + a.effect_index, "Use get_layer to list effects");
   e = fx.property(a.effect_index);
   info = { index: a.effect_index, name: e.name, match_name: e.matchName };
+  if (a.action === "set") {
+    if (!a.params) fail("BAD_ARGS", "action set needs params", "e.g. params: {Contrast: 150}; list_properties shows the names");
+    setEffectParams(e, a.params);
+    return { effect: info, action: a.action, params: a.params };
+  }
   if (a.action === "remove") e.remove();
   else if (a.action === "enable") e.enabled = true;
   else if (a.action === "disable") e.enabled = false;
-  else fail("BAD_ARGS", "action must be remove, enable or disable");
+  else fail("BAD_ARGS", "action must be remove, enable, disable or set");
   return { effect: info, action: a.action, remaining: fx.numProperties };
 };
 

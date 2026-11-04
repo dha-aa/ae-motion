@@ -45,7 +45,12 @@ C.create_comp = function (a: Args["create_comp"]) {
 
 C.set_comp = function (a: Args["set_comp"]) {
   need(a, ["comp_id"]);
-  var c = getComp(a.comp_id), wa = a.work_area, ws, wd;
+  var c = getComp(a.comp_id), wa = a.work_area, ws, wd, ri, known = false;
+  if (has(a, "renderer")) {
+    for (ri = 0; ri < c.renderers.length; ri++) { if (c.renderers[ri] === a.renderer) known = true; }
+    if (!known) fail("BAD_ARGS", "Unknown renderer: " + a.renderer, "Installed: " + c.renderers.join(", "));
+    c.renderer = a.renderer!;
+  }
   if (has(a, "name")) c.name = a.name;
   if (has(a, "width")) c.width = a.width;
   if (has(a, "height")) c.height = a.height;

@@ -48,9 +48,10 @@ function toCompMatrix(l: Layer, t: number): Affine | null {
   return m;
 }
 
-// The layer's content rectangle in its own space, or null (cameras, lights).
+// The layer's content rectangle in its own space, or null (cameras, lights, and meshes: sourceRectAtTime gives them
+// the comp's size, whatever the mesh's).
 function contentRect(l: Layer, t: number): LayerRect | null {
-  if (l instanceof CameraLayer || l instanceof LightLayer) return null;
+  if (l instanceof CameraLayer || l instanceof LightLayer || isMesh(l)) return null;
   const r = (l as AVLayer).sourceRectAtTime(t, false);
   return { left: r.left, top: r.top, width: r.width, height: r.height };
 }
