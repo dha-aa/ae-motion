@@ -25,6 +25,30 @@ type EaseJson = "easy" | { speed: number; influence: number } | { speed: number;
 // The layer a property belongs to.
 function layerOf(prop: PropertyBase): AVLayer { return prop.propertyGroup(prop.propertyDepth) as AVLayer; }
 
+// A dropdown's items without its separators ("(-"), which After Effects counts as values: Fractal Type 2 is a separator
+// and it accepts it, rendering solid black with no error.
+function isSeparator(item: string): boolean { return String(item).substr(0, 2) === "(-"; }
+function dropdownItems(items: string[]): string[] {
+  var out: string[] = [], i;
+  for (i = 0; i < items.length; i++) { if (!isSeparator(items[i])) out.push(items[i]); }
+  return out;
+}
+
+// A dropdown's value for one of its item names (any case). Values count from 1, in the order propertyParameters lists,
+// separators included.
+function dropdownIndex(prop: Prop, name: string): number {
+  var items = safe(function () { return (prop as any).propertyParameters as string[]; }), i;
+  if (!items) return fail("BAD_ARGS", prop.name + " takes a number, not a name", "Pass a number, or update After Effects to 26.0+ to use dropdown names");
+  for (i = 0; i < items.length; i++) { if (!isSeparator(items[i]) && String(items[i]).toLowerCase() === name.toLowerCase()) return i + 1; }
+  return fail("BAD_ARGS", "No item named " + name + " in " + prop.name, "Items: " + dropdownItems(items).join(", "));
+}
+
+// Refuse a number that lands on a dropdown's separator.
+function checkDropdownValue(prop: Prop, v: number): void {
+  var items = safe(function () { return (prop as any).propertyParameters as string[]; });
+  if (items && items[v - 1] !== undefined && isSeparator(items[v - 1])) fail("BAD_ARGS", prop.name + " value " + v + " is a menu separator, not an item", "Pass an item's name: " + dropdownItems(items).join(", "));
+}
+
 // Check a value can be set on prop and convert it (3-value colors get an alpha; shape specs become Shapes).
 function coerce(prop: Prop, v: any): any {
   var t = prop.propertyValueType, V = PropertyValueType, l;
@@ -35,6 +59,8 @@ function coerce(prop: Prop, v: any): any {
     return shapeFromSpec(v, l.width || l.containingComp.width, l.height || l.containingComp.height);
   }
   if (t === V.NO_VALUE || t === V.CUSTOM_VALUE || t === V.MARKER) fail("BAD_ARGS", "Property type '" + vt(prop) + "' cannot be set with this tool", t === V.MARKER ? "Use add_marker / update_marker / delete_marker" : "Use run_jsx if AE_MCP_ALLOW_JSX=1");
+  if (t === V.OneD && typeof v === "string") return dropdownIndex(prop, v);
+  if (t === V.OneD && typeof v === "number") checkDropdownValue(prop, v);
   if (t === V.COLOR && v instanceof Array && v.length === 3) return rgba(v);
   if (typeof v === "number" && prop.matchName === "ADBE Audio Levels") return [v, v];
   return v;

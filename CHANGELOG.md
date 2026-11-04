@@ -9,9 +9,16 @@ All notable changes. Versions follow [semantic versioning](https://semver.org); 
 
 ### Changed
 - `get_comp` and `get_layer` report these layers as `kind: "mesh"` (they read as `footage` before), `get_comp` can filter by it, and `list_properties` shows only the mesh's own type's option groups instead of all six (`all: true` still lists them).
+- Effects by name. `list_properties` says what a dropdown is set to (`value_name: "Basic"`, not just `1`; `all: true` also lists its `options`), `set_property` and effect params take an item's name (`"Fractal Type": "Dynamic"`; After Effects 26.0+), and `edit_effect` gains `action: "set"` to change an applied effect's params by name in one call. All measured live: changing two settings went from 3 calls and about 910 tokens to 1 call and about 70.
+- Setting a dropdown to a menu separator is refused. After Effects counts separators as values (Fractal Type 2 is one) and accepts them with no error, which turned Fractal Noise solid black with nothing to say why; the error now lists the real items.
+- `set_comp` can set `renderer` (it took `run_jsx` before), and comp results name it unless it is the default.
+- `review_motion` warns about two things that look wrong with no error: a mesh on a renderer that draws nothing, and a solid, precomp or footage layer with a light-adding blend (Add, Screen and so on) over nothing, where its black shows as black because a comp's background colour is not a layer.
+- `duplicate_layer` with one copy also returns its `id` at the top, as other tools that make a layer do, so `"$1.id"` works in a batch (`layers` is unchanged).
 
 ### Fixed
 - Mesh layers report a comp-sized content box whatever their real size. `get_layer` now gives `bounds: null`, `set_anchor` refuses to centre on that box (pass `point`), and `review_motion`'s scene checks skip meshes instead of judging them by it.
+- `review_motion` no longer says layers are "hidden behind" a masked solid or shape: a mask shows only part of it.
+- `preview_frame`'s scene label ignores overlays: a precomp that is smaller than the comp or not normally blended is no longer called the scene.
 
 ## 2.24.0 — 2026-10-23
 

@@ -307,7 +307,8 @@ C.duplicate_layer = function (a: Args["duplicate_layer"]) {
     if (has(a, "offset_seconds")) shiftLayer(d, a.offset_seconds * (i + 1));
     out.push(layerTiming(d as AVLayer));
   }
-  return { layers: out };
+  // one copy: its id at the top too, as every other tool that makes a layer returns it ("$1.id" in a batch)
+  return n === 1 ? { id: out[0].id, layers: out } : { layers: out };
 };
 
 C.reorder_layer = function (a: Args["reorder_layer"]) {

@@ -573,6 +573,81 @@ t("mesh layers: kind mesh, no content box, list_properties shows only their own 
   fails(anchored, "UNSUPPORTED", "set_anchor must not centre on the comp-sized box"); assert.ok(/point/.test(anchored.error.hint), "hint names point: " + anchored.error.hint);
 });
 
+// An effect with a dropdown, modelled as After Effects 26.5 reads one: valueText and propertyParameters work on the
+// dropdown and throw on anything else, whatever isDropdownEffect says.
+class Dropdown extends MeshProp {
+  constructor(matchName, items, layer) { super(matchName, 1, layer); this.items = items; this.isDropdownEffect = false; }
+  get valueText() { return this.items[this.value - 1]; }
+  get propertyParameters() { return this.items; }
+}
+class PlainProp extends MeshProp {
+  get valueText() { throw new Error("This property does not have dropdown menu options."); }
+  get propertyParameters() { throw new Error("This property does not have dropdown menu options."); }
+}
+function effectLayer() {
+  const w = makeWorld(); const c = w.comp();
+  const id = w.call("add_layer", { comp_id: c.id, kind: "mesh", options: { name: "L" } }).result.id;
+  const l = c.layer("L");
+  const type = new Dropdown("Type", ["Basic", "(-", "Dynamic", "(-", "Max"], l), amount = new PlainProp("Amount", 10, l), other = new PlainProp("Other", 5, l);
+  const fx = new MeshGroup("Fx", [type, amount, other], l);
+  l.tree.push(new MeshGroup("ADBE Effect Parade", [fx], l, true));
+  return { w, id, type, amount, other };
+}
+
+t("list_properties names a dropdown's selection; all lists its items; other properties get neither", () => {
+  const { w, id } = effectLayer();
+  const props = (all) => w.call("list_properties", { layer_id: id, group_path: ["ADBE Effect Parade", 1], depth: 1, all }).result.properties;
+  const [t1, a1] = props(false);
+  assert.equal(t1.value_name, "Basic"); assert.equal(t1.options, undefined, "items cost tokens: only when all is asked for");
+  assert.equal(a1.value_name, undefined); assert.equal(a1.options, undefined);
+  const [t2, a2] = props(true);
+  assert.deepEqual(Array.from(t2.options), ["Basic", "Dynamic", "Max"], "separators are not items"); assert.equal(a2.options, undefined);
+});
+
+t("a dropdown's separator is refused by number and by name; values still count them", () => {
+  const { w, id, type, amount } = effectLayer();
+  const path = ["ADBE Effect Parade", 1, "Type"];
+  const num = w.call("set_property", { layer_id: id, path, value: 2 });
+  fails(num, "BAD_ARGS", "After Effects would accept it and render black"); assert.match(num.error.hint, /Basic, Dynamic, Max/); assert.equal(type.value, 1);
+  fails(w.call("set_property", { layer_id: id, path, value: "(-" }), "BAD_ARGS");
+  fails(w.call("edit_effect", { layer_id: id, effect_index: 1, action: "set", params: { Type: 4 } }), "BAD_ARGS");
+  ok(w.call("set_property", { layer_id: id, path, value: "Max" })); assert.equal(type.value, 5, "Max is value 5, counting the two separators");
+  ok(w.call("set_property", { layer_id: id, path, value: 3 })); assert.equal(type.value, 3, "a real item by number still works");
+  ok(w.call("set_property", { layer_id: id, path: ["ADBE Effect Parade", 1, "Amount"], value: 2 })); assert.equal(amount.value, 2, "a slider is not affected");
+});
+
+t("set_property takes a dropdown item's name in any case; an unknown name lists the items and changes nothing", () => {
+  const { w, id, type } = effectLayer();
+  const path = ["ADBE Effect Parade", 1, "Type"];
+  ok(w.call("set_property", { layer_id: id, path, value: "dynamic" })); assert.equal(type.value, 3, "Dynamic is value 3, counting the separator");
+  const bad = w.call("set_property", { layer_id: id, path, value: "Nope" });
+  fails(bad, "BAD_ARGS"); assert.match(bad.error.hint, /Basic, Dynamic, Max/); assert.equal(type.value, 3);
+  fails(w.call("set_property", { layer_id: id, path: ["ADBE Effect Parade", 1, "Amount"], value: "Basic" }), "BAD_ARGS", "a name on a property with no menu");
+});
+
+t("edit_effect set: changes params by name; a wrong one changes nothing and keeps the effect", () => {
+  const { w, id, type, amount, other } = effectLayer();
+  const r = w.call("edit_effect", { layer_id: id, effect_index: 1, action: "set", params: { Amount: 50, Type: "Dynamic" } }); ok(r);
+  assert.equal(amount.value, 50); assert.equal(type.value, 3);
+  const bad = w.call("edit_effect", { layer_id: id, effect_index: 1, action: "set", params: { Other: 9, Missing: 1 } });
+  fails(bad, "BAD_ARGS"); assert.match(bad.error.message, /Missing/);
+  assert.equal(other.value, 5, "the good param was not applied either");
+  fails(w.call("edit_effect", { layer_id: id, effect_index: 1, action: "set" }), "BAD_ARGS", "set needs params");
+  amount.setValueAtTime(0, 1);
+  fails(w.call("edit_effect", { layer_id: id, effect_index: 1, action: "set", params: { Other: 9, Amount: 2 } }), "BAD_ARGS", "keyframed");
+  assert.equal(other.value, 5, "nothing applied when one is keyframed");
+});
+
+t("set_comp renderer: an installed one only; comp results name it unless it is the default", () => {
+  const w = makeWorld(); const c = w.comp();
+  Object.assign(c, { bgColor: [0, 0, 0], pixelAspect: 1, workAreaStart: 0, workAreaDuration: 10, time: 0, markerProperty: { numKeys: 0 } });
+  const bad = w.call("set_comp", { comp_id: c.id, renderer: "Nope" });
+  fails(bad, "BAD_ARGS"); assert.match(bad.error.hint, /ADBE Calder/); assert.equal(c.renderer, "ADBE Advanced 3d");
+  assert.equal(w.call("set_comp", { comp_id: c.id, name: "x" }).result.renderer, undefined, "the default is left out");
+  const r = w.call("set_comp", { comp_id: c.id, renderer: "ADBE Calder" }); ok(r);
+  assert.equal(c.renderer, "ADBE Calder"); assert.equal(r.result.renderer, "ADBE Calder");
+});
+
 for (const [name, pass, msg] of results) console.log((pass ? "PASS" : "FAIL") + "  " + name + (pass ? "" : "\n      " + msg));
 const failed = results.filter((r) => !r[1]).length;
 console.log(`\n${results.length - failed}/${results.length} passed`);

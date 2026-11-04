@@ -79,8 +79,8 @@ export function registerAnimateTools(r: ToolRegistry): void {
 
   r.bridged(
     "edit_effect",
-    "Remove, enable or disable an effect on a layer by its 1-based index (see get_layer for the list).",
-    { layer_id: id("Layer"), effect_index: z.number().int().min(1), action: z.enum(["remove", "enable", "disable"]) },
+    "Remove, enable or disable an effect on a layer by its 1-based index (see get_layer for the list), or set: change params as in apply_effect (all checked first).",
+    { layer_id: id("Layer"), effect_index: z.number().int().min(1), action: z.enum(["remove", "enable", "disable", "set"]), params: z.record(z.string(), Value).optional() },
     { idempotent: true },
   );
 

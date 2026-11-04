@@ -102,13 +102,16 @@ function layerFieldsSet(l: AVLayer, args: Obj): Obj {
   return o;
 }
 
+// What a new comp reports (After Effects 26.5); it draws no parametric meshes.
+var DEFAULT_RENDERER = "ADBE Advanced 3d";
+
 // A comp as JSON, leaving out settings at their defaults (square pixels, work area = whole comp, playhead at 0,
-// motion blur and frame blending off, no markers; the shutter only when motion blur is on).
+// motion blur and frame blending off, no markers, the default renderer; the shutter only when motion blur is on).
 function compInfo(c: CompItem, withLayers?: boolean): Obj {
   var o: Obj = {
     id: c.id, name: c.name, width: c.width, height: c.height, fps: c.frameRate, duration: c.duration,
     bg_color: [c.bgColor[0], c.bgColor[1], c.bgColor[2]], num_layers: c.numLayers
-  }, nm = safe(function () { return c.markerProperty.numKeys; });
+  }, nm = safe(function () { return c.markerProperty.numKeys; }), rn;
   if (c.pixelAspect !== 1) o.pixel_aspect = c.pixelAspect;
   if (c.workAreaStart !== 0 || Math.abs(c.workAreaDuration - c.duration) > 1e-6) { o.work_area_start = c.workAreaStart; o.work_area_duration = c.workAreaDuration; }
   if (c.time !== 0) o.time = c.time;
@@ -116,6 +119,8 @@ function compInfo(c: CompItem, withLayers?: boolean): Obj {
   if (c.motionBlur) { o.shutter_angle = c.shutterAngle; o.shutter_phase = c.shutterPhase; } // they only matter with blur on
   if (c.frameBlending) o.frame_blending = true;
   if (nm) o.num_markers = nm;
+  rn = safe(function () { return c.renderer; });
+  if (rn && rn !== DEFAULT_RENDERER) o.renderer = rn;
   if (withLayers) { o.layers = []; for (var i = 1; i <= c.numLayers; i++) o.layers.push(layerBrief(c.layer(i) as AVLayer, c)); }
   return o;
 }
@@ -212,12 +217,19 @@ function walkShows(p: any, layer: AVLayer): boolean {
   return true;
 }
 
+// The selected item's name when p is a dropdown, else null. valueText (After Effects 26.0+) throws on a property with
+// no menu, and is the only test that works: a native effect's dropdown says isDropdownEffect false.
+function dropdownName(p: any): string | null {
+  var s = safe(function () { return p.valueText; });
+  return typeof s === "string" && s.length > 0 ? s : null;
+}
+
 // Walk a property group down to maxDepth (list_properties). Groups have type group | indexed_group. Children of an
 // indexed group carry their index (paths address them by it); others are addressed by match name. Empty groups and
 // the WALK_SKIP groups are left out unless all is set.
 // all: truthy to list everything (list_properties passes "" for an empty group_path)
 function walk(g: PropertyGroup, depth: number, maxDepth: number, time: number, all?: boolean | ""): Obj[] {
-  var out: Obj[] = [], i, p: any, node: Obj, v, indexed = g.propertyType === PropertyType.INDEXED_GROUP;
+  var out: Obj[] = [], i, p: any, node: Obj, v, dn, indexed = g.propertyType === PropertyType.INDEXED_GROUP;
   for (i = 1; i <= g.numProperties; i++) {
     p = g.property(i);
     if (!all && !walkShows(p, layerOf(p))) continue;
@@ -228,6 +240,10 @@ function walk(g: PropertyGroup, depth: number, maxDepth: number, time: number, a
       node.value_type = vt(p); if (p.numKeys) node.num_keys = p.numKeys;
       if (p.canSetExpression && p.expressionEnabled) node.expression = all || p.expression.length <= WALK_EXPR ? p.expression : p.expression.substr(0, 120) + " [cut: " + p.expression.length + " chars, get_keyframes has it all]";
       v = safeVal(p, time); if (v !== undefined) node.value = v;
+      if (p.propertyValueType === PropertyValueType.OneD) {
+        dn = dropdownName(p);
+        if (dn !== null) { node.value_name = dn; if (all) node.options = dropdownItems(p.propertyParameters); }
+      }
     } else {
       node.type = p.propertyType === PropertyType.INDEXED_GROUP ? "indexed_group" : "group";
       if (depth < maxDepth) node.children = walk(p, depth + 1, maxDepth, time, all); else node.num_children = p.numProperties;

@@ -22,13 +22,14 @@ C.preview_frame = function (a: HostArgs["preview_frame"]) {
   return out;
 };
 
-// The scene a time shows in an edit: the name of the top enabled precomp layer playing then (null when none), so a
-// preview of a master comp says which scene comp to change.
+// The scene a time shows in an edit: the name of the top enabled precomp layer playing then that fills the frame with
+// normal blending (null when none), so a preview of a master comp says which scene comp to change. Smaller or blended
+// precomps are overlays, not scenes.
 function sceneAt(comp: CompItem, t: number): string | null {
-  var i, l;
+  var i, l, s;
   for (i = 1; i <= comp.numLayers; i++) {
-    l = comp.layer(i) as AVLayer;
-    if (l.enabled && l.source instanceof CompItem && t >= l.inPoint - 1e-6 && t < l.outPoint - 1e-6) return l.name;
+    l = comp.layer(i) as AVLayer; s = l.source as CompItem;
+    if (l.enabled && s instanceof CompItem && t >= l.inPoint - 1e-6 && t < l.outPoint - 1e-6 && l.blendingMode === BlendingMode.NORMAL && s.width >= comp.width && s.height >= comp.height) return l.name;
   }
   return null;
 }

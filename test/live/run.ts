@@ -281,6 +281,75 @@ check("meshes: add_layer picks the renderer that draws them; on a new comp's ren
   } finally { on.close(); }
 });
 
+check("effects by name: dropdown names read and set, edit_effect set, every item of a real dropdown maps to its value", async () => {
+  const fc = await newComp("Names", { width: 320, height: 180 });
+  const l = (await call("add_layer", { comp_id: fc, kind: "solid", options: { name: "N", color: [0, 0, 0] } })).id;
+  await call("apply_effect", { layer_id: l, match_name: "ADBE Fractal Noise" });
+  const list = async (all = false) => (await call("list_properties", { layer_id: l, group_path: ["ADBE Effect Parade", 1], depth: 1, all })).properties;
+  const prop = (ps: Json[], name: string) => ps.find((p) => p.name === name)!;
+  const start = prop(await list(), "Fractal Type");
+  expect(start.value_name === "Basic" && start.options === undefined && prop(await list(), "Contrast").value_name === undefined, "a dropdown says its selection, a slider does not", start);
+  const items: string[] = prop(await list(true), "Fractal Type").options;
+  expect(items.length > 5, "all lists the items", items);
+  expect(!items.some((i) => i.startsWith("(-")), "separators are not listed as items", items);
+  for (const item of items) {
+    await call("set_property", { layer_id: l, path: ["ADBE Effect Parade", 1, start.match_name], value: item });
+    const now = prop(await list(), "Fractal Type");
+    expect(now.value_name === item, `setting "${item}" selects it`, now);
+  }
+  // Fractal Type 2 is a separator: After Effects takes it with no error and the noise renders black
+  const sep = await callError("set_property", { layer_id: l, path: ["ADBE Effect Parade", 1, start.match_name], value: 2 });
+  expect(sep.code === "BAD_ARGS" && /separator/.test(sep.message) && sep.hint.includes("Turbulent Smooth"), "a separator's number is refused, naming the items", sep);
+  expect((await callError("set_property", { layer_id: l, path: ["ADBE Effect Parade", 1, start.match_name], value: "(-" })).code === "BAD_ARGS", "and its name");
+  await call("set_property", { layer_id: l, path: ["ADBE Effect Parade", 1, start.match_name], value: 3 });
+  expect(prop(await list(), "Fractal Type").value_name === "Turbulent Smooth", "a real item's number still works");
+  const bad = await callError("set_property", { layer_id: l, path: ["ADBE Effect Parade", 1, start.match_name], value: "Nonsense" });
+  expect(bad.code === "BAD_ARGS" && bad.hint.includes(items[0]), "an unknown name lists the items", bad);
+  await call("edit_effect", { layer_id: l, effect_index: 1, action: "set", params: { Contrast: 150, Brightness: -10, "Fractal Type": "Basic" } });
+  const set = await list();
+  expect(prop(set, "Contrast").value === 150 && prop(set, "Brightness").value === -10 && prop(set, "Fractal Type").value_name === "Basic", "edit_effect set changes params by name", set);
+  const wrong = await callError("edit_effect", { layer_id: l, effect_index: 1, action: "set", params: { Contrast: 99, Nope: 1 } });
+  const kept = await list();
+  expect(wrong.code === "BAD_ARGS" && prop(kept, "Contrast").value === 150, "a wrong name changes nothing and keeps the effect", wrong);
+});
+
+check("review and preview judge what shows: masks, light-adding blends over nothing, overlays are not scenes, renderer", async () => {
+  const solid = async (id: number, name: string) => (await call("add_layer", { comp_id: id, kind: "solid", options: { name, color: [0.4, 0.4, 0.4] } })).id;
+  const types = async (id: number, type: string) => (await call("review_motion", { comp_id: id, all: true })).issues.filter((i: Json) => i.type === type);
+  const mc = await newComp("Masked", { width: 320, height: 180 });
+  await solid(mc, "Under");
+  const strip = await solid(mc, "Strip");
+  expect((await types(mc, "hidden")).some((i: Json) => i.by === "Strip"), "control: a full solid hides what is under it");
+  await call("add_mask", { layer_id: strip, shape: { type: "rect", position: [160, 160], size: [320, 40] } });
+  expect(!(await types(mc, "hidden")).some((i: Json) => i.by === "Strip"), "a masked strip does not");
+  const gc = await newComp("Glow", { width: 100, height: 100 });
+  await solid(gc, "G");
+  const nb = await newComp("No background", { width: 320, height: 180 });
+  const glow = (await call("add_layer", { comp_id: nb, kind: "precomp", options: { name: "Overlay", item_id: gc } })).id;
+  await call("set_layer", { layer_id: glow, blend_mode: "ADD" });
+  expect((await types(nb, "no_background")).length === 1, "Add over nothing is flagged");
+  const under = await solid(nb, "BG");
+  await call("reorder_layer", { layer_id: under, to: "bottom" });
+  expect((await types(nb, "no_background")).length === 0, "with a layer under it, quiet");
+  const p = await c.call("preview_frame", { comp_id: nb, time: 0.5, size: 64 });
+  expect(p.value.scene === undefined, "a small Add precomp is an overlay, not a scene", p.value);
+  const ma = await newComp("Master", { width: 320, height: 180 });
+  const sc = await newComp("Scene", { width: 320, height: 180 });
+  await solid(sc, "S");
+  await call("add_layer", { comp_id: ma, kind: "precomp", options: { name: "Scene", item_id: sc } });
+  const p2 = await c.call("preview_frame", { comp_id: ma, time: 0.5, size: 64 });
+  expect(p2.value.scene === "Scene", "a full-frame precomp is a scene", p2.value);
+  const rc = await newComp("Renderer", { width: 320, height: 180 });
+  await call("add_layer", { comp_id: rc, kind: "mesh", options: { name: "Box" } });
+  expect((await call("get_comp", { comp_id: rc })).renderer === "ADBE Calder", "get_comp names a renderer that is not the default");
+  await call("set_comp", { comp_id: rc, renderer: "ADBE Advanced 3d" });
+  expect((await call("get_comp", { comp_id: rc })).renderer === undefined && (await types(rc, "renderer")).length === 1, "on the default a mesh draws nothing: review_motion says so");
+  await call("set_comp", { comp_id: rc, renderer: "ADBE Calder" });
+  expect((await types(rc, "renderer")).length === 0, "set_comp fixes it");
+  const d = await call("batch", { steps: [{ tool: "duplicate_layer", args: { layer_id: under, name: "Copy" } }, { tool: "set_layer", args: { layer_id: "$1.id", shy: true } }], results: "last" });
+  expect(d.results[0].shy === true, "$1.id works on a single duplicate", d);
+});
+
 check("run_jsx: refused unless enabled; when enabled it runs, returns values as JSON and reports script errors", async () => {
   const off = await startClient({ AE_MCP_ALLOW_JSX: "0" }), on = await startClient({ AE_MCP_ALLOW_JSX: "1" });
   try {

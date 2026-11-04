@@ -88,7 +88,7 @@ class Group {
 
 function makeWorld() {
   let nextId = 10;
-  class CompItem {} class AVLayer {} class TextLayer {} class ShapeLayer {} class CameraLayer {} class LightLayer {} class Stub {}
+  class CompItem {} class AVLayer {} class ParametricMeshLayer extends AVLayer {} class TextLayer {} class ShapeLayer {} class CameraLayer {} class LightLayer {} class Stub {}
   class Shape {} class KeyframeEase { constructor(speed, influence) { this.speed = speed; this.influence = influence; } }
   class MarkerValue { constructor(c) { this.comment = c; } }
   const layers = new Map();
@@ -125,14 +125,15 @@ function makeWorld() {
   };
   comp.layers = { addShape: () => add(Object.assign(new ShapeLayer(), { name: "Shape Layer" }), true) };
   const app = { project: { itemByID: (id) => (id === 1 ? comp : null), layerByID: (id) => layers.get(id) || null }, beginUndoGroup() {}, endUndoGroup() {} };
-  const ctx = { app, MarkerValue, CompItem, AVLayer, TextLayer, ShapeLayer, CameraLayer, LightLayer, FolderItem: Stub, FootageItem: Stub, SolidSource: Stub, Shape, KeyframeEase,
+  const mesh = (name) => add(Object.assign(new ParametricMeshLayer(), { name, source: null }));
+  const ctx = { app, MarkerValue, CompItem, AVLayer, ParametricMeshLayer, TextLayer, ShapeLayer, CameraLayer, LightLayer, FolderItem: Stub, FootageItem: Stub, SolidSource: Stub, Shape, KeyframeEase,
     BlendingMode: { NORMAL: 5212, ADD: 5220 }, TrackMatteType: { NO_TRACK_MATTE: 5012 }, AutoOrientType: { CAMERA_OR_POINT_OF_INTEREST: 4214 },
     KeyframeInterpolationType: { LINEAR: LIN, BEZIER: BEZ, HOLD }, PropertyType: PT,
     PropertyValueType: { OneD: 1, TwoD: 2, ThreeD: 3, COLOR: 4, TwoD_SPATIAL: 5, ThreeD_SPATIAL: 6, SHAPE: 7, TEXT_DOCUMENT: 8, NO_VALUE: 9, MARKER: 10, CUSTOM_VALUE: 11 } };
   vm.createContext(ctx);
   vm.runInContext(SRC, ctx);
   const call = (cmd, args = {}) => JSON.parse(ctx.AEM.dispatch(JSON.stringify({ cmd, args })));
-  return { call, comp, solid, text, MarkerValue };
+  return { call, comp, solid, text, mesh, MarkerValue };
 }
 
 const results = [];
@@ -300,6 +301,41 @@ t("transition iris: a disc grows to cover, then a hole opens from the centre", (
   // outer edge (size/2 + width/2) / 2 ... in radius terms: covered radius at the cut is R from the centre
   near(size.keys[1].v[0] / 2 + width.keys[1].v / 2, R, "covers the corners");
   fails(w.call("transition", { comp_id: 1, time: 0.1, duration: 1 }), "BAD_ARGS");
+});
+
+t("review_motion: a masked solid hides nothing it does not cover; a full solid still does", () => {
+  const w = makeWorld(), a = w.solid("A"), b = w.solid("B");
+  const [top, under] = a.index < b.index ? [a, b] : [b, a];
+  const hides = () => ok(w.call("review_motion", { comp_id: 1, all: true })).issues.filter((i) => i.type === "hidden" && i.by === top.name).length;
+  top.sourceRectAtTime = under.sourceRectAtTime = () => ({ left: 0, top: 0, width: 1920, height: 1080 });
+  assert.ok(hides() > 0, "control: an unmasked solid on top hides the one under it");
+  top.property("ADBE Mask Parade").addProperty("ADBE Mask Atom");
+  assert.equal(hides(), 0, "a mask shows only part of the solid");
+});
+
+t("review_motion: warns about a light-adding blend over nothing, and only then", () => {
+  const w = makeWorld(), a = w.solid("Glow");
+  const warned = () => ok(w.call("review_motion", { comp_id: 1, all: true })).issues.filter((i) => i.type === "no_background").length;
+  assert.equal(warned(), 0, "normal blending is fine");
+  a.blendingMode = 5220;
+  assert.equal(warned(), 1, "Add with nothing under it shows its black");
+  const b = w.solid("Other");
+  const [top, under] = a.index < b.index ? [a, b] : [b, a];
+  under.blendingMode = 5212; top.blendingMode = 5220;
+  assert.equal(warned(), 0, "a layer under it is enough");
+  under.enabled = false;
+  assert.equal(warned(), 1, "a switched-off layer does not count");
+  under.enabled = true; under.outPoint = top.inPoint;
+  assert.equal(warned(), 1, "nor does one that is over before it starts");
+});
+
+t("review_motion: says when a mesh's renderer draws nothing", () => {
+  const w = makeWorld(), m = w.mesh("Box");
+  const warned = () => ok(w.call("review_motion", { comp_id: 1, all: true })).issues.filter((i) => i.type === "renderer");
+  w.comp.renderer = "ADBE Advanced 3d";
+  assert.equal(warned().length, 1); assert.equal(warned()[0].layer_id, m.id); assert.match(warned()[0].msg, /ADBE Calder/);
+  w.comp.renderer = "ADBE Calder";
+  assert.equal(warned().length, 0);
 });
 
 t("review_motion: flags linear keys, unison starts, holds, pop-ons and small text; reports beat sync", () => {

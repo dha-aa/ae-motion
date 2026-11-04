@@ -451,6 +451,7 @@ function sceneLayer(l: AVLayer, kind: string): boolean {
 // full opacity, no matte.
 function opaqueAt(l: AVLayer, kind: string, t: number): boolean {
   if (kind !== "solid" && kind !== "shape") return false;
+  if (safe(function () { return l.property("ADBE Mask Parade").numProperties; })) return false; // a mask shows only part of it
   if (l.blendingMode !== BlendingMode.NORMAL || safe(function () { return l.isTrackMatte || l.trackMatteType !== TrackMatteType.NO_TRACK_MATTE; })) return false;
   if ((safe(function () { return tp(l, "ADBE Opacity").valueAtTime(t, false); }) as number) < 99.5) return false;
   if (kind === "shape") return safe(function () { return shapeHasFill(l.property("ADBE Root Vectors Group")); }) === true;
@@ -527,12 +528,36 @@ function sceneChecks(c: CompItem, issue: (o: Obj) => void): void {
   }
 }
 
+// Comp setups that look wrong with no error: a mesh on a renderer that draws nothing, and a light-adding blend over
+// nothing, where the layer's black shows as black (a comp's background colour is not a layer, so nothing adds to it).
+function blendIssues(c: CompItem, issue: (o: Obj) => void): void {
+  var i, j, l: AVLayer, u: AVLayer, kind: string, under: boolean, meshSeen = false, bm;
+  for (i = 1; i <= c.numLayers; i++) {
+    l = c.layer(i) as AVLayer; kind = layerKind(l);
+    if (!l.enabled) continue;
+    if (kind === "mesh" && !meshSeen && c.renderer !== MESH_RENDERER) {
+      meshSeen = true;
+      issue({ type: "renderer", severity: "warn", layer_id: l.id, layer: l.name, msg: "Meshes draw nothing on the renderer " + c.renderer + ": set_comp renderer " + MESH_RENDERER });
+    }
+    if (kind !== "solid" && kind !== "precomp" && kind !== "footage") continue;
+    bm = safe(function () { return l.blendingMode; });
+    if (bm !== BlendingMode.ADD && bm !== BlendingMode.SCREEN && bm !== BlendingMode.LINEAR_DODGE && bm !== BlendingMode.COLOR_DODGE) continue;
+    under = false;
+    for (j = i + 1; j <= c.numLayers && !under; j++) {
+      u = c.layer(j) as AVLayer;
+      if (u.enabled && !(u instanceof CameraLayer) && !(u instanceof LightLayer) && u.inPoint < l.outPoint && u.outPoint > l.inPoint) under = true;
+    }
+    if (!under) issue({ type: "no_background", severity: "warn", layer_id: l.id, layer: l.name, t: l.inPoint, msg: "Nothing under this light-adding blend, so its black shows as black: add a background layer (the comp's background colour does not count)" });
+  }
+}
+
 C.review_motion = function (a: Args["review_motion"]) {
   need(a, ["comp_id"]);
   var c = getComp(a.comp_id), fd = c.frameDuration, maxHold = has(a, "max_hold") ? a.max_hold : 1, minText = has(a, "min_text") ? a.min_text : Math.round(Math.min(c.width, c.height) * 0.03),
     issues: Obj[] = [], spans: number[][] = [], events: number[] = [], starts: { [frame: string]: number[] } = {}, beats: number[] = [], lin: { [key: string]: boolean } = {}, i, j, l: AVLayer, segs: Seg[], s: Seg, kind, live: { on: boolean },
     first: number | null, fs: string, sc: any, mk, gap, cur, onBeat = 0, starts2: Obj[] = [], near: any, hold = 0, b, txt: any;
   function issue(o: Obj): void { issues.push(o); }
+  blendIssues(c, issue);
   mk = c.markerProperty;
   for (i = 1; i <= mk.numKeys; i++) if (mk.keyValue(i).comment === "beat") beats.push(mk.keyTime(i));
   for (i = 1; i <= c.numLayers; i++) {

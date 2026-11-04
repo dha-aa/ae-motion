@@ -313,7 +313,8 @@ interface Args {
   edit_effect: {
     layer_id: number;
     effect_index: number;
-    action: "remove" | "enable" | "disable";
+    action: "remove" | "enable" | "disable" | "set";
+    params?: { [key: string]: number | string | boolean | number[] };
   };
   edit_keyframes: {
     layer_id: number;
@@ -578,6 +579,7 @@ interface Args {
     shutter_angle?: number;
     shutter_phase?: number;
     frame_blending?: boolean;
+    renderer?: string;
   };
   set_expression: {
     layer_id?: number;
