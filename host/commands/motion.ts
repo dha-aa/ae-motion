@@ -441,7 +441,8 @@ function screenBox(l: AVLayer, c: CompItem, v: CamView, t: number): ScreenBox | 
 }
 
 function sceneLayer(l: AVLayer, kind: string): boolean {
-  if (!l.enabled || kind === "camera" || kind === "light" || kind === "null" || kind === "adjustment") return false;
+  // meshes too: their sourceRectAtTime is the comp's size, so any box worked out from it would be wrong
+  if (!l.enabled || kind === "camera" || kind === "light" || kind === "null" || kind === "adjustment" || kind === "mesh") return false;
   if (safe(function () { return l.guideLayer; }) || safe(function () { return l.hasAudio && !l.hasVideo; })) return false;
   return typeof l.sourceRectAtTime === "function";
 }

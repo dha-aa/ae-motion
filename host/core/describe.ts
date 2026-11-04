@@ -12,11 +12,15 @@ type LayerJson = {
 var MASKMODES: { [name: string]: string } = { none: "NONE", add: "ADD", subtract: "SUBTRACT", intersect: "INTERSECT", lighten: "LIGHTEN", darken: "DARKEN", difference: "DIFFERENCE" };
 var MATTES: { [name: string]: string } = { alpha: "ALPHA", alpha_inverted: "ALPHA_INVERTED", luma: "LUMA", luma_inverted: "LUMA_INVERTED" };
 
+// A parametric mesh (After Effects 26.3+)? The class doesn't exist in older versions, so typeof comes first.
+function isMesh(l: Layer): boolean { return typeof ParametricMeshLayer !== "undefined" && l instanceof ParametricMeshLayer; }
+
 function layerKind(l: Layer): string {
   if (l instanceof TextLayer) return "text";
   if (l instanceof ShapeLayer) return "shape";
   if (l instanceof CameraLayer) return "camera";
   if (l instanceof LightLayer) return "light";
+  if (isMesh(l)) return "mesh";
   if ((l as AVLayer).nullLayer) return "null";
   if ((l as AVLayer).adjustmentLayer) return "adjustment";
   if ((l as AVLayer).source instanceof CompItem) return "precomp";
@@ -176,6 +180,16 @@ var WALK_SKIP: { [matchName: string]: number } = { "ADBE Marker": 1, "ADBE Vecto
 // 3D-only groups, listed for 3D layers only
 var WALK_3D: { [matchName: string]: number } = { "ADBE Material Options Group": 1, "ADBE Extrsn Options Group": 1, "ADBE Plane Options Group": 1 };
 var WALK_EXPR = 160; // longer expressions are cut (get_keyframes returns them whole)
+// Every mesh layer carries the option groups of all six mesh types; only its own type's do anything.
+var MESH_GROUP = /^ADBE (Cube|Sphere|Plane|Torus|Cone|Cylinder)(Mesh|Bevel)/;
+var MESH_TYPES: { [name: string]: string } = { cube: "CUBE", sphere: "SPHERE", plane: "PLANE", cylinder: "CYLINDER", cone: "CONE", torus: "TORUS" };
+
+// Is this match name one of a mesh layer's option groups for another mesh type?
+function otherMeshGroup(m: string, layer: AVLayer): boolean {
+  var hit = MESH_GROUP.exec(m);
+  if (!hit || !isMesh(layer)) return false;
+  return (ParametricMeshType as any)[hit[1].toUpperCase()] !== (layer as ParametricMeshLayer).parametricMeshType;
+}
 
 // Is any layer style turned on? (the Layer Styles group lists all nine styles' settings even when none is)
 function stylesOn(g: PropertyGroup): boolean {
@@ -192,6 +206,7 @@ function walkShows(p: any, layer: AVLayer): boolean {
   if (WALK_SKIP[m]) return false;
   if (WALK_3D[m] && !safe(function () { return layer.threeDLayer; })) return false;
   if (m === "ADBE Layer Styles" && !stylesOn(p)) return false;
+  if (otherMeshGroup(m, layer)) return false;
   if (/^ADBE Position_\d$/.test(m) && !safe(function () { return p.propertyGroup(1).property("ADBE Position").dimensionsSeparated; })) return false;
   if (p.propertyType !== PropertyType.PROPERTY && p.numProperties === 0) return false;
   return true;

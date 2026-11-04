@@ -241,6 +241,46 @@ check("blend modes and adjustment layers render as defined; previews show the co
   expect(off.adjustment === false && JSON.stringify(px(20, 20).slice(0, 3)) === "[0,0,0]", "adjustment off: a plain (white) solid, inverted to black; read back", [off, px(20, 20)]);
 });
 
+check("meshes: add_layer picks the renderer that draws them; on a new comp's renderer they draw nothing; no bogus box", async () => {
+  const on = await startClient({ AE_MCP_ALLOW_JSX: "1" });
+  try {
+    const mc = await newComp("Mesh", { width: 640, height: 360, bg_color: [0.05, 0.06, 0.09] });
+    const shot = async () => {
+      const r = await c.call("preview_frame", { comp_id: mc, time: 0.5, size: 640 });
+      const p = PNG.sync.read(Buffer.from(r.imageData[0], "base64"));
+      return (x: number, y: number): number[] => [...p.data.subarray((y * p.width + x) * 4, (y * p.width + x) * 4 + 3)];
+    };
+    const renderer = (set?: string) => on.call("run_jsx", { code: `var i, it; for (i = 1; i <= app.project.numItems; i++) { it = app.project.item(i); if (it.id === ${mc}) { ${set ? `it.renderer = "${set}"; ` : ""}break; } } it.renderer` });
+    const bg = [13, 15, 23];
+    if (parseFloat(status.value.ae_version) < 26.3) {
+      const old = await callError("add_layer", { comp_id: mc, kind: "mesh" });
+      expect(old.code === "UNSUPPORTED", "before After Effects 26.3 a mesh is refused", old);
+      return;
+    }
+    expect((await renderer("ADBE Advanced 3d")).value.result === "ADBE Advanced 3d", "the test starts on a new comp's renderer");
+    const m = await call("add_layer", { comp_id: mc, kind: "mesh", options: { name: "Box", color: [1, 0, 0], position: [320, 180, 0], mesh: { type: "cube", roughness: 60, emission: [1, 0, 0] } } });
+    expect(m.renderer_changed?.to === "ADBE Calder" && (await renderer()).value.result === "ADBE Calder", "add_layer moved the comp to the mesh renderer and said so", m);
+    const px = await shot();
+    expect(px(320, 180)[0] > 100 && px(320, 180)[1] < 90, "the mesh is drawn, in its color", px(320, 180));
+    expect(JSON.stringify(px(20, 20)) === JSON.stringify(bg), "around it the comp's background", px(20, 20));
+    const got = await call("get_layer", { layer_id: m.id });
+    expect(got.kind === "mesh" && got.bounds === null, "kind mesh, no content box", got);
+    const list = JSON.stringify(await call("list_properties", { layer_id: m.id, depth: 1 }));
+    expect(list.includes("ADBE CubeMeshOptionsSGrp") && !list.includes("ADBE TorusMeshOptionsSGrp"), "only its own type's groups are listed");
+    await call("set_property", { layer_id: m.id, path: ["ADBE CubeMeshOptionsSGrp", "ADBE CubeWidthStrm"], value: 40 });
+    await call("set_property", { layer_id: m.id, path: ["ADBE CubeMeshOptionsSGrp", "ADBE CubeHeightStrm"], value: 40 });
+    const small = await shot();
+    expect(JSON.stringify(small(320, 110)) === JSON.stringify(bg) && small(320, 180)[0] > 100, "mesh options resize it", [small(320, 110), small(320, 180)]);
+    const anchor = await callError("set_anchor", { layer_id: m.id, anchor: "center" });
+    expect(anchor.code === "UNSUPPORTED", "no anchor on the comp-sized box", anchor);
+    const rev = await call("review_motion", { comp_id: mc });
+    expect(!JSON.stringify(rev.issues).includes("off screen"), "review_motion does not judge it by the comp-sized box", rev.issues);
+    await renderer("ADBE Advanced 3d");
+    const gone = await shot();
+    expect(JSON.stringify(gone(320, 180)) === JSON.stringify(bg), "on a new comp's renderer the mesh draws nothing (the reason add_layer changes it)", gone(320, 180));
+  } finally { on.close(); }
+});
+
 check("run_jsx: refused unless enabled; when enabled it runs, returns values as JSON and reports script errors", async () => {
   const off = await startClient({ AE_MCP_ALLOW_JSX: "0" }), on = await startClient({ AE_MCP_ALLOW_JSX: "1" });
   try {

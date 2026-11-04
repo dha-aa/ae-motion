@@ -2,6 +2,17 @@
 
 All notable changes. Versions follow [semantic versioning](https://semver.org); each release is a git tag `vX.Y.Z`, which is what the update check looks for.
 
+## Unreleased
+
+### Added
+- Real 3D objects: `add_layer` `kind: "mesh"` adds a cube, sphere, plane, cylinder, cone or torus (After Effects 26.3+), with `color` and a `mesh` option for type, roughness, metallic and emission. Everything else about a mesh (size, bevel, slices, keyframes, expressions) goes through the usual `list_properties`, `set_property` and `set_keyframes`. A mesh only draws on one of After Effects' renderers, and on a new comp's default it silently draws nothing, so `add_layer` moves the comp to that renderer and reports it as `renderer_changed`, since it also affects how the comp's other 3D layers draw.
+
+### Changed
+- `get_comp` and `get_layer` report these layers as `kind: "mesh"` (they read as `footage` before), `get_comp` can filter by it, and `list_properties` shows only the mesh's own type's option groups instead of all six (`all: true` still lists them).
+
+### Fixed
+- Mesh layers report a comp-sized content box whatever their real size. `get_layer` now gives `bounds: null`, `set_anchor` refuses to centre on that box (pass `point`), and `review_motion`'s scene checks skip meshes instead of judging them by it.
+
 ## 2.24.0 — 2026-10-23
 
 ### Added

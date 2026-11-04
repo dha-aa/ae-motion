@@ -4,7 +4,7 @@
 interface Args {
   add_layer: {
     comp_id: number;
-    kind: "solid" | "text" | "shape" | "null" | "adjustment" | "footage" | "precomp" | "camera" | "light";
+    kind: "solid" | "text" | "shape" | "null" | "adjustment" | "footage" | "precomp" | "camera" | "light" | "mesh";
     options?: {
       name?: string;
       color?: number[];
@@ -53,6 +53,13 @@ interface Args {
       fit?: "cover" | "contain";
       source_in?: number;
       stretch?: number;
+      mesh?: {
+        type?: "cube" | "sphere" | "plane" | "cylinder" | "cone" | "torus";
+        roughness?: number;
+        metallic?: number;
+        emission?: number[];
+        emission_intensity?: number;
+      };
     };
   };
   add_layer_style: {
@@ -362,7 +369,7 @@ interface Args {
   get_comp: {
     comp_id: number;
     name?: string;
-    kind?: "text" | "shape" | "solid" | "footage" | "precomp" | "null" | "adjustment" | "camera" | "light";
+    kind?: "text" | "shape" | "solid" | "footage" | "precomp" | "null" | "adjustment" | "camera" | "light" | "mesh";
     at?: number;
     limit?: number;
     offset?: number;

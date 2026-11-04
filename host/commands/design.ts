@@ -103,7 +103,8 @@ C.set_anchor = function (a: Args["set_anchor"]) {
   else {
     const f = ANCHORS[a.anchor || "center"];
     if (!f) return fail("BAD_ARGS", "anchor must be center, top_left, top, top_right, left, right, bottom_left, bottom or bottom_right");
-    const r = contentRect(l, t)!;
+    const r = contentRect(l, t);
+    if (!r) return fail("UNSUPPORTED", "A mesh has no content box to place the anchor on", "Pass point: [x, y]; [0, 0] is the mesh's centre");
     na = [r.left + r.width * f[0], r.top + r.height * f[1]];
   }
   const oa: number[] = an.value;
