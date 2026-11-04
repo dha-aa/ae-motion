@@ -2,7 +2,7 @@
 
 All notable changes. Versions follow [semantic versioning](https://semver.org); each release is a git tag `vX.Y.Z`, which is what the update check looks for.
 
-## Unreleased
+## 2.25.0 — 2026-11-04
 
 ### Added
 - Real 3D objects: `add_layer` `kind: "mesh"` adds a cube, sphere, plane, cylinder, cone or torus (After Effects 26.3+), with `color` and a `mesh` option for type, roughness, metallic and emission. Everything else about a mesh (size, bevel, slices, keyframes, expressions) goes through the usual `list_properties`, `set_property` and `set_keyframes`. A mesh only draws on one of After Effects' renderers, and on a new comp's default it silently draws nothing, so `add_layer` moves the comp to that renderer and reports it as `renderer_changed`, since it also affects how the comp's other 3D layers draw.
