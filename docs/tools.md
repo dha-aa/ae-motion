@@ -1,6 +1,6 @@
 # Tool reference
 
-78 tools, grouped the same way as the source (`src/tools/<group>.ts` on the server, `host/commands/<group>.ts` in After Effects). Every tool's full argument schema and description is served by the MCP `tools/list` call, so your client always sees the current details. This page gives the overview and the behavior you can't read off a schema.
+79 tools in all: the 78 a client sees with every group shown, plus `load_tools`, which is listed only while some groups are hidden (core is 45 tools and `load_tools`). They are grouped the same way as the source (`src/tools/<group>.ts` on the server, `host/commands/<group>.ts` in After Effects). Every tool's full argument schema and description is served by the MCP `tools/list` call, so your client always sees the current details. This page gives the overview and the behavior you can't read off a schema.
 
 ## Example prompts
 
