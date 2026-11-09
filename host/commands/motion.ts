@@ -494,7 +494,8 @@ function outsideSafe(c: CompItem, O: ScreenBox): string {
 }
 
 function sceneChecks(c: CompItem, issue: (o: Obj) => void): void {
-  var ls: SceneItem[] = [], views: { [t: number]: CamView } = {}, boxes: { [key: string]: ScreenBox | null } = {}, i, j, l, kind, t: number, L: SceneItem, O, X, front, tt, E: string, tEnd: number, Oe;
+  var ls: SceneItem[] = [], views: { [t: number]: CamView } = {}, boxes: { [key: string]: ScreenBox | null } = {}, i, j, l, kind, t: number, L: SceneItem, O, X, front, tt, E: string, tEnd: number, Oe,
+    times: number[] | null, was: boolean, gap: ScreenBox | null, sides: string[];
   if (c.numLayers > 400) return;
   function boxOf(x: SceneItem, at: number): ScreenBox | null {
     var k = x.id + "@" + at;
@@ -544,6 +545,58 @@ function sceneChecks(c: CompItem, issue: (o: Obj) => void): void {
       }
     }
   }
+  // A background that stops covering the frame: a layer that fills it at one of its keys and, at another, is still
+  // in the frame but leaves a strip of it bare, with nothing else filling the frame then (a push-in or a move that
+  // went too far: the comp's background colour shows in the gap). A layer that leaves entirely is an exit, not this.
+  for (i = 0; i < ls.length; i++) {
+    L = ls[i];
+    if (L.kind === "text") continue;
+    times = coverTimes(L, c);
+    if (!times) continue;
+    was = false; gap = null; t = 0;
+    for (j = 0; j < times.length; j++) {
+      O = boxOf(L, times[j]);
+      if (!O || O.three) { gap = null; break; }
+      if (fillsFrame(O, c)) { if (backsFrame(L, times[j])) was = true; }
+      else if (!gap && O.x1 > 0 && O.x0 < c.width && O.y1 > 0 && O.y0 < c.height) { gap = O; t = times[j]; }
+    }
+    if (!was || !gap) continue;
+    for (j = 0; j < ls.length && gap; j++) {
+      if (j === i || ls[j].i0 > t || ls[j].o0 <= t || !backsFrame(ls[j], t)) continue;
+      X = boxOf(ls[j], t);
+      if (X && fillsFrame(X, c)) gap = null;
+    }
+    if (!gap) continue;
+    sides = [];
+    if (gap.x0 > 1) sides.push("left"); if (gap.x1 < c.width - 1) sides.push("right"); if (gap.y0 > 1) sides.push("top"); if (gap.y1 < c.height - 1) sides.push("bottom");
+    issue({ type: "uncovered", severity: "warn", layer_id: L.id, layer: L.name, t: Math.round(t * 1000) / 1000, msg: "Fills the frame, then leaves it bare on the " + sides.join(", ") + ": the comp's background shows there (move or scale it to cover)" });
+  }
+}
+
+function fillsFrame(O: ScreenBox, c: CompItem): boolean { return O.x0 <= 1 && O.y0 <= 1 && O.x1 >= c.width - 1 && O.y1 >= c.height - 1; }
+
+// Could x be what the viewer sees behind everything at t? An opaque solid or filled shape, or a precomp / footage
+// layer at full opacity with normal blending (what is inside it is not looked at).
+function backsFrame(x: SceneItem, t: number): boolean {
+  if (opaqueAt(x, t)) return true;
+  if (x.kind !== "precomp" && x.kind !== "footage") return false;
+  if (x.l.blendingMode !== BlendingMode.NORMAL) return false;
+  return !((safe(function () { return tp(x.l, "ADBE Opacity").valueAtTime(t, false); }) as number) < 99.5);
+}
+
+// The times at which a layer's place on screen is set: its position, scale, rotation and anchor keys while it shows,
+// with its first and last frame. Null when none of them is keyed (its box never changes, so there is nothing to compare).
+function coverTimes(x: SceneItem, c: CompItem): number[] | null {
+  var names = ["ADBE Position", "ADBE Scale", "ADBE Rotate Z", "ADBE Anchor Point"], fd = c.frameDuration, out: number[] = [], i: number, k, p, kt,
+    t0 = Math.max(0, x.i0), t1 = Math.min(c.duration, x.o0) - fd;
+  for (i = 0; i < names.length; i++) {
+    p = safe(function () { return tp(x.l, names[i]); });
+    if (!p || !p.numKeys) continue;
+    for (k = 1; k <= p.numKeys && out.length < 40; k++) { kt = p.keyTime(k); if (kt > t0 + fd / 2 && kt < t1 - fd / 2) out.push(Math.round(kt / fd) * fd); }
+  }
+  if (!out.length) return null;
+  out.push(t0); if (t1 > t0) out.push(t1);
+  return out;
 }
 
 // Comp setups that look wrong with no error: a mesh on a renderer that draws nothing, and a light-adding blend over
@@ -567,6 +620,20 @@ function blendIssues(c: CompItem, issue: (o: Obj) => void): void {
     }
     if (!under) issue({ type: "no_background", severity: "warn", layer_id: l.id, layer: l.name, t: l.inPoint, msg: "Nothing under this light-adding blend, so its black shows as black: add a background layer (the comp's background colour does not count)" });
   }
+}
+
+// A slow, small move at constant speed (a push-in over a whole shot, clouds drifting) is a choice, not easing left
+// undone: animate push / drift offer it as style linear. Two seconds or more, and at most about 10% of scale, 8% of the
+// frame's short side, or 8 degrees.
+function slowDrift(s: Seg, c: CompItem): boolean {
+  var m = s.p.matchName, d;
+  if (s.reveal || s.t1 - s.t0 < 2) return false;
+  d = safe(function () { return dist(s.p.keyValue(s.k), s.p.keyValue(s.k + 1)); });
+  if (d === undefined) return false;
+  if (m === "ADBE Scale") return d <= 18;
+  if (m === "ADBE Position" || m === "ADBE Position_0" || m === "ADBE Position_1") return d <= Math.min(c.width, c.height) * 0.08;
+  if (m === "ADBE Rotate Z") return d <= 8;
+  return false;
 }
 
 C.review_motion = function (a: Args["review_motion"]) {
@@ -593,7 +660,7 @@ C.review_motion = function (a: Args["review_motion"]) {
       spans.push([Math.max(s.t0, l.inPoint), Math.min(s.t1, l.outPoint)]);
       if (first === null || s.t0 < first) first = s.t0;
       starts2.push({ t: s.t0, layer_id: l.id });
-      if (s.linear && !s.sampled && !s.spring && !lin[l.id + s.p.name]) {
+      if (s.linear && !s.sampled && !s.spring && !lin[l.id + s.p.name] && !slowDrift(s, c)) {
         lin[l.id + s.p.name] = true;
         issue({ type: "linear", severity: "warn", layer_id: l.id, layer: l.name, property: s.p.name, t: s.t0, msg: "Linear keys: ease them (style snappy / smooth) or use animate" });
       }

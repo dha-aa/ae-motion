@@ -73,12 +73,16 @@ class Prop {
 // Groups make any child they are asked for: a group if the match name is a known group, else a property.
 const GROUPS = new Set(["ADBE Transform Group", "ADBE Text Properties", "ADBE Text Animators", "ADBE Text Animator", "ADBE Text Animator Properties", "ADBE Text Selectors",
   "ADBE Text Expressible Selector", "ADBE Mask Parade", "ADBE Mask Atom", "ADBE Root Vectors Group", "ADBE Vector Group", "ADBE Vectors Group", "ADBE Vector Transform Group",
-  "ADBE Vector Shape - Rect", "ADBE Vector Shape - Ellipse", "ADBE Vector Graphic - Fill", "ADBE Vector Graphic - Stroke", "ADBE Effect Parade"]);
+  "ADBE Vector Shape - Rect", "ADBE Vector Shape - Ellipse", "ADBE Vector Graphic - Fill", "ADBE Vector Graphic - Stroke", "ADBE Effect Parade", "ADBE Gaussian Blur 2"]);
 const INDEXED = new Set(["ADBE Text Animators", "ADBE Text Selectors", "ADBE Mask Parade", "ADBE Root Vectors Group", "ADBE Vectors Group", "ADBE Text Animator Properties", "ADBE Effect Parade"]);
 class Group {
   constructor(matchName) { this.matchName = matchName; this.name = matchName; this.children = []; this.propertyType = INDEXED.has(matchName) ? PT.INDEXED_GROUP : PT.NAMED_GROUP; }
   get numProperties() { return this.children.length; }
-  make(m) { const c = GROUPS.has(m) ? new Group(m) : new Prop(m); this.children.push(c); c.propertyIndex = this.children.length; const parent = this; c.moveTo = (i) => parent.moveChild(c, i); return c; }
+  make(m) {
+    const c = GROUPS.has(m) ? new Group(m) : new Prop(m);
+    // as in After Effects 26.5: a Gaussian Blur added by script has Repeat Edge Pixels (its third parameter) on
+    if (m === "ADBE Gaussian Blur 2") { c.property("ADBE Gaussian Blur 2-0001"); c.property("ADBE Gaussian Blur 2-0002"); c.property("ADBE Gaussian Blur 2-0003").setValue(1); }
+    this.children.push(c); c.propertyIndex = this.children.length; const parent = this; c.moveTo = (i) => parent.moveChild(c, i); return c; }
   property(k) { if (typeof k === "number") return this.children[k - 1]; return this.children.find((c) => c.matchName === k) || this.make(k); }
   addProperty(m) { return this.make(m); }
   /** Like After Effects: move a child to a 1-based index (the others shift). */
@@ -311,6 +315,53 @@ t("review_motion: a masked solid hides nothing it does not cover; a full solid s
   assert.ok(hides() > 0, "control: an unmasked solid on top hides the one under it");
   top.property("ADBE Mask Parade").addProperty("ADBE Mask Atom");
   assert.equal(hides(), 0, "a mask shows only part of the solid");
+});
+
+t("review_motion: a background that stops covering the frame is reported; an exit, a covered gap and a still layer are not", () => {
+  const w = makeWorld(), bg = w.solid("Scene");
+  const full = { left: 0, top: 0, width: 1920, height: 1080 };
+  bg.sourceRectAtTime = () => full;
+  P(bg, "ADBE Anchor Point").setValue([960, 540, 0]);
+  const found = () => ok(w.call("review_motion", { comp_id: 1, all: true })).issues.filter((i) => i.type === "uncovered");
+  assert.equal(found().length, 0, "a still background has nothing to report");
+  // a push-in toward the right of the picture: scaled 160% but moved too far left, so the right of the frame is bare
+  const sc = P(bg, "ADBE Scale"), pos = P(bg, "ADBE Position");
+  sc.setValueAtTime(1, [100, 100, 100]); sc.setValueAtTime(2, [160, 160, 100]);
+  pos.setValueAtTime(1, [960, 540, 0]); pos.setValueAtTime(2, [100, 540, 0]); // right edge at 100 + 960 * 1.6 = 1636
+  let f = found();
+  assert.equal(f.length, 1, JSON.stringify(f)); assert.equal(f[0].layer_id, bg.id); near(f[0].t, 2, "at the key that leaves the gap", 1e-6); assert.match(f[0].msg, /bare on the right:/);
+  pos.setValueAtTime(2, [900, 540, 0]); // still covers: 900 - 1536 .. 900 + 1536
+  assert.equal(found().length, 0, "a push-in that keeps covering is fine");
+  pos.setValueAtTime(2, [100, 540, 0]);
+  const under = w.solid("Backdrop"); under.sourceRectAtTime = () => full; P(under, "ADBE Anchor Point").setValue([960, 540, 0]);
+  assert.equal(found().length, 0, "another layer fills the frame behind it");
+  P(under, "ADBE Opacity").setValue(20);
+  assert.equal(found().length, 1, "a see-through layer does not");
+  pos.setValueAtTime(2, [5000, 540, 0]);
+  assert.equal(found().length, 0, "leaving the frame entirely is an exit");
+});
+
+t("review_motion: a slow push at constant speed is not flagged as linear keys; a fast linear move still is", () => {
+  const w = makeWorld(), a = w.solid("Shot"), b = w.solid("Card");
+  P(a, "ADBE Scale").setValueAtTime(0, [100, 100, 100]); P(a, "ADBE Scale").setValueAtTime(5, [107, 107, 107]);
+  P(b, "ADBE Scale").setValueAtTime(0, [0, 0, 100]); P(b, "ADBE Scale").setValueAtTime(0.5, [100, 100, 100]);
+  const lin = ok(w.call("review_motion", { comp_id: 1, all: true, scene: false })).issues.filter((i) => i.type === "linear");
+  assert.deepEqual(lin.flatMap((i) => i.layer_ids || [i.layer_id]), [b.id], JSON.stringify(lin));
+  P(a, "ADBE Scale").setValueAtTime(5, [150, 150, 150]);
+  assert.equal(ok(w.call("review_motion", { comp_id: 1, all: true, scene: false })).issues.filter((i) => i.type === "linear").flatMap((i) => i.layer_ids || [i.layer_id]).length, 2, "a big linear scale over the same time is still flagged");
+});
+
+t("apply_effect: a Gaussian Blur on an element gets soft edges (Repeat Edge Pixels off); a full-frame layer and an explicit choice keep theirs", () => {
+  const w = makeWorld();
+  const edge = (l) => l.property("ADBE Effect Parade").property(1).property("ADBE Gaussian Blur 2-0003").value;
+  const card = w.solid("Card", { width: 600, height: 300 }), full = w.solid("Plate", { width: 1920, height: 1080 }), title = w.text("Title", "soft"), kept = w.solid("Kept", { width: 600, height: 300 });
+  const r = ok(w.call("apply_effect", { layer_id: card.id, match_name: "ADBE Gaussian Blur 2" }));
+  assert.equal(edge(card), 0); assert.equal(r.repeat_edge_pixels, false, "the result says so");
+  const rf = ok(w.call("apply_effect", { layer_id: full.id, match_name: "ADBE Gaussian Blur 2" }));
+  assert.equal(edge(full), 1, "a layer that fills the frame keeps its edges"); assert.ok(!("repeat_edge_pixels" in rf));
+  ok(w.call("apply_effect", { layer_id: title.id, match_name: "ADBE Gaussian Blur 2" })); assert.equal(edge(title), 0, "text is an element");
+  const rk = ok(w.call("apply_effect", { layer_id: kept.id, match_name: "ADBE Gaussian Blur 2", params: { "ADBE Gaussian Blur 2-0003": 1 } }));
+  assert.equal(edge(kept), 1, "the caller's own setting wins"); assert.ok(!("repeat_edge_pixels" in rk));
 });
 
 t("review_motion: warns about a light-adding blend over nothing, and only then", () => {
