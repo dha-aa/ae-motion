@@ -4,7 +4,16 @@ All notable changes. Versions follow [semantic versioning](https://semver.org); 
 
 ## Unreleased
 
+### Changed
+- `get_keyframes` can read any animation. Every key still comes in one reply when they fit the response limit; when they do not, it returns as many as fit with `next_offset` (pass it as `offset` for the rest; `limit` caps a page). It used to send every key whatever the size, which passed the limit on long or detailed animations (a sampled 3D camera path, audio keyed per frame) with no way to read them, and silently stopped at 500.
+- Smaller results. Path values (mask and shape paths in `get_keyframes`, `set_keyframes`, `set_property`, `list_properties`) leave out `in_tangents` / `out_tangents` when every tangent is zero and `closed` when the path is closed: a rect mask key is less than half the size and still writes back unchanged. Marker results (`list_markers`, `add_marker`, `update_marker`, `delete_marker`) leave out an empty comment, chapter or url, a zero duration and label 0: a page of 100 beat markers is less than half the size.
+- `review_motion` asks After Effects far less on big comps: its scene checks compare every layer with every other, and read each layer's timing, name, mask, blending and fill once instead of once per pair; each property's expression and each key's value are read once; shape groups' 48 3D-only material settings are skipped. `find_sound_cues` reads each frame of a move once instead of twice. Same findings.
+
 ### Fixed
+- `add_layer` rejects an unknown key in `options` (`colour`, `opacity`) instead of dropping it and reporting success: `options` was the one object in the tool schemas that was not strict, and the check for that missed it.
+- A render no longer stops the MCP server or stays "running" for ever when finishing it fails: a delivery whose ProRes master cannot be removed is still done (the master stays), a file that vanishes while it is being waited for is looked for again, and anything else fails the job with the reason. A GPU failure that aerender logs in its last lines fails the job too, and a job that could not start or was canceled while encoding gets its end time.
+- `set_keyframes` and `edit_keyframes` no longer report an error after setting many keys: the keys were set, but the reply listing them passed the response limit, so the call looked failed and was tried again. A reply that big now gives the count (`keys_set`) and a note instead of the list.
+- `add_sfx` leaves no layer behind when it fails after placing the sound (fades longer than the sound, a file with nothing to measure): each failed try used to add one more.
 - The docs now give the full tool count, 79: the 78 a client sees with every group shown, plus `load_tools`, listed only while some groups are hidden. The token figures for the core tool list are measured again: about 12k tokens per message instead of 21k (they said 11k and 18k).
 
 ## 2.25.0 — 2026-11-04

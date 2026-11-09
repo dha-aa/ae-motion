@@ -346,7 +346,9 @@ t("add_sfx: the sound's loudest frame lands on time; fades, volume, one import p
   assert.equal(w.log.imports, 1, "imported once"); assert.equal(w.log.menuRuns, 1, "peak measured once");
   assert.deepEqual(plainArr(w.comp._layers.find((l) => l.id === r2.layer.id).levels.value), [-12, -12]);
   fails(w.call("add_sfx", { comp_id: 1, path: "/sfx/missing.wav", time: 1 }), "NOT_FOUND");
+  const before = w.comp._layers.length;
   fails(w.call("add_sfx", { comp_id: 1, path: "/sfx/whoosh.wav", time: 1, fade_in: 0.8, fade_out: 0.8 }), "BAD_ARGS");
+  assert.equal(w.comp._layers.length, before, "a refused add_sfx leaves no layer behind");
 });
 
 t("add_sfx lead_in and max_duration keep the hit: a long build-up is cut before the peak, the end is trimmed from the peak", () => {

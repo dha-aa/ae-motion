@@ -13,7 +13,10 @@ type Seg = { p: Prop; k: number; t0: number; t1: number; linear: boolean; sample
 type CamView = { P: Vec; f: Vec; r: Vec; d: Vec; zoom: number };
 /** A layer's box on screen, and whether it is 3D and how far along the view. */
 type ScreenBox = { x0: number; y0: number; x1: number; y1: number; three: boolean; z: number };
-type SceneItem = { l: AVLayer; kind: string; t: number };
+/** A layer the scene checks look at, with what they need of it read once (each read is a call into After Effects, and
+ * the checks compare every layer with every other): id, name, stack index, in / out, the time it is judged at, and
+ * whether it could hide what is behind it (hides: unset until first asked). */
+type SceneItem = { l: AVLayer; kind: string; t: number; id: number; name: string; index: number; i0: number; o0: number; hides?: boolean };
 
 var REVEAL_TAG = "// ae-motion reveal";
 var MOVES: { [move: string]: number } = { fade: 1, pop: 1, grow: 1, slide: 1, drop: 1, spin: 1, push: 1, drift: 1 };
@@ -301,7 +304,8 @@ var REVIEW_MIN: { [matchName: string]: number } = {
   "ADBE Position": 2, "ADBE Position_0": 2, "ADBE Position_1": 2, "ADBE Position_2": 2, "ADBE Anchor Point": 2,
   "ADBE Scale": 1, "ADBE Rotate Z": 0.5, "ADBE Rotate X": 0.5, "ADBE Rotate Y": 0.5, "ADBE Opacity": 2
 };
-var REVIEW_SKIP: { [matchName: string]: number } = { "ADBE Marker": 1, "ADBE Audio Group": 1 };
+// "ADBE Vector Materials Group": 48 3D-only settings in every shape group, never the motion being reviewed
+var REVIEW_SKIP: { [matchName: string]: number } = { "ADBE Marker": 1, "ADBE Audio Group": 1, "ADBE Vector Materials Group": 1 };
 // expressions that keep moving all the time (springs only reshape their keys; reveals are timed: revealSpan)
 var REVIEW_LIVE = /wiggle|loopOut|loopIn|time\s*\*|ae-motion (rig|shake)/;
 
@@ -316,25 +320,30 @@ function revealSpan(p: Prop, l: Layer): number[] | null {
 
 // Motion segments of a layer: every pair of neighbouring keys whose values differ, on any property.
 function motionSegments(g: any, out: Seg[], live: { on: boolean }, l: Layer): Seg[] {
-  var i, p: any, k: number, v0, v1, rs;
+  var i, p: any, k: number, v0, v1, rs, ex: string, nk: number, sprung: boolean;
   for (i = 1; i <= g.numProperties; i++) {
     p = g.property(i);
     if (!p || REVIEW_SKIP[p.matchName]) continue;
     if (p.propertyType === PropertyType.PROPERTY) {
-      if (safe(function () { return p.expressionEnabled && REVIEW_LIVE.test(p.expression); })) live.on = true;
-      if (safe(function () { return p.expressionEnabled && p.expression.indexOf(REVEAL_TAG) === 0; })) {
+      // the expression is read once per property, and each key's value once: this walks every property of every layer
+      ex = safe(function () { return p.expressionEnabled ? String(p.expression) : ""; }) || "";
+      if (ex && REVIEW_LIVE.test(ex)) live.on = true;
+      if (ex && ex.indexOf(REVEAL_TAG) === 0) {
         rs = revealSpan(p, l);
         if (rs) out.push({ p: p, k: 0, t0: rs[0], t1: rs[1], linear: false, sampled: false, spring: false, reveal: true });
       }
-      if (!p.numKeys || p.numKeys < 2) continue;
-      for (k = 1; k < p.numKeys; k++) {
-        v0 = safe(function () { return p.keyValue(k); }); v1 = safe(function () { return p.keyValue(k + 1); });
+      nk = p.numKeys;
+      if (!nk || nk < 2) continue;
+      sprung = ex.indexOf(SPRING_TAG) === 0;
+      v1 = safe(function () { return p.keyValue(1); });
+      for (k = 1; k < nk; k++) {
+        v0 = v1; v1 = safe(function () { return p.keyValue(k + 1); });
         if (v0 !== undefined && v1 !== undefined && typeof v0 !== "object" && v0 === v1) continue;
         if (v0 instanceof Array && v1 instanceof Array && dist(v0, v1) < 1e-6) continue;
         if (REVIEW_MIN[p.matchName] !== undefined && v0 !== undefined && v1 !== undefined && dist(v0, v1) < REVIEW_MIN[p.matchName]) continue;
         out.push({ p: p, k: k, t0: p.keyTime(k), t1: p.keyTime(k + 1),
           linear: p.keyOutInterpolationType(k) === KeyframeInterpolationType.LINEAR && p.keyInInterpolationType(k + 1) === KeyframeInterpolationType.LINEAR,
-          sampled: p.numKeys > 8, spring: safe(function () { return p.expressionEnabled && p.expression.indexOf(SPRING_TAG) === 0; }) === true });
+          sampled: nk > 8, spring: sprung });
       }
     } else motionSegments(p, out, live, l);
   }
@@ -449,13 +458,18 @@ function sceneLayer(l: AVLayer, kind: string): boolean {
 
 // Solid colour that hides what is behind it: a solid, or a shape layer with a full-strength fill; normal blending,
 // full opacity, no matte.
-function opaqueAt(l: AVLayer, kind: string, t: number): boolean {
+// The part of that which holds at any time (kind, mask, blending, matte, fill); opaqueAt adds the opacity at t.
+function canHide(l: AVLayer, kind: string): boolean {
   if (kind !== "solid" && kind !== "shape") return false;
   if (safe(function () { return l.property("ADBE Mask Parade").numProperties; })) return false; // a mask shows only part of it
   if (l.blendingMode !== BlendingMode.NORMAL || safe(function () { return l.isTrackMatte || l.trackMatteType !== TrackMatteType.NO_TRACK_MATTE; })) return false;
-  if ((safe(function () { return tp(l, "ADBE Opacity").valueAtTime(t, false); }) as number) < 99.5) return false;
   if (kind === "shape") return safe(function () { return shapeHasFill(l.property("ADBE Root Vectors Group")); }) === true;
   return true;
+}
+function opaqueAt(x: SceneItem, t: number): boolean {
+  if (x.hides === undefined) x.hides = canHide(x.l, x.kind);
+  if (!x.hides) return false;
+  return !((safe(function () { return tp(x.l, "ADBE Opacity").valueAtTime(t, false); }) as number) < 99.5);
 }
 
 function shapeHasFill(g: any): boolean {
@@ -483,13 +497,17 @@ function sceneChecks(c: CompItem, issue: (o: Obj) => void): void {
   var ls: SceneItem[] = [], views: { [t: number]: CamView } = {}, boxes: { [key: string]: ScreenBox | null } = {}, i, j, l, kind, t: number, L: SceneItem, O, X, front, tt, E: string, tEnd: number, Oe;
   if (c.numLayers > 400) return;
   function boxOf(x: SceneItem, at: number): ScreenBox | null {
-    var k = x.l.id + "@" + at;
+    var k = x.id + "@" + at;
     if (!has(boxes, k)) boxes[k] = safe(function () { return screenBox(x.l, c, views[at] || (views[at] = viewAt(c, at)), at); }) || null;
     return boxes[k];
   }
   for (i = 1; i <= c.numLayers; i++) {
     l = c.layer(i) as AVLayer; kind = layerKind(l);
-    if (sceneLayer(l, kind)) ls.push({ l: l, kind: kind, t: Math.round(Math.max(0, Math.min(c.duration - c.frameDuration, (l.inPoint + l.outPoint) / 2)) / c.frameDuration) * c.frameDuration });
+    if (sceneLayer(l, kind)) {
+      L = { l: l, kind: kind, t: 0, id: l.id, name: l.name, index: i, i0: l.inPoint, o0: l.outPoint };
+      L.t = Math.round(Math.max(0, Math.min(c.duration - c.frameDuration, (L.i0 + L.o0) / 2)) / c.frameDuration) * c.frameDuration;
+      ls.push(L);
+    }
   }
   for (i = 0; i < ls.length; i++) {
     L = ls[i]; t = L.t; tt = Math.round(t * 1000) / 1000;
@@ -497,31 +515,31 @@ function sceneChecks(c: CompItem, issue: (o: Obj) => void): void {
     O = boxOf(L, t);
     if (!O) continue;
     if (O.x1 < 0 || O.x0 > c.width || O.y1 < 0 || O.y0 > c.height) {
-      issue({ type: "off_screen", severity: "warn", layer_id: L.l.id, layer: L.l.name, t: tt, msg: "Entirely outside the frame (as the camera sees it)" });
+      issue({ type: "off_screen", severity: "warn", layer_id: L.id, layer: L.name, t: tt, msg: "Entirely outside the frame (as the camera sees it)" });
       continue;
     }
     // text is checked mid-way and again on its last frame: a camera push often carries a title out of the frame
     // only by the end (seen: titles clipped at the top as the camera moved in, fine at the midpoint)
     if (L.kind === "text") {
       E = outsideSafe(c, O);
-      tEnd = Math.round(Math.max(0, Math.min(c.duration, L.l.outPoint) - c.frameDuration) / c.frameDuration) * c.frameDuration;
+      tEnd = Math.round(Math.max(0, Math.min(c.duration, L.o0) - c.frameDuration) / c.frameDuration) * c.frameDuration;
       if (!E && tEnd > t + 1e-6) { Oe = boxOf(L, tEnd); if (Oe && (E = outsideSafe(c, Oe))) { tt = Math.round(tEnd * 1000) / 1000; E += " by the end of its time on screen"; } }
-      if (E) issue({ type: "outside_safe", severity: "warn", layer_id: L.l.id, layer: L.l.name, t: tt, msg: E });
+      if (E) issue({ type: "outside_safe", severity: "warn", layer_id: L.id, layer: L.name, t: tt, msg: E });
       tt = Math.round(t * 1000) / 1000;
     }
     for (j = 0; j < ls.length; j++) {
-      if (j === i || ls[j].l.inPoint > t || ls[j].l.outPoint <= t || !opaqueAt(ls[j].l, ls[j].kind, t)) continue;
+      if (j === i || ls[j].i0 > t || ls[j].o0 <= t || !opaqueAt(ls[j], t)) continue;
       X = boxOf(ls[j], t);
       if (!X) continue;
       // in front: closer to the camera when both are 3D, otherwise higher in the layer stack
-      front = X.three && O.three ? X.z < O.z - 1 : ls[j].l.index < L.l.index;
+      front = X.three && O.three ? X.z < O.z - 1 : ls[j].index < L.index;
       if (!front) continue;
       if (X.x0 <= O.x0 + 1 && X.y0 <= O.y0 + 1 && X.x1 >= O.x1 - 1 && X.y1 >= O.y1 - 1) {
-        issue({ type: "hidden", severity: "warn", layer_id: L.l.id, layer: L.l.name, t: tt, by: ls[j].l.name, msg: "Hidden behind " + ls[j].l.name + (X.three && O.three ? " (it is closer to the camera)" : "") });
+        issue({ type: "hidden", severity: "warn", layer_id: L.id, layer: L.name, t: tt, by: ls[j].name, msg: "Hidden behind " + ls[j].name + (X.three && O.three ? " (it is closer to the camera)" : "") });
         break;
       }
       if (L.kind === "text" && X.x0 < O.x1 && X.x1 > O.x0 && X.y0 < O.y1 && X.y1 > O.y0) {
-        issue({ type: "covered", severity: "warn", layer_id: L.l.id, layer: L.l.name, t: tt, by: ls[j].l.name, msg: "Text partly covered by " + ls[j].l.name });
+        issue({ type: "covered", severity: "warn", layer_id: L.id, layer: L.name, t: tt, by: ls[j].name, msg: "Text partly covered by " + ls[j].name });
         break;
       }
     }

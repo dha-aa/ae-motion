@@ -178,6 +178,40 @@ t("easing via set switches only that key to bezier", () => {
   assert.deepEqual(all.keys.map((k) => k.interp_out), ["bezier", "linear", "linear"]);
 });
 
+// the reply as the server sends it: compact JSON with numbers at 6 significant digits (src/tools/registry.ts)
+const wire = (v) => JSON.stringify(v, (_k, x) => (typeof x === "number" && !Number.isInteger(x) ? Number(x.toPrecision(6)) : x)).length;
+
+t("get_keyframes returns every key in one reply when they fit; limit / offset still page", () => {
+  const w = makeWorld(), l = w.layer("A");
+  ok(w.call("set_keyframes", { layer_id: l.id, path: "opacity", keys: Array.from({ length: 300 }, (_, i) => ({ t: i / 30, v: i % 100 })) }));
+  const all = ok(w.call("get_keyframes", { layer_id: l.id, path: "opacity" }));
+  assert.equal(all.num_keys, 300); assert.equal(all.keys.length, 300, "300 short keys: one call"); assert.ok(!("next_offset" in all));
+  assert.ok(wire(all) < 25000, "under the response limit: " + wire(all));
+  const mid = ok(w.call("get_keyframes", { layer_id: l.id, path: "opacity", limit: 120, offset: 100 }));
+  assert.deepEqual([mid.keys[0].index, mid.keys.length, mid.next_offset], [101, 120, 220]);
+});
+
+t("get_keyframes pages by size when the keys do not fit: every page under the limit, no key lost or repeated", () => {
+  const w = makeWorld(), l = w.layer("A");
+  const set = ok(w.call("set_keyframes", { layer_id: l.id, path: "position", keys: Array.from({ length: 900 }, (_, i) => ({ t: i / 30, v: [i * 1.37, 540.25 + i, i / 7], ease_in: { speed: 0, influence: 50 + (i % 40) }, ease_out: { speed: 0, influence: 60 } })) }));
+  // the keys are set: a reply too big to send would come back as an error and the call be tried again
+  assert.ok(wire(set) < 25000 && !("keys" in set), "no echo of 900 keys"); assert.equal(set.num_keys, 900); assert.equal(set.keys_set, 900);
+  assert.equal(ok(w.call("set_keyframes", { layer_id: l.id, path: "opacity", keys: [{ t: 0, v: 0 }, { t: 1, v: 100 }] })).keys.length, 2, "a normal call still echoes its keys");
+  const ed = ok(w.call("edit_keyframes", { layer_id: l.id, path: "position", edits: Array.from({ length: 400 }, (_, i) => ({ action: "set", index: i + 1, ease_out: { speed: 0, influence: 70 } })) }));
+  assert.ok(wire(ed) < 25000, "edit_keyframes too: " + wire(ed));
+  const seen = []; let off = 0, pages = 0;
+  for (;;) {
+    const r = ok(w.call("get_keyframes", { layer_id: l.id, path: "position", offset: off }));
+    assert.ok(wire(r) < 25000, "page " + pages + " is " + wire(r) + " characters");
+    for (const k of r.keys) seen.push(k.index);
+    pages++;
+    if (!("next_offset" in r)) break;
+    assert.ok(r.next_offset > off, "paging moves on"); off = r.next_offset;
+  }
+  assert.ok(pages > 1, "900 long keys need more than one page");
+  assert.deepEqual(seen, Array.from({ length: 900 }, (_, i) => i + 1));
+});
+
 t("get_keyframes gives an unanimated property's value, before any expression", () => {
   const w = makeWorld(), l = w.layer("A"), op = l.property("ADBE Transform Group").property("ADBE Opacity");
   op.expression = "wiggle(3, 15)"; op.exprValue = 87;

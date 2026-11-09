@@ -17,7 +17,8 @@ const near = (a, b, m = "") => assert.ok(Math.abs(a - b) < 1e-4, `${m} expected 
 class FakeProp {
   constructor() { this.keys = []; }
   get numKeys() { return this.keys.length; }
-  setValueAtTime(t, v) { this.keys.push({ t, v }); this.keys.sort((a, b) => a.t - b.t); }
+  // as in After Effects, a value set at an existing key's time replaces that key
+  setValueAtTime(t, v) { const k = this.keys.find((x) => Math.abs(x.t - t) < 1e-9); if (k) k.v = v; else { this.keys.push({ t, v }); this.keys.sort((a, b) => a.t - b.t); } }
   keyTime(i) { return this.keys[i - 1].t; }
   keyValue(i) { return this.keys[i - 1].v; }
   removeKey(i) { this.keys.splice(i - 1, 1); }
@@ -433,6 +434,15 @@ t("delete_range move_markers removes markers inside the range and pulls later on
   ok(w.call("add_marker", { comp_id: c.id, time: 8, comment: "stays" }));
   ok(w.call("delete_range", { comp_id: c.id, start: 2, end: 3 }));
   assert.ok(marks(c).some((m) => m[0] === 8), "markers stay put without move_markers");
+});
+
+t("marker results leave out empty fields", () => {
+  const w = makeWorld(); const c = w.comp();
+  const plain = (v) => JSON.parse(JSON.stringify(v)); // results come from the vm context: compare as plain JSON
+  assert.deepEqual(plain(w.call("add_marker", { comp_id: c.id, time: 1, comment: "beat" }).result), { index: 1, time: 1, comment: "beat" });
+  assert.deepEqual(plain(w.call("add_marker", { comp_id: c.id, time: 2 }).result), { index: 2, time: 2 });
+  ok(w.call("update_marker", { comp_id: c.id, index: 2, duration: 0.5, chapter: "two", url: "https://example.com", label: 3 }));
+  assert.deepEqual(plain(w.call("list_markers", { comp_id: c.id }).result.markers), [{ index: 1, time: 1, comment: "beat" }, { index: 2, time: 2, duration: 0.5, chapter: "two", url: "https://example.com", label: 3 }]);
 });
 
 t("update_marker edits fields in place, moves with to_time, refuses collisions", () => {

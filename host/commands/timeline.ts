@@ -166,9 +166,16 @@ function findMarker(prop: Prop, a: { index?: number; time?: number }): number {
   return idx;
 }
 
+// Empty fields are left out (no comment, duration 0, no chapter or url, label 0): on a list of beat markers they
+// were over half of every row.
 function markerInfo(prop: Prop, i: number): Obj {
-  var v = prop.keyValue(i);
-  return { index: i, time: prop.keyTime(i), comment: v.comment, duration: v.duration, chapter: v.chapter, url: v.url, label: safe(function () { return v.label; }) };
+  var v = prop.keyValue(i), o: Obj = { index: i, time: prop.keyTime(i) }, lb = safe(function () { return v.label; });
+  if (v.comment) o.comment = v.comment;
+  if (v.duration) o.duration = v.duration;
+  if (v.chapter) o.chapter = v.chapter;
+  if (v.url) o.url = v.url;
+  if (lb) o.label = lb;
+  return o;
 }
 
 C.add_marker = function (a: Args["add_marker"]) {

@@ -94,7 +94,7 @@ export function registerTimelineTools(r: ToolRegistry): void {
 
   r.bridged(
     "list_markers",
-    "List a layer's (layer_id) or comp's (comp_id) markers: index, time, comment, duration, chapter, url, label. Page: limit (100) / offset.",
+    "List a layer's (layer_id) or comp's (comp_id) markers: index, time, and comment, duration, chapter, url, label when set. Page: limit (100) / offset.",
     { ...MarkerTarget, limit: z.number().int().min(1).max(500).optional(), offset: z.number().int().min(0).optional() },
     { readOnly: true, tooLargeHint: "Lower limit and page with offset" },
   );

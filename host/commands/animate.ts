@@ -60,10 +60,18 @@ C.set_keyframes = function (a: Args["set_keyframes"]) {
   // the keys as they are now (values, interpolation, ease, springs), so no get_keyframes is needed to check them
   res = { num_keys: p.numKeys, keys: [] };
   for (i = 0; i < a.keys.length; i++) res.keys.push(keyInfo(p, p.nearestKeyIndex(a.keys[i].t)));
+  echoIfFits(res);
   // say when earlier keys went: replacing a property's whole animation by accident is easy to miss
   if (replaced) res.replaced = replaced;
   return res;
 };
+
+// The keys a call set are echoed so no get_keyframes is needed, unless the echo would pass the response limit: the
+// keys are in After Effects by then, and an error for the size of the reply read as a failed call (it was retried).
+function echoIfFits(res: Obj): Obj {
+  if (jsonSize(res) > KEYS_ROOM) { res.keys_set = res.keys.length; delete res.keys; res.note = "Keys set; too many to list here (get_keyframes reads them)"; }
+  return res;
+}
 
 // Find the key an edit addresses: by 1-based index, or by time (the key within half a frame of t).
 type KeyEdit = Args["edit_keyframes"]["edits"][number];
@@ -156,7 +164,7 @@ C.edit_keyframes = function (a: Args["edit_keyframes"]) {
     idx = p.nearestKeyIndex(done[i].t); done[i].index = idx;
     if (!v[idx]) { v[idx] = true; k.push(keyInfo(p, idx)); }
   }
-  return { edits: done, num_keys: p.numKeys, keys: k, expression_active: p.expressionEnabled === true };
+  return echoIfFits({ edits: done, num_keys: p.numKeys, keys: k, expression_active: p.expressionEnabled === true });
 };
 
 // Copy one property's animation (every key setting, or the static value, and any expression) to other layers.

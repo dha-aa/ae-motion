@@ -122,7 +122,20 @@ t("set_keyframes on a mask shape takes shape specs and get_keyframes returns the
   assert.deepEqual(k[0].v.vertices, [[150, 50], [250, 50], [250, 150], [150, 150]]);
   near(k[1].v.vertices[0][0], 200 - 150 * Math.SQRT1_2, "ellipse defaults to the layer center"); // layer is 400 x 200
   assert.deepEqual(k[2].v.vertices, [[0, 0], [50, 0], [25, 40]]);
-  assert.deepEqual(k[2].v.in_tangents, [[0, 0], [0, 0], [0, 0]]);
+  // straight sides and a closed path are what a spec assumes, so they are left out (under half the size per key)
+  assert.deepEqual(Object.keys(k[0].v), ["type", "vertices"], "a rect: no zero tangents, no closed: true");
+  assert.deepEqual(Object.keys(k[2].v), ["type", "vertices"]);
+  assert.equal(k[1].v.in_tangents.length, 4, "an ellipse keeps its tangents");
+  assert.equal(k[1].v.out_tangents.length, 4);
+});
+
+t("an open path says closed: false, and writes back open", () => {
+  const w = makeWorld();
+  ok(w.call("add_mask", { layer_id: 10, shape: { type: "path", vertices: [[0, 0], [50, 0], [25, 40]], closed: false } }));
+  const v = ok(w.call("get_keyframes", { layer_id: 10, path: SHAPE_PATH })).value;
+  assert.equal(v.closed, false); assert.ok(!("in_tangents" in v));
+  ok(w.call("set_property", { layer_id: 10, path: SHAPE_PATH, value: v }));
+  assert.deepEqual(ok(w.call("get_keyframes", { layer_id: 10, path: SHAPE_PATH })).value, v);
 });
 
 t("a get_keyframes path value can be written back unchanged", () => {

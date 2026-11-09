@@ -65,7 +65,9 @@ async function settled(found: () => string | null | undefined, timeoutMs: number
   while (Date.now() < end) {
     const f = found();
     if (f) {
-      const size = fs.statSync(f).size;
+      // the file can go between the look and the stat (aerender renames its temp file): look again next round
+      let size = -1;
+      try { size = fs.statSync(f).size; } catch { /* gone again */ }
       if (size > 0 && size === last) return f;
       last = size;
     }
@@ -226,6 +228,7 @@ export class RenderManager {
     const j = this.get(id);
     if (j.state === "running") {
       j.state = "canceled";
+      j.finishedAt = Date.now(); // aerender may have exited already (encoding / checking): no exit event will set it
       j.child.kill();
     }
     return { job_id: j.id, state: j.state };
@@ -269,7 +272,8 @@ export class RenderManager {
     job.child.stdout?.on("data", onData);
     job.child.stderr?.on("data", onData);
     job.child.on("error", (e) => {
-      if (job.state === "running") job.state = "failed";
+      // aerender could not be started: there is no exit event to end the job
+      if (job.state === "running") { job.state = "failed"; job.finishedAt = Date.now(); }
       job.log.push(String(e));
     });
     job.child.on("exit", (code, signal) => {
@@ -278,7 +282,13 @@ export class RenderManager {
       if (signal) job.log.push(`aerender was terminated by ${signal}`);
       // a GPU failure leaves black frames behind an exit code of 0
       if (code !== 0 || job.gpuFailure) { job.state = "failed"; job.finishedAt = Date.now(); return; }
-      void this.finish(job);
+      // finish reads and removes files: whatever it throws fails the job. Unhandled, it left the job "running" for
+      // ever and, as an unhandled rejection, stopped the server.
+      this.finish(job).catch((e: unknown) => {
+        if (job.state !== "running") return;
+        job.errors.push(`Finishing the render failed: ${e instanceof Error ? e.message : String(e)}`);
+        job.phase = undefined; job.state = "failed"; job.finishedAt = Date.now();
+      });
     });
   }
 
@@ -293,13 +303,17 @@ export class RenderManager {
     const fail = (e: string) => { job.errors.push(e); job.state = "failed"; job.finishedAt = Date.now(); };
     // aerender can exit a moment before its file is on disk (seen with a delivery master): wait for it to settle
     let file = await settled(() => (fs.existsSync(job.renderPath) ? job.renderPath : findWrittenOutput(job.renderPath, job.startedAt)), 30_000) ?? job.renderPath;
+    if (job.state !== "running") return;
+    // the exit event can come before aerender's last output is read: a GPU failure logged in those lines still fails
+    if (job.gpuFailure) { job.state = "failed"; job.finishedAt = Date.now(); return; }
     const ff = this.ffmpeg();
     if (job.deliverTo && ff) {
       job.phase = "encoding";
       const d = await deliver(ff, file, job.deliverTo, job.lufs);
       if (job.state !== "running") return;
       if (!d.ok) return fail(`Encoding the delivery MP4 failed: ${d.message ?? "ffmpeg error"} (the master is kept at ${file})`);
-      fs.rmSync(file, { force: true });
+      // the delivery is made: a master that cannot be removed (in use, not a plain file) stays, the job still succeeds
+      try { fs.rmSync(file, { force: true }); } catch { /* kept */ }
       file = job.deliverTo;
     }
     if (job.verify) {

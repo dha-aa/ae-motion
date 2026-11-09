@@ -378,6 +378,8 @@ interface Args {
   get_keyframes: {
     layer_id: number;
     path: string | (string | number)[];
+    limit?: number;
+    offset?: number;
   };
   get_layer: {
     layer_id?: number;

@@ -110,15 +110,40 @@ C.list_properties = function (a: Args["list_properties"]) {
   return { properties: walk(root, 1, maxDepth, a.time || 0, a.all === true || (a.group_path && WALK_SKIP[root.matchName] === 1)) };
 };
 
+// The length of v as the server will send it (compact JSON, numbers at 6 significant digits), a little over.
+function jsonSize(v: any): number {
+  var n = 2, i, k;
+  if (v === null || v === undefined) return 4;
+  if (typeof v === "number") return String(v % 1 === 0 ? v : Number(v.toPrecision(6))).length;
+  if (typeof v === "string") return v.length + 2 + (v.split(/["\\\n\r\t]/).length - 1); // each of these takes two characters
+  if (typeof v === "boolean") return v ? 4 : 5;
+  if (v instanceof Array) { for (i = 0; i < v.length; i++) n += jsonSize(v[i]) + 1; return n; }
+  for (k in v) { if (v.hasOwnProperty(k) && v[k] !== undefined) n += k.length + 4 + jsonSize(v[k]); }
+  return n;
+}
+
+// What one get_keyframes reply holds of keys (and its expression), in characters: under the server's 25,000 limit.
+var KEYS_ROOM = 24000;
+
+// Every key in one reply when they fit, which is the usual case; otherwise as many as fit, with next_offset for the
+// rest. Sending them all whatever their size passed the response limit (a sampled 3D camera path from about 150
+// keys) and nothing could read them; a fixed page size made short keys take several calls for no reason.
 C.get_keyframes = function (a: Args["get_keyframes"]) {
   need(a, ["layer_id", "path"]);
-  var l = getLayer(a.layer_id), p = resolvePath(l, a.path), out: KeyInfo[] = [], i, n, v, res: Obj;
+  var l = getLayer(a.layer_id), p = resolvePath(l, a.path), out: KeyInfo[] = [], i, n, v, res: Obj, lim = a.limit || 1e9, off = a.offset || 0, ex: string | null, room, k;
   if (p.propertyType !== PropertyType.PROPERTY) fail("BAD_ARGS", "path must point to a property, not a group", "Use list_properties");
   n = p.numKeys;
-  for (i = 1; i <= n && i <= 500; i++) out.push(keyInfo(p, i));
+  ex = (p.canSetExpression && p.expressionEnabled) ? p.expression : null;
+  room = KEYS_ROOM - (ex ? Math.round(ex.length * 1.1) : 0);
+  for (i = off + 1; i <= n && out.length < lim; i++) {
+    k = keyInfo(p, i); room -= jsonSize(k) + 1;
+    if (room < 0 && out.length) break; // always at least one key, so paging moves on
+    out.push(k);
+  }
   res = { num_keys: n };
+  if (off + out.length < n) res.next_offset = off + out.length;
   if (n === 0) { v = safeVal(p, 0, true); if (v !== undefined) res.value = v; } // unanimated: its value, before any expression
-  res.keys = out; res.expression = (p.canSetExpression && p.expressionEnabled) ? p.expression : null;
+  res.keys = out; res.expression = ex;
   return res;
 };
 

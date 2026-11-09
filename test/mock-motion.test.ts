@@ -414,6 +414,9 @@ t("review_motion scene checks: a layer hidden behind a closer opaque one, off sc
   assert.deepEqual(of("covered"), [low.id]);
   assert.ok(![...of("hidden"), ...of("covered"), ...of("off_screen")].includes(front.id), "the text in front of the paper is fine");
   assert.equal(ok(w.call("review_motion", { comp_id: 1, all: true, scene: false })).issues.filter((i) => ["hidden", "covered", "off_screen"].includes(i.type)).length, 0, "scene: false skips them");
+  // what a layer hides is worked out once per layer, but its opacity is still read at each time asked about
+  P(paper, "ADBE Opacity").setValue(40);
+  assert.deepEqual(ok(w.call("review_motion", { comp_id: 1, all: true })).issues.filter((i) => i.type === "hidden"), [], "a see-through paper hides nothing");
 });
 
 t("set_keyframes merge keeps keys at other times (and their springs); both modes say how many old keys they replaced", () => {

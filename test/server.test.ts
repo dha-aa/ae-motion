@@ -59,7 +59,7 @@ await new Promise<void>((r) => bridge.listen(0, "127.0.0.1", () => r()));
 fs.writeFileSync(path.join(DIR, "bridge.json"), JSON.stringify({ port: (bridge.address() as AddressInfo).port, token: TOKEN }));
 
 const fake = path.join(DIR, "aerender");
-fs.writeFileSync(fake, `#!/bin/bash\necho $$ > ${DIR}/aerender.pid\necho "$@" > ${DIR}/aerender.args\nif [ "$FAKE_MODE" = "write" ] || [ "$FAKE_MODE" = "gpu" ]; then\n  while [ "$1" != "-output" ]; do shift; done\n  out="$2"\n  if [ "$FAKE_MODE" = "gpu" ]; then echo "PROGRESS:  0:00:29:00 (870): 0 Seconds"; echo "PROGRESS:  After Effects has encountered a failure (code: 19969) related to GPU-enabled effects on this frame. This is likely because your GPU is out of memory."; fi\n  echo "PROGRESS: finished"; printf data > "\${out%.*}.mp4"; exit 0\nfi\nif [ "$FAKE_MODE" = "progress" ]; then\n  sleep 0.6; for f in 1 2 3 4; do echo "PROGRESS:  0:00:00:0$f ($f): 0 Seconds"; sleep 0.25; done\nfi\nexec sleep 300\n`, { mode: 0o755 });
+fs.writeFileSync(fake, `#!/bin/bash\necho $$ > ${DIR}/aerender.pid\necho "$@" > ${DIR}/aerender.args\nif [ "$FAKE_MODE" = "dir" ]; then\n  while [ "$1" != "-output" ]; do shift; done\n  mkdir -p "$2"; printf data > "$2/part"; echo "PROGRESS: finished"; exit 0\nfi\nif [ "$FAKE_MODE" = "write" ] || [ "$FAKE_MODE" = "gpu" ]; then\n  while [ "$1" != "-output" ]; do shift; done\n  out="$2"\n  if [ "$FAKE_MODE" = "gpu" ]; then echo "PROGRESS:  0:00:29:00 (870): 0 Seconds"; echo "PROGRESS:  After Effects has encountered a failure (code: 19969) related to GPU-enabled effects on this frame. This is likely because your GPU is out of memory."; fi\n  echo "PROGRESS: finished"; printf data > "\${out%.*}.mp4"; exit 0\nfi\nif [ "$FAKE_MODE" = "progress" ]; then\n  sleep 0.6; for f in 1 2 3 4; do echo "PROGRESS:  0:00:00:0$f ($f): 0 Seconds"; sleep 0.25; done\nfi\nexec sleep 300\n`, { mode: 0o755 });
 
 // a fake ffmpeg: a probe sees video and audio, the check finds black 2-4 s, deliver writes its output (last argument)
 const fakeFf = path.join(DIR, "ffmpeg");
@@ -277,6 +277,26 @@ const results: [name: string, pass: boolean, detail?: string][] = [];
   s.p.kill();
 }
 
+// Phase C6: a master that cannot be removed after delivery (here a directory) must not stop the server or leave the
+// job running: the delivery was made, so the job is done.
+{
+  prepareOk = true;
+  const s = startServer({ FAKE_MODE: "dir" });
+  await s.init();
+  const out = path.join(DIR, "kept.mp4");
+  const job = JSON.parse(textOf(await s.call("tools/call", { name: "render_start", arguments: { comp_id: 1, output_path: out, deliver: true } }))).job_id;
+  let st: Json = {}, died = false;
+  void s.exited.then(() => { died = true; });
+  for (let i = 0; i < 80 && !died && st.state !== "done" && st.state !== "failed"; i++) {
+    await sleep(100);
+    st = await Promise.race([s.call("tools/call", { name: "render_status", arguments: { job_id: job } }).then((r) => JSON.parse(textOf(r))), s.exited.then(() => ({}))]);
+  }
+  results.push(["C6: a master that cannot be removed leaves the server up and the delivery done", !died && st.state === "done" && fs.existsSync(out), JSON.stringify({ died, state: st.state, errors: st.errors })]);
+  s.p.stdin.end();
+  await Promise.race([s.exited, sleep(3000)]);
+  s.p.kill();
+}
+
 // Phase D: preview_frame must wait for a PNG that is written shortly after the command returns.
 {
   prepareOk = true;
@@ -347,6 +367,9 @@ const results: [name: string, pass: boolean, detail?: string][] = [];
   delete received.add_layer;
   const nested = await callTool("add_layer", { comp_id: 1, kind: "shape", options: { shape: { type: "rect", fil: [1, 0, 0] } } });
   results.push(["F: unknown keys in nested objects are rejected too", nested.result?.isError === true && text(nested).includes("fil") && !received.add_layer]);
+  // add_layer's options object itself (it was a plain z.object: a typo there was dropped and the call "succeeded")
+  const optTypo = await callTool("add_layer", { comp_id: 1, kind: "text", options: { text: "Hi", colour: [1, 0, 0] } });
+  results.push(["F: an unknown key in add_layer options is rejected, not dropped", optTypo.result?.isError === true && text(optTypo).includes("colour") && !received.add_layer]);
 
   await callTool("add_layer", { comp_id: 1, kind: "shape", options: { shape: { fill: [1, 0, 0] } } });
   results.push(["F: schema defaults still apply under strict validation", received.add_layer?.options?.shape?.type === "rect"]);
