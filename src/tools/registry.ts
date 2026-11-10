@@ -11,7 +11,8 @@
  *   like `colour` fails loudly rather than "succeeding" without effect. Every object schema is a z.strictObject
  *   (test/static-checks.ts fails on a plain z.object in src/);
  * - a title and the four MCP annotations (see {@link ToolOptions});
- * - compact JSON output with numbers rounded to 6 significant digits, capped at {@link CHARACTER_LIMIT} characters;
+ * - compact JSON output with numbers rounded to 6 significant digits, capped at {@link CHARACTER_LIMIT} characters
+ *   (a read-only tool's over-long result becomes an error with a hint; a mutating tool's a short "applied" note);
  * - error handling: anything thrown becomes an MCP error result `{error: {code, message, hint}}`.
  */
 import type { McpServer, CallToolResult, ToolAnnotations } from "@modelcontextprotocol/server";
@@ -96,10 +97,21 @@ function annotationsFor(o: ToolOptions): ToolAnnotations {
   };
 }
 
-/** Replace an over-long text result with an actionable error, so one call cannot flood the model's context. */
-function capSize(result: CallToolResult, hint?: string): CallToolResult {
+/**
+ * Replace an over-long text result, so one call cannot flood the model's context: a read-only tool gets an actionable
+ * error (ask for less). A tool that changes things has already made its change, and an error would invite running it
+ * again, so it gets a short success that says the call ran and its result was left out.
+ */
+function capSize(result: CallToolResult, hint: string | undefined, readOnly: boolean): CallToolResult {
   const size = result.content.reduce((n, c) => n + (c.type === "text" ? c.text.length : 0), 0);
-  if (size <= CHARACTER_LIMIT) return result;
+  if (size <= CHARACTER_LIMIT || result.isError) return result;
+  if (!readOnly) {
+    return json({
+      applied: true,
+      note: `The call ran and its changes are made; its result (${size} characters) is over the ${CHARACTER_LIMIT} limit and was left out. Do not run it again: read what you need with the get_ / list_ tools`,
+      ...(hint ? { next_time: hint } : {}),
+    });
+  }
   return errorResult({
     code: "BAD_ARGS",
     message: `Response is ${size} characters, over the ${CHARACTER_LIMIT} limit`,
@@ -113,11 +125,25 @@ export interface BridgedSpec {
   paths: string[];
 }
 
-/** The part of the SDK's per-request context (ctx.mcpReq) tools use: the client's progress token and a way to notify it. */
+/** The part of the SDK's per-request context (ctx.mcpReq) tools use: the cancel signal, the client's progress token and a way to notify it. */
 export interface ToolExtra {
   mcpReq?: {
+    /** Aborted when the client cancels the call. */
+    signal?: AbortSignal;
     _meta?: { progressToken?: string | number };
     notify?: (n: { method: "notifications/progress"; params: { progressToken: string | number; progress: number; total?: number; message?: string } }) => Promise<void>;
+  };
+}
+
+/**
+ * Reports progress on a long call to a client that asked for it (a progress token): clients that honour it keep the
+ * call from timing out. Best effort: a client without a token, or a failed notification, changes nothing.
+ */
+export function progressTo(extra: ToolExtra | undefined, total: number): (done: number, message: string) => Promise<void> {
+  const token = extra?.mcpReq?._meta?.progressToken, notify = extra?.mcpReq?.notify;
+  return async (done, message) => {
+    if (token === undefined || !notify) return;
+    try { await notify({ method: "notifications/progress", params: { progressToken: token, progress: done, total, message } }); } catch { /* best effort */ }
   };
 }
 
@@ -155,7 +181,7 @@ export class ToolRegistry {
     const handler = async (args: Args<S>, extra?: ToolExtra): Promise<CallToolResult> => {
       let out: CallToolResult;
       try {
-        out = capSize(await run(args, extra), opts.tooLargeHint);
+        out = capSize(await run(args, extra), opts.tooLargeHint, opts.readOnly === true);
       } catch (e) {
         out = errorResult(toErrorBody(e));
       }
@@ -179,10 +205,10 @@ export class ToolRegistry {
       name,
       description,
       shape,
-      async (a) => {
+      async (a, extra) => {
         const args: Record<string, unknown> = { ...a };
         sandboxPaths(args, paths);
-        return fromBridge(await this.deps.bridge.run(name, args));
+        return fromBridge(await this.deps.bridge.run(name, args, undefined, extra?.mcpReq?.signal));
       },
       opts,
     );

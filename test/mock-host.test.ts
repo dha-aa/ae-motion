@@ -112,6 +112,8 @@ function makeWorld({ startShiftsInOut = true, inKeepsDuration = true } = {}) {
       removeUnusedFootage() { const unused = world.items.filter((i) => i instanceof FootageItem && i.usedIn.length === 0); world.items = world.items.filter((i) => !unused.includes(i)); return unused.length; },
     },
     beginUndoGroup() {}, endUndoGroup() {},
+    // 120 blurs and one glow
+    effects: [...Array.from({ length: 120 }, (_, i) => ({ displayName: "Blur " + (i + 1), matchName: "MOCK Blur " + (i + 1), category: "Blur & Sharpen" })), { displayName: "Glow", matchName: "ADBE Glo2", category: "Stylize" }],
     opened: [], open(f) { this.opened.push(f.path); return {}; },
     newProjects: 0, newProject() { this.newProjects++; return {}; },
   };
@@ -510,6 +512,16 @@ t("open_project protects unsaved work and closes without a save dialog when disc
   w.app.project.dirty = true;
   fails(w.call("open_project", { new: true }), "BAD_ARGS"); assert.equal(w.app.newProjects, 0);
   ok(w.call("open_project", { new: true, discard_unsaved: true })); assert.equal(w.app.newProjects, 1);
+});
+
+t("find_effects pages its matches: limit / offset, matched and next_offset only when there are more", () => {
+  const { call } = makeWorld();
+  const one = call("find_effects", { query: "glow" }).result;
+  if (one.effects.length !== 1 || one.effects[0].match_name !== "ADBE Glo2" || "matched" in one || "next_offset" in one) throw new Error("one match: " + JSON.stringify(one));
+  const first = call("find_effects", { query: "blur" }).result;
+  if (first.effects.length !== 50 || first.matched !== 120 || first.next_offset !== 50) throw new Error("default page: " + JSON.stringify([first.effects.length, first.matched, first.next_offset]));
+  const last = call("find_effects", { query: "blur", limit: 100, offset: 100 }).result;
+  if (last.effects.length !== 20 || last.effects[0].display_name !== "Blur 101" || last.matched !== 120 || "next_offset" in last) throw new Error("last page: " + JSON.stringify([last.effects.length, last.effects[0], last.matched, last.next_offset]));
 });
 
 for (const [name, pass, msg] of results) console.log((pass ? "PASS" : "FAIL") + "  " + name + (pass ? "" : "\n      " + msg));

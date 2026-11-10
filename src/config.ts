@@ -82,7 +82,7 @@ export function enabledToolsets(): Set<Toolset> {
   return out;
 }
 
-/** Largest tool response (text characters) returned to the client; bigger ones become an error with a hint. */
+/** Largest tool response (text characters) returned to the client; bigger ones become an error with a hint (a mutating tool: a note that the call ran). */
 export const CHARACTER_LIMIT = 25_000;
 
 /** Bridge timeouts in milliseconds. */

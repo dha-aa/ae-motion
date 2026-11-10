@@ -343,6 +343,8 @@ interface Args {
   };
   find_effects: {
     query: string;
+    limit?: number;
+    offset?: number;
   };
   find_fonts: {
     query?: string;

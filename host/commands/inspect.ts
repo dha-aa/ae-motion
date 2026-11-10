@@ -148,11 +148,15 @@ C.get_keyframes = function (a: Args["get_keyframes"]) {
 };
 
 C.find_effects = function (a: Args["find_effects"]) {
-  var qs = String(a.query || "").toLowerCase(), out = [], i, e;
-  for (i = 0; i < app.effects.length && out.length < 50; i++) {
+  var qs = String(a.query || "").toLowerCase(), out = [], lim = a.limit || 50, off = a.offset || 0, n = 0, i, e, o: Obj;
+  for (i = 0; i < app.effects.length; i++) {
     e = app.effects[i];
-    if ((e.displayName + " " + e.matchName + " " + e.category).toLowerCase().indexOf(qs) !== -1)
-      out.push({ display_name: e.displayName, match_name: e.matchName, category: e.category });
+    if ((e.displayName + " " + e.matchName + " " + e.category).toLowerCase().indexOf(qs) === -1) continue;
+    if (n++ < off || out.length >= lim) continue;
+    out.push({ display_name: e.displayName, match_name: e.matchName, category: e.category });
   }
-  return { effects: out };
+  // as get_comp: matched and next_offset only when not everything was returned
+  o = { effects: out };
+  if (n !== out.length) { o.matched = n; if (off + out.length < n) o.next_offset = off + out.length; }
+  return o;
 };

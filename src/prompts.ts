@@ -82,7 +82,7 @@ export function motionGuide(clientName: string | undefined): string {
 }
 
 export function registerPrompts(server: McpServer): void {
-  server.registerPrompt("motion-guide", { description: "Conventions and the recommended build loop for motion graphics" }, () => ({
+  server.registerPrompt("motion-guide", { title: "Motion Guide", description: "Conventions and the recommended build loop for motion graphics" }, () => ({
     messages: [{ role: "user", content: { type: "text", text: motionGuide(server.server.getClientVersion()?.name) } }],
   }));
 }

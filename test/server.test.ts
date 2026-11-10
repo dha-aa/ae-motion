@@ -24,6 +24,7 @@ let prepareOk = true;
 let prepareFps: number | undefined; // set: prepare_render reports a frame rate (and 240 frames), so the server passes a range
 const received: Record<string, Json> = {}; // command -> args of the last call the fake bridge received
 const calls: string[] = []; // every command the fake bridge received, in order
+let heldClosed = 0; // held commands (split_layer at time 99) whose request the server closed without an answer
 
 const bridge = http.createServer((req, res) => {
   let body = "";
@@ -34,6 +35,8 @@ const bridge = http.createServer((req, res) => {
     const { cmd, args } = JSON.parse(body);
     received[cmd] = args;
     calls.push(cmd);
+    // never answered: stands for a command waiting in the panel's queue, which the panel drops once its request closes
+    if (cmd === "split_layer" && args.time === 99) { res.on("close", () => { heldClosed++; }); return; }
     if (cmd === "add_layer") return res.end(JSON.stringify({ ok: true, result: { id: 42, name: args.options?.name ?? "L" } }));
     if (cmd === "delete_layer" && args.layer_id === 13) return res.end(JSON.stringify({ ok: false, error: { code: "NOT_FOUND", message: "No layer with id 13", hint: "Use get_comp" } }));
     if (cmd === "prepare_render") {
@@ -43,6 +46,7 @@ const bridge = http.createServer((req, res) => {
     }
     if (cmd === "save_project") { fs.writeFileSync(path.join(DIR, "proj.aep"), "aep v" + calls.length); return res.end(JSON.stringify({ ok: true, result: { project_path: path.join(DIR, "proj.aep") } })); }
     if (cmd === "get_selection") return res.end(JSON.stringify({ ok: false, error: { code: "AE_ERROR", message: "boom", hint: "try again" } }));
+    if (cmd === "beat_markers") return res.end(JSON.stringify({ ok: true, result: { times: "x".repeat(30000) } })); // a mutating tool over CHARACTER_LIMIT
     if (cmd === "list_properties") return res.end(JSON.stringify({ ok: true, result: { properties: "x".repeat(30000) } })); // over CHARACTER_LIMIT
     if (cmd === "preview_frame") {
       // After Effects writes the PNG after the command returns (a moment for light frames, seconds for heavy 3D ones):
@@ -445,6 +449,52 @@ const results: [name: string, pass: boolean, detail?: string][] = [];
   const [, jsxErr] = await body("batch", { steps: [{ tool: "run_jsx", args: { code: "1" } }] });
   const [, openErr] = await body("batch", { steps: [{ tool: "open_project", args: { path: path.join(DIR, "x.aep") } }] });
   results.push(["H: paths are sandboxed, forward references, run_jsx and open_project are refused", sandboxed && outsideErr && refErr && jsxErr && openErr && calls.length === 0]);
+
+  const listed = (await s.call("tools/list", {})).result as unknown as { tools: { name: string; annotations?: { idempotentHint?: boolean } }[] };
+  results.push(["H: edit_effect (removes by index) is not advertised as idempotent", listed.tools.find((x) => x.name === "edit_effect")?.annotations?.idempotentHint === false]);
+
+  // a mutating tool whose result is over the limit has already made its change: a success that says so, not an error
+  // (an error is run again); a read-only tool still gets the error (phase F)
+  const [bigDone, bigDoneErr] = await body("beat_markers", { audio_layer_id: 1 });
+  results.push(["H: an over-limit result of a mutating tool is a short success saying the call ran", !bigDoneErr && bigDone.applied === true && /Do not run it again/.test(bigDone.note ?? "") && /start\/end/.test(bigDone.next_time ?? ""), JSON.stringify(bigDone).slice(0, 300)]);
+
+  // preview_frame reports progress after each frame when the client asks for it
+  const pBefore = s.notifications.length;
+  await s.call("tools/call", { name: "preview_frame", arguments: { comp_id: 1, time: [0, 1] }, _meta: { progressToken: "pv" } });
+  results.push(["H: preview_frame sends a progress notification per frame when given a progress token", s.notifications.slice(pBefore).filter((m) => m === "notifications/progress").length === 2]);
+
+  // resources and the prompt carry titles; a failed resource read is a JSON-RPC error with the internal-error code
+  const resList = (await s.call("resources/list", {})).result as unknown as { resources: { title?: string }[] };
+  const promptList = (await s.call("prompts/list", {})).result as unknown as { prompts: { title?: string }[] };
+  const selFail = await s.call("resources/read", { uri: "ae://selection" });
+  results.push(["H: resources and the prompt have titles; a failed read is error -32603", resList.resources.every((x) => x.title) && promptList.prompts.every((x) => x.title) && selFail.error?.code === -32603, JSON.stringify([resList, promptList, selFail.error])]);
+
+  // an unknown tool in a step is a wrong name (every group is registered): the closest name, not load_tools
+  const [wrongTool] = await body("batch", { steps: [{ tool: "get_cmp", args: { comp_id: 1 } }] });
+  results.push(["H: an unknown tool in a batch step suggests the closest name", /did you mean get_comp/.test(wrongTool.problems?.[0]?.message ?? "") && !/load_tools/.test(JSON.stringify(wrongTool)), JSON.stringify(wrongTool)]);
+
+  // a file-system error inside a step (snapshots is a file, so mkdir fails with EEXIST) is AE_ERROR, as in a direct call
+  fs.writeFileSync(path.join(DIR, "snapshots"), "in the way");
+  const [fsFail, fsFailErr] = await body("batch", { steps: [{ tool: "save_project", args: { snapshot: true } }] });
+  fs.rmSync(path.join(DIR, "snapshots"));
+  results.push(["H: a Node error in a batch step is reported with one of the server's codes", fsFailErr && fsFail.error?.code === "AE_ERROR", JSON.stringify(fsFail)]);
+
+  // cancelling a call closes its request to the panel (which then drops the queued command), and a cancelled batch
+  // does not run its later steps
+  const until = async (cond: () => boolean): Promise<boolean> => { const end = Date.now() + 10000; while (Date.now() < end) { if (cond()) return true; await sleep(20); } return cond(); };
+  const cancelCall = async (id: number, name: string, args: Json): Promise<boolean> => {
+    const before = calls.length, closed = heldClosed;
+    s.p.stdin.write(JSON.stringify({ jsonrpc: "2.0", id, method: "tools/call", params: { name, arguments: args } }) + "\n");
+    if (!(await until(() => calls.length > before))) return false; // the held command reached the panel
+    s.p.stdin.write(JSON.stringify({ jsonrpc: "2.0", method: "notifications/cancelled", params: { requestId: id } }) + "\n");
+    return until(() => heldClosed > closed);
+  };
+  const directClosed = await cancelCall(9001, "split_layer", { layer_ids: [1], time: 99 });
+  results.push(["H: cancelling a call closes its request to the panel", directClosed, `closed ${heldClosed}`]);
+  calls.length = 0;
+  const batchClosed = await cancelCall(9002, "batch", { steps: [{ tool: "split_layer", args: { layer_ids: [1], time: 99 } }, { tool: "set_layer", args: { layer_id: 1, label: 3 } }] });
+  await body("get_comp", { comp_id: 1 }); // a full round trip later, the batch would have run its second step
+  results.push(["H: a cancelled batch stops before its next step", batchClosed && calls.join(",") === "split_layer,get_comp", calls.join(",")]);
 
   // a path array (import_footage paths) is sandboxed element by element, directly and inside a batch
   calls.length = 0;

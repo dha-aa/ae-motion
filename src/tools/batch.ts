@@ -19,8 +19,8 @@ import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import type { CallToolResult } from "@modelcontextprotocol/server";
 import { CHARACTER_LIMIT } from "../config.js";
-import { AeToolError, type ErrorCode } from "../errors.js";
-import { json, sandboxPaths, type ToolExtra, type ToolRegistry } from "./registry.js";
+import { AeToolError, toErrorBody, type ErrorCode } from "../errors.js";
+import { json, progressTo, sandboxPaths, suggestArg, type ToolExtra, type ToolRegistry } from "./registry.js";
 
 const MAX_STEPS = 50;
 // results: "auto" returns a step's result whole up to this many characters (ids, timing, values read back)
@@ -147,7 +147,11 @@ export function precheck(steps: Step[], r: Pick<ToolRegistry, "bridgedTools" | "
   steps.forEach(({ tool, args }, i) => {
     const step = i + 1, schema = schemaOf(r, tool), add = (message: string) => problems.push({ step, tool, message });
     if (NOT_IN_BATCH.has(tool)) return add("not allowed in batch: call it directly");
-    if (!schema) return add("unknown or unavailable tool (if its group is not loaded, call load_tools first)");
+    if (!schema) {
+      // every group is registered whatever tools/list shows, so an unknown name is a wrong name
+      const near = suggestArg(tool, [...r.bridgedTools.keys(), ...r.serverTools.keys()].filter((n) => !NOT_IN_BATCH.has(n)), []);
+      return add(`unknown tool${near ? ` (did you mean ${near}?)` : ""}`);
+    }
     const refs = refPaths(args, names);
     for (const p of refs) {
       const v = String(p.reduce<unknown>((o, k) => (o as Record<string | number, unknown>)[k], args)), n = refStep(v, names)!.n;
@@ -241,11 +245,7 @@ export function registerBatchTool(r: ToolRegistry): void {
       const out = (): unknown => (a.results === "auto" ? auto() : a.results === "all" ? results : a.results === "last" ? results.slice(-1) : undefined);
       const autoNote = (): Record<string, unknown> => (cut ? { note: `${cut} result(s) over ${AUTO_WHOLE} characters shortened to ids and names; results: "all" returns them whole` } : {});
       // progress after each step: clients that honour it keep a long batch from timing out
-      const token = extra?.mcpReq?._meta?.progressToken, notify = extra?.mcpReq?.notify;
-      const progress = async (done: number, tool: string) => {
-        if (token === undefined || !notify) return;
-        try { await notify({ method: "notifications/progress", params: { progressToken: token, progress: done, total: steps.length, message: tool } }); } catch { /* best effort */ }
-      };
+      const signal = extra?.mcpReq?.signal, progress = progressTo(extra, steps.length);
       for (let i = first - 1; i < steps.length; i++) {
         const step = i + 1, { tool, args } = steps[i];
         const bridged = r.bridgedTools.get(tool), server = r.serverTools.get(tool);
@@ -255,12 +255,14 @@ export function registerBatchTool(r: ToolRegistry): void {
           return reply({ error: { code, message: `Step ${step} (${tool}): ${message}`, hint: `${hint}. Then send the steps again with resume: {batch_id: "${batchId}", from: ${step}}` },
             steps: i, batch_id: batchId, ...(i && a.results !== "none" ? { results: out() } : {}) }, true);
         };
+        // the client cancelled the call: the steps so far stay, the rest do not run
+        if (signal?.aborted) return fail("TIMEOUT", "the batch was cancelled by the client before this step ran", i ? `Steps 1-${i} ran and are not undone` : "Nothing changed");
         let resolved: unknown;
         try {
           resolved = resolveRefs(args, results, step, names);
         } catch (e) {
-          const err = e as AeToolError;
-          return fail(err.code ?? "BAD_ARGS", err.message, err.hint ?? "Check the reference");
+          const err = toErrorBody(e);
+          return fail(e instanceof AeToolError ? err.code : "BAD_ARGS", err.message, err.hint ?? "Check the reference");
         }
         const parsed = (bridged ?? server)!.schema.safeParse(resolved);
         if (!parsed.success) return fail("BAD_ARGS", parsed.error.issues.map((x) => `${x.path.join(".") || "args"}: ${x.message}`).join("; "), "Fix the arguments");
@@ -269,13 +271,14 @@ export function registerBatchTool(r: ToolRegistry): void {
         try {
           if (bridged) {
             sandboxPaths(sent, bridged.paths);
-            res = await r.deps.bridge.run(tool, sent);
+            res = await r.deps.bridge.run(tool, sent, undefined, signal);
           } else {
             res = unwrap(await server!.run(sent));
           }
         } catch (e) {
-          const err = e as AeToolError;
-          return fail(err.code ?? "AE_ERROR", err.message ?? String(e), err.hint ?? "Fix this step and run the rest again");
+          // toErrorBody: a Node error's code (EACCES, EEXIST) is not one of ours and becomes AE_ERROR
+          const err = toErrorBody(e);
+          return fail(err.code, err.message, err.hint ?? "Fix this step and run the rest again");
         }
         if (!res.ok) return fail(res.error.code, res.error.message, res.error.hint ?? "Fix this step and run the rest again");
         results.push(res.result);

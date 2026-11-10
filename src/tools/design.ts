@@ -25,7 +25,7 @@ export function registerDesignTools(r: ToolRegistry): void {
     {
       layer_id: id("Layer"),
       anchor: Anchor.optional(),
-      point: Pt.optional(), keep_position: z.boolean().optional(), time: Time.optional(),
+      point: Pt.optional(), keep_position: z.boolean().optional(), time: Time.optional().describe("When the content is measured (default 0)"),
     },
     { idempotent: true },
   );

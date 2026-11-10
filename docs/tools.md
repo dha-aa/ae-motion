@@ -26,7 +26,7 @@
 | | `get_layer` | Transform values, a text layer's text, effects, expressions, masks, track matte, marker count, layer flags (incl. blend mode and motion blur), and bounds (content box and where it sits in the comp). `layer_ids` reads several layers in one call (`{layers: [...]}`) |
 | | `list_properties` | Walk a layer's property tree (names, match names, values, keyframe counts, expressions). A dropdown adds `value_name` (what it is set to; After Effects 26.0+), and `all` its `options`; `set_property` and effect params take those names. By default it leaves out the layer marker, empty groups, unused layer styles, 3D-only options on 2D layers, shape Material Options and X/Y/Z position while not separated, and cuts expressions over 160 characters; `all: true` (or a `group_path` into one of them) lists everything. Only children of indexed groups carry an `index` |
 | | `get_keyframes` | Read a property's keyframes: values, interpolation, temporal ease (only on bezier sides; one `{speed, influence}` when every dimension shares it, or `"easy"`, the same forms `set_keyframes` takes), expression. A property without keys gives its `value` (before any expression). Every key comes in one reply when they fit the response limit (the usual case); otherwise as many as fit, with `next_offset` to pass as `offset` for the rest. `limit` caps a page |
-| | `find_effects` | Search installed effects by name, match name or category |
+| | `find_effects` | Search installed effects by name, match name or category; `limit` (50) / `offset` page the matches (`matched`, `next_offset` when there are more) |
 | Project | `open_project` | Open a project file, refusing to drop unsaved changes unless `discard_unsaved` ; `new: true` starts an empty project instead |
 | | `save_project` | Save, or Save As to a path (needed before `render_start`); `snapshot: true` (+ `note`) keeps a numbered copy in `snapshots/` to go back to with `open_project`; `clean: true` first removes footage no comp uses (`removed_footage`) |
 | | `create_comp` | Create a composition and open it |
@@ -100,7 +100,7 @@
 
 Resources: `ae://project` (same as `get_project` with no arguments; a failed read is a resources/read error) and `ae://selection` (layers selected in the active comp). Prompt: `motion-guide` (conventions, build loop and design rules; Claude Code shows the server instructions cut at 4,096 characters, so they are kept under that and its guide leaves out what they already say: a test fails if they grow past it).
 
-Every tool has a title and the four MCP annotations: `readOnlyHint` (inspection, preview, render status), `destructiveHint` (false only for purely additive tools such as `create_comp`, `add_layer`, `add_marker`), `idempotentHint` (the `set_*` tools and deletes by id) and `openWorldHint` (only `run_jsx`). Clients can use them to skip confirmation for safe calls.
+Every tool has a title and the four MCP annotations: `readOnlyHint` (inspection, preview, render status), `destructiveHint` (false only for purely additive tools such as `create_comp`, `add_layer`, `add_marker`), `idempotentHint` (the `set_*` tools and deletes by id; not `edit_effect`, which removes by index) and `openWorldHint` (only `run_jsx`). Clients can use them to skip confirmation for safe calls.
 
 ## Input and output rules
 

@@ -53,5 +53,10 @@ export function registerInspectTools(r: ToolRegistry): void {
     { ...ro, tooLargeHint: "Pass a limit and page with offset" },
   );
 
-  r.bridged("find_effects", "Search installed effects by display name, match name or category (max 50).", { query: z.string() }, ro);
+  r.bridged(
+    "find_effects",
+    "Search installed effects by display name, match name or category. Page: limit (50) / offset; matched and next_offset when there are more.",
+    { query: z.string(), limit: z.number().int().min(1).max(200).optional(), offset: z.number().int().min(0).optional() },
+    { ...ro, tooLargeHint: "Narrow the query or lower limit" },
+  );
 }

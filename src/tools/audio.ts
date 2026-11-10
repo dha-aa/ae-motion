@@ -14,7 +14,7 @@ export function registerAudioTools(r: ToolRegistry): void {
       audio_layer_id: id("Audio layer"), bpm: z.number().positive().optional(), offset: Time.optional().describe("First bpm beat (default: in point)"),
       every: z.number().int().min(1).optional(), sensitivity: z.number().min(0).max(1).optional(), min_gap: z.number().min(0).optional().describe("Min seconds between beats (0.2)"),
       start: Time.optional(), end: Time.optional(), on: z.enum(["comp", "layer"]).optional(), replace: z.boolean().optional(),
-      keep_amplitude: z.boolean().optional(),
+      keep_amplitude: z.boolean().optional().describe("Keep the Audio Amplitude layer the detection adds (default: removed)"),
     },
     { tooLargeHint: "Limit start/end or use every" },
   );
@@ -34,7 +34,7 @@ export function registerAudioTools(r: ToolRegistry): void {
     {
       comp_id: id("Comp"), layer_ids: LayerIds.optional(), start: Time.optional(), end: Time.optional(), max: z.number().int().min(1).max(200).optional(),
       density: z.enum(["sparse", "normal", "dense"]).optional(), min_gap: z.number().min(0).optional(),
-      events: z.array(z.strictObject({ t: Time, importance: z.number().min(0).max(1), label: z.string().optional(), sound: z.string().optional() })).max(100).optional(),
+      events: z.array(z.strictObject({ t: Time, importance: z.number().min(0).max(1), label: z.string().optional(), sound: z.string().optional().describe("Kind of sound for the cue (default: the motion's own, or impact / accent)") })).max(100).optional(),
     },
     { readOnly: true, tooLargeHint: "Narrow start/end or layer_ids, or lower max" },
   );
