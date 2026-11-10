@@ -10,6 +10,7 @@ All notable changes. Versions follow [semantic versioning](https://semver.org); 
 - `review_motion` asks After Effects far less on big comps: its scene checks compare every layer with every other, and read each layer's timing, name, mask, blending and fill once instead of once per pair; each property's expression and each key's value are read once; shape groups' 48 3D-only material settings are skipped. `find_sound_cues` reads each frame of a move once instead of twice. Same findings.
 
 - `review_motion` reports a background that stops filling the frame (`uncovered`): a layer that fills it at one of its keys and at another leaves a strip bare, with nothing else behind, as when a push-in toward one side goes too far. The comp's background colour shows in the gap and nothing said so; the message names the side.
+- `review_motion` no longer reports text as crossing the title-safe margin on its last frame when it has faded out by then (a title the camera flies past grows out of the frame as it disappears).
 - `review_motion` no longer calls a slow push or drift at constant speed "linear keys" (2 s or more and small: about 10% of scale, 8% of the frame's short side, 8°). It is a normal choice, which `animate` push / drift offer as `style: "linear"`, and a warning on it taught readers to skip the warning.
 
 ### Fixed

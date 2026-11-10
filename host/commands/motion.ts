@@ -524,7 +524,8 @@ function sceneChecks(c: CompItem, issue: (o: Obj) => void): void {
     if (L.kind === "text") {
       E = outsideSafe(c, O);
       tEnd = Math.round(Math.max(0, Math.min(c.duration, L.o0) - c.frameDuration) / c.frameDuration) * c.frameDuration;
-      if (!E && tEnd > t + 1e-6) { Oe = boxOf(L, tEnd); if (Oe && (E = outsideSafe(c, Oe))) { tt = Math.round(tEnd * 1000) / 1000; E += " by the end of its time on screen"; } }
+      // (not when it has faded out by then: a title the camera flies past grows out of the frame as it disappears)
+      if (!E && tEnd > t + 1e-6 && !((safe(function () { return tp(L.l, "ADBE Opacity").valueAtTime(tEnd, false); }) as number) < 30)) { Oe = boxOf(L, tEnd); if (Oe && (E = outsideSafe(c, Oe))) { tt = Math.round(tEnd * 1000) / 1000; E += " by the end of its time on screen"; } }
       if (E) issue({ type: "outside_safe", severity: "warn", layer_id: L.id, layer: L.name, t: tt, msg: E });
       tt = Math.round(t * 1000) / 1000;
     }

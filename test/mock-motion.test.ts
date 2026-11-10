@@ -433,6 +433,10 @@ t("review_motion: text inside the safe area mid-way but carried out of it by its
   const r = ok(w.call("review_motion", { comp_id: 1, all: true }));
   const safe = r.issues.filter((i) => i.type === "outside_safe" && (i.layer_id === drift.id || (i.layer_ids || []).includes(drift.id)));
   assert.equal(safe.length, 1, JSON.stringify(r.issues)); assert.ok(/by the end/.test(safe[0].msg), safe[0].msg);
+  // a title that has faded out by then is not on screen to cross anything (a camera flying past it carries it out of frame)
+  const op = P(drift, "ADBE Opacity"); op.setValueAtTime(drift.outPoint - 0.5, 100); op.setValueAtTime(drift.outPoint, 0);
+  const again = ok(w.call("review_motion", { comp_id: 1, all: true })).issues.filter((i) => i.type === "outside_safe");
+  assert.equal(again.length, 0, JSON.stringify(again));
 });
 
 t("review_motion in a vertical comp: text in the bottom 20% is under the apps' UI; small text is judged on the short side", () => {
