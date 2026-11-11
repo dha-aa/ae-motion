@@ -512,6 +512,12 @@ t("open_project protects unsaved work and closes without a save dialog when disc
   w.app.project.dirty = true;
   fails(w.call("open_project", { new: true }), "BAD_ARGS"); assert.equal(w.app.newProjects, 0);
   ok(w.call("open_project", { new: true, discard_unsaved: true })); assert.equal(w.app.newProjects, 1);
+  // as After Effects 26.5: newProject() returns null when the open project is already blank; that is a success
+  w.app.newProject = () => null;
+  w.world.items = []; w.app.project.dirty = false;
+  ok(w.call("open_project", { new: true }));
+  w.world.items.push(new w.CompItem("left over"));
+  fails(w.call("open_project", { new: true, discard_unsaved: true }), "AE_ERROR");
 });
 
 t("find_effects pages its matches: limit / offset, matched and next_offset only when there are more", () => {

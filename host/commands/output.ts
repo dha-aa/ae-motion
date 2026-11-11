@@ -3,19 +3,23 @@
 // The server waits for the PNG afterwards: saveFrameToPng can return before the file is fully written.
 C.preview_frame = function (a: HostArgs["preview_frame"]) {
   need(a, ["comp_id", "time", "output_path"]);
-  var comp = getComp(a.comp_id), f = new File(a.output_path), rf, want, out: Obj, scene;
+  var comp = getComp(a.comp_id), f = new File(a.output_path), rf, want, raise, out: Obj, scene;
   if (typeof comp.saveFrameToPng !== "function") fail("UNSUPPORTED", "comp.saveFrameToPng is not available in this After Effects version", "Update After Effects");
   if (!f.parent.exists) f.parent.create();
   try { comp.openInViewer(); } catch (e) {}
   // saveFrameToPng renders at the comp's resolution factor, which After Effects itself lowers on heavy comps (text
-  // then looks broken once scaled up). Set it to what the preview needs instead: the coarsest factor (up to 1/4)
-  // that still renders at least max_edge px on the long side, so nothing is upscaled and fewer pixels are rendered
-  // (a 768 px preview of a 1920 px comp renders at half resolution). The factor is read when the call is made, so it
-  // can be put back right away.
+  // then looks broken once scaled up). Only then is the factor raised, to the coarsest one (up to 1/4) that still
+  // renders at least max_edge px on the long side, so nothing is upscaled. A comp at a finer factor (full resolution,
+  // the usual case) is rendered as it is and shrunk by the server. Lowering the factor to render faster was 3-8 times
+  // quicker, but setting the factor and setting it back are two undo steps (an undo group does not hold them, and
+  // undoing them by script is unsafe: After Effects can run an Undo late, after the next edit), so every previewed
+  // frame pushed two steps and the next Undo changed the resolution instead of taking back the last edit (verified in
+  // AE 26.5). The factor is read when the call is made, so it can be put back right away.
   want = a.max_edge ? Math.max(1, Math.min(4, Math.floor(Math.max(comp.width, comp.height) / a.max_edge))) : 1;
   rf = safe(function () { return comp.resolutionFactor; });
-  if (rf && (rf[0] !== want || rf[1] !== want)) comp.resolutionFactor = [want, want];
-  try { comp.saveFrameToPng(a.time, f); } finally { if (rf && (rf[0] !== want || rf[1] !== want)) comp.resolutionFactor = rf; }
+  raise = !!rf && (rf[0] > want || rf[1] > want);
+  if (raise) comp.resolutionFactor = [Math.min(rf![0], want), Math.min(rf![1], want)];
+  try { comp.saveFrameToPng(a.time, f); } finally { if (raise) comp.resolutionFactor = rf!; }
   out = { path: f.fsName, exists: f.exists };
   scene = sceneAt(comp, a.time);
   if (scene) out.scene = scene;
