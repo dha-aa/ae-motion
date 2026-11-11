@@ -263,13 +263,15 @@ function setEffectParams(e: PropertyGroup, params: { [name: string]: any }): voi
 // wrong for an element (a blurred glow, cloud or shadow gets hard rectangular edges). Verified in After Effects 26.5.
 var REPEAT_EDGE: { [effect: string]: string } = { "ADBE Gaussian Blur 2": "ADBE Gaussian Blur 2-0003" };
 
-// Turn Repeat Edge Pixels off on an effect just added to a layer smaller than the frame (text, shapes, small solids
-// and footage), unless the caller set it. True if it was turned off.
+// Turn Repeat Edge Pixels off on an effect just added to a layer smaller than the frame (text, shapes, and solids,
+// footage and precomps whose size in the comp, with their scale at the in point, is under the frame's), unless the
+// caller set it. True if it was turned off. The scale counts: a half-size solid at 200% fills the frame.
 function softEdges(l: AVLayer, fx: any, params?: { [name: string]: any }): boolean {
-  var m = REPEAT_EDGE[fx.matchName], c = l.containingComp, k, p;
+  var m = REPEAT_EDGE[fx.matchName], c = l.containingComp, k, p, s;
   if (!m) return false;
   if (params) { for (k in params) { if (params.hasOwnProperty(k) && (k === m || k === "3" || /repeat edge/i.test(k))) return false; } }
-  if (!(l instanceof TextLayer || l instanceof ShapeLayer || l.width < c.width || l.height < c.height)) return false;
+  s = (safe(function () { return tp(l, "ADBE Scale").valueAtTime(l.inPoint, false); }) as number[]) || [100, 100];
+  if (!(l instanceof TextLayer || l instanceof ShapeLayer || l.width * Math.abs(s[0]) / 100 < c.width - 1 || l.height * Math.abs(s[1]) / 100 < c.height - 1)) return false;
   p = safe(function () { return fx.property(m); });
   if (!p || !p.value) return false;
   p.setValue(0);

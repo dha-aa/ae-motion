@@ -495,7 +495,7 @@ function outsideSafe(c: CompItem, O: ScreenBox): string {
 
 function sceneChecks(c: CompItem, issue: (o: Obj) => void): void {
   var ls: SceneItem[] = [], views: { [t: number]: CamView } = {}, boxes: { [key: string]: ScreenBox | null } = {}, i, j, l, kind, t: number, L: SceneItem, O, X, front, tt, E: string, tEnd: number, Oe,
-    times: number[] | null, was: boolean, gap: ScreenBox | null, sides: string[];
+    times: number[] | null, was: boolean, gap: ScreenBox | null, sides: string[], cover: ScreenBox[];
   if (c.numLayers > 400) return;
   function boxOf(x: SceneItem, at: number): ScreenBox | null {
     var k = x.id + "@" + at;
@@ -547,8 +547,9 @@ function sceneChecks(c: CompItem, issue: (o: Obj) => void): void {
     }
   }
   // A background that stops covering the frame: a layer that fills it at one of its keys and, at another, is still
-  // in the frame but leaves a strip of it bare, with nothing else filling the frame then (a push-in or a move that
-  // went too far: the comp's background colour shows in the gap). A layer that leaves entirely is an exit, not this.
+  // in the frame but leaves a strip of it bare, with nothing else covering that strip then (a push-in or a move that
+  // went too far: the comp's background colour shows in the gap). The layers behind count together, so two scenes
+  // pushing past each other are fine. A layer that leaves entirely is an exit, not this.
   for (i = 0; i < ls.length; i++) {
     L = ls[i];
     if (L.kind === "text") continue;
@@ -562,36 +563,73 @@ function sceneChecks(c: CompItem, issue: (o: Obj) => void): void {
       else if (!gap && O.x1 > 0 && O.x0 < c.width && O.y1 > 0 && O.y0 < c.height) { gap = O; t = times[j]; }
     }
     if (!was || !gap) continue;
-    for (j = 0; j < ls.length && gap; j++) {
+    cover = [gap];
+    for (j = 0; j < ls.length; j++) {
       if (j === i || ls[j].i0 > t || ls[j].o0 <= t || !backsFrame(ls[j], t)) continue;
       X = boxOf(ls[j], t);
-      if (X && fillsFrame(X, c)) gap = null;
+      if (X && !X.three) cover.push(X);
     }
-    if (!gap) continue;
+    if (boxesCover(cover, c)) continue;
     sides = [];
     if (gap.x0 > 1) sides.push("left"); if (gap.x1 < c.width - 1) sides.push("right"); if (gap.y0 > 1) sides.push("top"); if (gap.y1 < c.height - 1) sides.push("bottom");
-    issue({ type: "uncovered", severity: "warn", layer_id: L.id, layer: L.name, t: Math.round(t * 1000) / 1000, msg: "Fills the frame, then leaves it bare on the " + sides.join(", ") + ": the comp's background shows there (move or scale it to cover)" });
+    issue({ type: "uncovered", severity: "warn", layer_id: L.id, layer: L.name, t: Math.round(t * 1000) / 1000, msg: "Fills the frame at another time but leaves it bare on the " + sides.join(", ") + ": the comp's background shows there (move or scale it to cover)" });
   }
 }
 
 function fillsFrame(O: ScreenBox, c: CompItem): boolean { return O.x0 <= 1 && O.y0 <= 1 && O.x1 >= c.width - 1 && O.y1 >= c.height - 1; }
 
+// Do the boxes together cover the frame? The frame is cut into cells at every box edge; each cell's centre must lie
+// in some box (1 px of slack, as fillsFrame).
+function boxesCover(bs: ScreenBox[], c: CompItem): boolean {
+  var xs = [0, c.width], ys = [0, c.height], i, j, k, cx, cy, hit;
+  var add = function (a: number[], v: number, max: number): void { if (v > 1 && v < max - 1) a.push(v); };
+  for (i = 0; i < bs.length; i++) { add(xs, bs[i].x0, c.width); add(xs, bs[i].x1, c.width); add(ys, bs[i].y0, c.height); add(ys, bs[i].y1, c.height); }
+  xs.sort(function (a, b) { return a - b; }); ys.sort(function (a, b) { return a - b; });
+  for (i = 0; i + 1 < xs.length; i++) for (j = 0; j + 1 < ys.length; j++) {
+    if (xs[i + 1] - xs[i] < 1 || ys[j + 1] - ys[j] < 1) continue;
+    cx = (xs[i] + xs[i + 1]) / 2; cy = (ys[j] + ys[j + 1]) / 2; hit = false;
+    for (k = 0; k < bs.length && !hit; k++) hit = bs[k].x0 <= cx + 1 && bs[k].x1 >= cx - 1 && bs[k].y0 <= cy + 1 && bs[k].y1 >= cy - 1;
+    if (!hit) return false;
+  }
+  return true;
+}
+
+// Is what an item shows opaque over its whole frame? A solid; footage without an alpha channel; a precomp holding an
+// enabled, unmasked, normally blended, fully opaque layer at least its size whose own source is opaque (two levels
+// deep). A precomp's box is always its whole frame, so one holding only a logo must not count as a background.
+function opaqueSource(src: any, depth: number): boolean {
+  var i, l: AVLayer, op;
+  if (!src) return false;
+  if (src instanceof FootageItem) return safe(function () { return src.mainSource instanceof SolidSource || src.mainSource.hasAlpha === false; }) === true;
+  if (!(src instanceof CompItem) || depth > 2) return false;
+  for (i = 1; i <= src.numLayers; i++) {
+    l = src.layer(i) as AVLayer;
+    if (!l.enabled || !l.source || l.blendingMode !== BlendingMode.NORMAL) continue;
+    if (safe(function () { return l.property("ADBE Mask Parade").numProperties; })) continue;
+    op = safe(function () { return tp(l, "ADBE Opacity").value; }) as number;
+    if (op < 99.5 || l.source.width < src.width || l.source.height < src.height) continue;
+    if (opaqueSource(l.source, depth + 1)) return true;
+  }
+  return false;
+}
+
 // Could x be what the viewer sees behind everything at t? An opaque solid or filled shape, or a precomp / footage
-// layer at full opacity with normal blending (what is inside it is not looked at).
+// layer at full opacity with normal blending whose source is opaque (opaqueSource).
 function backsFrame(x: SceneItem, t: number): boolean {
   if (opaqueAt(x, t)) return true;
   if (x.kind !== "precomp" && x.kind !== "footage") return false;
-  if (x.l.blendingMode !== BlendingMode.NORMAL) return false;
+  if (x.l.blendingMode !== BlendingMode.NORMAL || !opaqueSource(x.l.source, 0)) return false;
   return !((safe(function () { return tp(x.l, "ADBE Opacity").valueAtTime(t, false); }) as number) < 99.5);
 }
 
-// The times at which a layer's place on screen is set: its position, scale, rotation and anchor keys while it shows,
-// with its first and last frame. Null when none of them is keyed (its box never changes, so there is nothing to compare).
+// The times at which a layer's place on screen is set: the position (also separated x / y), scale, rotation and anchor
+// keys of the layer and its parents while it shows, with its first and last frame. Null when none of them is keyed
+// (its box never changes, so there is nothing to compare).
 function coverTimes(x: SceneItem, c: CompItem): number[] | null {
-  var names = ["ADBE Position", "ADBE Scale", "ADBE Rotate Z", "ADBE Anchor Point"], fd = c.frameDuration, out: number[] = [], i: number, k, p, kt,
-    t0 = Math.max(0, x.i0), t1 = Math.min(c.duration, x.o0) - fd;
-  for (i = 0; i < names.length; i++) {
-    p = safe(function () { return tp(x.l, names[i]); });
+  var names = ["ADBE Position", "ADBE Position_0", "ADBE Position_1", "ADBE Scale", "ADBE Rotate Z", "ADBE Anchor Point"], fd = c.frameDuration, out: number[] = [], i: number, k, p, kt,
+    t0 = Math.max(0, x.i0), t1 = Math.min(c.duration, x.o0) - fd, q: Layer | null;
+  for (q = x.l; q; q = q.parent) for (i = 0; i < names.length; i++) {
+    p = safe(function () { return tp(q!, names[i]); });
     if (!p || !p.numKeys) continue;
     for (k = 1; k <= p.numKeys && out.length < 40; k++) { kt = p.keyTime(k); if (kt > t0 + fd / 2 && kt < t1 - fd / 2) out.push(Math.round(kt / fd) * fd); }
   }

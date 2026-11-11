@@ -124,16 +124,22 @@ function jsonSize(v: any): number {
 
 // What one get_keyframes reply holds of keys (and its expression), in characters: under the server's 25,000 limit.
 var KEYS_ROOM = 24000;
+// The longest expression sent (on the first page only): one longer is cut, so the keys can still be read.
+var EXPR_SENT = 12000;
 
 // Every key in one reply when they fit, which is the usual case; otherwise as many as fit, with next_offset for the
 // rest. Sending them all whatever their size passed the response limit (a sampled 3D camera path from about 150
 // keys) and nothing could read them; a fixed page size made short keys take several calls for no reason.
 C.get_keyframes = function (a: Args["get_keyframes"]) {
   need(a, ["layer_id", "path"]);
-  var l = getLayer(a.layer_id), p = resolvePath(l, a.path), out: KeyInfo[] = [], i, n, v, res: Obj, lim = a.limit || 1e9, off = a.offset || 0, ex: string | null, room, k;
+  var l = getLayer(a.layer_id), p = resolvePath(l, a.path), out: KeyInfo[] = [], i, n, v, res: Obj, lim = a.limit || 1e9, off = a.offset || 0, ex: string | null, room, k, full;
   if (p.propertyType !== PropertyType.PROPERTY) fail("BAD_ARGS", "path must point to a property, not a group", "Use list_properties");
   n = p.numKeys;
   ex = (p.canSetExpression && p.expressionEnabled) ? p.expression : null;
+  full = ex ? ex.length : 0;
+  // the expression goes with the first page only (it is the same on every page), cut when it would crowd out the keys
+  if (off > 0) ex = null;
+  else if (ex && ex.length > EXPR_SENT) ex = ex.substring(0, EXPR_SENT);
   room = KEYS_ROOM - (ex ? Math.round(ex.length * 1.1) : 0);
   for (i = off + 1; i <= n && out.length < lim; i++) {
     k = keyInfo(p, i); room -= jsonSize(k) + 1;
@@ -143,7 +149,9 @@ C.get_keyframes = function (a: Args["get_keyframes"]) {
   res = { num_keys: n };
   if (off + out.length < n) res.next_offset = off + out.length;
   if (n === 0) { v = safeVal(p, 0, true); if (v !== undefined) res.value = v; } // unanimated: its value, before any expression
-  res.keys = out; res.expression = ex;
+  res.keys = out;
+  if (off === 0) res.expression = ex;
+  if (ex && full > ex.length) res.expression_cut = full; // its full length (list_properties all: true shows it whole)
   return res;
 };
 

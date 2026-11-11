@@ -212,6 +212,22 @@ t("get_keyframes pages by size when the keys do not fit: every page under the li
   assert.deepEqual(seen, Array.from({ length: 900 }, (_, i) => i + 1));
 });
 
+t("get_keyframes sends a huge expression once and cut, so the keys can still be read", () => {
+  const w = makeWorld(), l = w.layer("A"), op = l.property("ADBE Transform Group").property("ADBE Opacity");
+  ok(w.call("set_keyframes", { layer_id: l.id, path: "opacity", keys: Array.from({ length: 400 }, (_, i) => ({ t: i / 30, v: i % 100, ease_in: { speed: 0, influence: 40 } })) }));
+  op.expression = "// " + "x".repeat(30000);
+  const first = ok(w.call("get_keyframes", { layer_id: l.id, path: "opacity" }));
+  assert.ok(wire(first) < 25000, "first page fits: " + wire(first));
+  assert.equal(first.expression.length, 12000); assert.equal(first.expression_cut, 30003);
+  assert.ok(first.keys.length > 10 && first.next_offset === first.keys.length, "keys come with it: " + first.keys.length);
+  const second = ok(w.call("get_keyframes", { layer_id: l.id, path: "opacity", offset: first.next_offset }));
+  assert.ok(!("expression" in second) && !("expression_cut" in second), "later pages leave the expression out");
+  assert.ok(second.keys.length > first.keys.length, "and have room for more keys");
+  op.expression = "wiggle(3, 15)";
+  const small = ok(w.call("get_keyframes", { layer_id: l.id, path: "opacity" }));
+  assert.equal(small.expression, "wiggle(3, 15)"); assert.ok(!("expression_cut" in small));
+});
+
 t("get_keyframes gives an unanimated property's value, before any expression", () => {
   const w = makeWorld(), l = w.layer("A"), op = l.property("ADBE Transform Group").property("ADBE Opacity");
   op.expression = "wiggle(3, 15)"; op.exprValue = 87;

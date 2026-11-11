@@ -119,7 +119,7 @@ function makeWorld() {
     layers.set(l.id, l); reindex();
     return l;
   };
-  const solid = (name, extra = {}) => add(Object.assign(new AVLayer(), { name, source: { mainSource: new Stub() } }, extra));
+  const solid = (name, extra = {}) => add(Object.assign(new AVLayer(), { name, source: Object.assign(new FootageItem(), { mainSource: new SolidSource() }) }, extra));
   const text = (name, txt, size = 80) => {
     const l = add(Object.assign(new TextLayer(), { name }));
     const doc = l.property("ADBE Text Properties").property("ADBE Text Document");
@@ -130,14 +130,17 @@ function makeWorld() {
   comp.layers = { addShape: () => add(Object.assign(new ShapeLayer(), { name: "Shape Layer" }), true) };
   const app = { project: { itemByID: (id) => (id === 1 ? comp : null), layerByID: (id) => layers.get(id) || null }, beginUndoGroup() {}, endUndoGroup() {} };
   const mesh = (name) => add(Object.assign(new ParametricMeshLayer(), { name, source: null }));
-  const ctx = { app, MarkerValue, CompItem, AVLayer, ParametricMeshLayer, TextLayer, ShapeLayer, CameraLayer, LightLayer, FolderItem: Stub, FootageItem: Stub, SolidSource: Stub, Shape, KeyframeEase,
+  // a precomp layer, below the others, whose source comp holds the given inner layers
+  const precomp = (name, inner) => add(Object.assign(new AVLayer(), { name, source: Object.assign(new CompItem(), { width: 1920, height: 1080, _layers: inner, numLayers: inner.length, layer(i) { return this._layers[i - 1]; } }) }));
+  class FootageItem {} class SolidSource {}
+  const ctx = { app, MarkerValue, CompItem, AVLayer, ParametricMeshLayer, TextLayer, ShapeLayer, CameraLayer, LightLayer, FolderItem: Stub, FootageItem, SolidSource, Shape, KeyframeEase,
     BlendingMode: { NORMAL: 5212, ADD: 5220 }, TrackMatteType: { NO_TRACK_MATTE: 5012 }, AutoOrientType: { CAMERA_OR_POINT_OF_INTEREST: 4214 },
     KeyframeInterpolationType: { LINEAR: LIN, BEZIER: BEZ, HOLD }, PropertyType: PT,
     PropertyValueType: { OneD: 1, TwoD: 2, ThreeD: 3, COLOR: 4, TwoD_SPATIAL: 5, ThreeD_SPATIAL: 6, SHAPE: 7, TEXT_DOCUMENT: 8, NO_VALUE: 9, MARKER: 10, CUSTOM_VALUE: 11 } };
   vm.createContext(ctx);
   vm.runInContext(SRC, ctx);
   const call = (cmd, args = {}) => JSON.parse(ctx.AEM.dispatch(JSON.stringify({ cmd, args })));
-  return { call, comp, solid, text, mesh, MarkerValue };
+  return { call, comp, solid, text, mesh, precomp, FootageItem, MarkerValue };
 }
 
 const results = [];
@@ -341,6 +344,54 @@ t("review_motion: a background that stops covering the frame is reported; an exi
   assert.equal(found().length, 0, "leaving the frame entirely is an exit");
 });
 
+t("review_motion uncovered: layers cover the frame together; a parent's or separated keys count", () => {
+  const full = { left: 0, top: 0, width: 1920, height: 1080 };
+  const found = (w) => ok(w.call("review_motion", { comp_id: 1, all: true })).issues.filter((i) => i.type === "uncovered");
+  const who = (w) => found(w).flatMap((i) => i.layer_ids || [i.layer_id]);
+  // a push: A slides out to the left as B slides in from the right; at 2 s each covers half the frame
+  let w = makeWorld();
+  const a = w.solid("A"), b = w.solid("B");
+  for (const l of [a, b]) { l.sourceRectAtTime = () => full; P(l, "ADBE Anchor Point").setValue([960, 540, 0]); }
+  P(a, "ADBE Position").setValueAtTime(1, [960, 540, 0]); P(a, "ADBE Position").setValueAtTime(2, [0, 540, 0]);
+  P(b, "ADBE Position").setValueAtTime(1, [2880, 540, 0]); P(b, "ADBE Position").setValueAtTime(2, [1920, 540, 0]);
+  assert.deepEqual(who(w), [], "together they cover the frame");
+  P(b, "ADBE Position").setValueAtTime(2, [2100, 540, 0]); // B leaves a strip from 960 to 1140 bare
+  assert.deepEqual(who(w), [a.id], "a strip neither covers is reported");
+  assert.match(found(w)[0].msg, /at another time but leaves it bare on the right:/);
+  // a background moved by an animated parent, and one moved with separated position keys
+  w = makeWorld();
+  const n = w.solid("Null"), bg = w.solid("Scene");
+  n.sourceRectAtTime = () => ({ left: 0, top: 0, width: 4, height: 4 }); bg.sourceRectAtTime = () => full;
+  bg.parent = n; P(bg, "ADBE Position").setValue([0, 0, 0]); P(bg, "ADBE Anchor Point").setValue([960, 540, 0]);
+  P(n, "ADBE Position").setValueAtTime(1, [960, 540, 0]); P(n, "ADBE Position").setValueAtTime(2, [100, 540, 0]);
+  assert.deepEqual(who(w), [bg.id], "the parent's keys move it");
+  w = makeWorld();
+  const sep = w.solid("Separated");
+  sep.sourceRectAtTime = () => full; P(sep, "ADBE Anchor Point").setValue([960, 540, 0]);
+  P(sep, "ADBE Position").dimensionsSeparated = true; P(sep, "ADBE Position_1").setValue(540);
+  P(sep, "ADBE Position_0").setValueAtTime(1, 960); P(sep, "ADBE Position_0").setValueAtTime(2, 100);
+  assert.deepEqual(who(w), [sep.id], "separated x keys move it");
+});
+
+t("review_motion uncovered: a precomp counts as a background only when what it holds is opaque", () => {
+  const full = { left: 0, top: 0, width: 1920, height: 1080 };
+  const w = makeWorld();
+  const found = () => ok(w.call("review_motion", { comp_id: 1, all: true })).issues.filter((i) => i.type === "uncovered");
+  const bg = w.solid("Scene");
+  bg.sourceRectAtTime = () => full; P(bg, "ADBE Anchor Point").setValue([960, 540, 0]);
+  P(bg, "ADBE Position").setValueAtTime(1, [960, 540, 0]); P(bg, "ADBE Position").setValueAtTime(2, [100, 540, 0]);
+  assert.equal(found().length, 1, "control: the gap is reported");
+  // a comp-sized precomp behind it holding only a small logo (footage with alpha) does not fill the gap
+  const inner = (w2, h2, src) => ({ enabled: true, source: Object.assign(src, { width: w2, height: h2 }), blendingMode: 5212,
+    property: (k) => (k === "ADBE Mask Parade" ? { numProperties: 0 } : { property: () => ({ value: 100, valueAtTime: () => 100 }) }) });
+  const pc = w.precomp("Logo card", [inner(300, 200, Object.assign(new w.FootageItem(), { mainSource: { hasAlpha: true } }))]);
+  pc.sourceRectAtTime = () => full; P(pc, "ADBE Anchor Point").setValue([960, 540, 0]);
+  assert.equal(found().length, 1, "a precomp holding only a logo is not a background");
+  // one holding a full-size opaque plate is
+  pc.source._layers.push(inner(1920, 1080, Object.assign(new w.FootageItem(), { mainSource: { hasAlpha: false } }))); pc.source.numLayers = 2;
+  assert.equal(found().length, 0, "a precomp holding a full-size opaque plate fills the gap");
+});
+
 t("review_motion: a slow push at constant speed is not flagged as linear keys; a fast linear move still is", () => {
   const w = makeWorld(), a = w.solid("Shot"), b = w.solid("Card");
   P(a, "ADBE Scale").setValueAtTime(0, [100, 100, 100]); P(a, "ADBE Scale").setValueAtTime(5, [107, 107, 107]);
@@ -362,6 +413,11 @@ t("apply_effect: a Gaussian Blur on an element gets soft edges (Repeat Edge Pixe
   ok(w.call("apply_effect", { layer_id: title.id, match_name: "ADBE Gaussian Blur 2" })); assert.equal(edge(title), 0, "text is an element");
   const rk = ok(w.call("apply_effect", { layer_id: kept.id, match_name: "ADBE Gaussian Blur 2", params: { "ADBE Gaussian Blur 2-0003": 1 } }));
   assert.equal(edge(kept), 1, "the caller's own setting wins"); assert.ok(!("repeat_edge_pixels" in rk));
+  // the size in the comp counts, with the layer's scale: a half-size plate at 200% fills the frame, a full one at 40% does not
+  const big = w.solid("Half plate", { width: 960, height: 540 }), small = w.solid("Card plate", { width: 1920, height: 1080 });
+  P(big, "ADBE Scale").setValue([200, 200, 100]); P(small, "ADBE Scale").setValue([40, 40, 100]);
+  ok(w.call("apply_effect", { layer_id: big.id, match_name: "ADBE Gaussian Blur 2" })); assert.equal(edge(big), 1, "scaled up to fill the frame");
+  ok(w.call("apply_effect", { layer_id: small.id, match_name: "ADBE Gaussian Blur 2" })); assert.equal(edge(small), 0, "scaled down to an element");
 });
 
 t("review_motion: warns about a light-adding blend over nothing, and only then", () => {
