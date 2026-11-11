@@ -7,6 +7,7 @@
  * Wire protocol (see docs/architecture.md): POST http://127.0.0.1:<port>/cmd with header `x-ae-token` and body
  * `{cmd, args}`; the reply is a {@link BridgeResult}. Port and token come from the bridge file the panel writes.
  */
+import { AsyncLocalStorage } from "node:async_hooks";
 import fs from "node:fs";
 import { bridgeFile, TIMEOUTS } from "./config.js";
 import type { ToolErrorBody } from "./errors.js";
@@ -18,6 +19,13 @@ export interface Bridge {
   /** signal: the client cancelled the call. The request is closed, so a panel that drops closed requests never starts a queued command. */
   run(command: string, args: Record<string, unknown>, timeoutMs?: number, signal?: AbortSignal): Promise<BridgeResult>;
 }
+
+/**
+ * The cancel signal of the tool call being handled (ToolRegistry.tool sets it), so every bridge call made while
+ * handling it can be cancelled, including the ones server-side tools make themselves (get_project, run_jsx,
+ * save_project, render_start's prepare_render), without passing the signal through each of them.
+ */
+export const callSignal = new AsyncLocalStorage<AbortSignal | undefined>();
 
 const fail = (code: ToolErrorBody["code"], message: string, hint?: string): BridgeResult => ({ ok: false, error: { code, message, hint } });
 
@@ -70,7 +78,7 @@ export class HttpBridge implements Bridge {
   private readonly inflight = new Map<number, { cmd: string; since: number }>();
   private seq = 0;
 
-  async run(command: string, args: Record<string, unknown>, timeoutMs: number = TIMEOUTS.command, signal?: AbortSignal): Promise<BridgeResult> {
+  async run(command: string, args: Record<string, unknown>, timeoutMs: number = TIMEOUTS.command, signal: AbortSignal | undefined = callSignal.getStore()): Promise<BridgeResult> {
     if (signal?.aborted) return cancelled(command, false);
     let info: BridgeInfo;
     try {

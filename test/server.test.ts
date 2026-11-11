@@ -37,6 +37,9 @@ const bridge = http.createServer((req, res) => {
     calls.push(cmd);
     // never answered: stands for a command waiting in the panel's queue, which the panel drops once its request closes
     if (cmd === "split_layer" && args.time === 99) { res.on("close", () => { heldClosed++; }); return; }
+    if (cmd === "get_project" && args.name === "HOLD") { res.on("close", () => { heldClosed++; }); return; } // a server-side tool
+    if (cmd === "run_jsx") return res.end(JSON.stringify({ ok: true, result: { result: "x".repeat(30000) } })); // a read over CHARACTER_LIMIT
+    if (cmd === "get_text" && args.layer_id === 777) return res.end(JSON.stringify({ ok: false, error: { code: "NOT_FOUND", message: "No text: " + "y".repeat(30000), hint: "Use get_comp" } }));
     if (cmd === "add_layer") return res.end(JSON.stringify({ ok: true, result: { id: 42, name: args.options?.name ?? "L" } }));
     if (cmd === "delete_layer" && args.layer_id === 13) return res.end(JSON.stringify({ ok: false, error: { code: "NOT_FOUND", message: "No layer with id 13", hint: "Use get_comp" } }));
     if (cmd === "prepare_render") {
@@ -469,6 +472,13 @@ const results: [name: string, pass: boolean, detail?: string][] = [];
   const selFail = await s.call("resources/read", { uri: "ae://selection" });
   results.push(["H: resources and the prompt have titles; a failed read is error -32603", resList.resources.every((x) => x.title) && promptList.prompts.every((x) => x.title) && selFail.error?.code === -32603, JSON.stringify([resList, promptList, selFail.error])]);
 
+  // an over-long error keeps its code, hint and the start of its message; a failed batch keeps its batch_id
+  const [longErr, longErrIs] = await body("get_text", { layer_id: 777 });
+  results.push(["H: an over-long error reply is cut, keeping its code, hint and the start of its message",
+    longErrIs && longErr.error?.code === "NOT_FOUND" && longErr.error?.hint === "Use get_comp" && /^No text: y+\.\.\. \(error reply cut/.test(longErr.error?.message ?? "") && JSON.stringify(longErr).length < 3000, JSON.stringify(longErr).slice(0, 200)]);
+  const [longBatch, longBatchIs] = await body("batch", { steps: [{ tool: "add_layer", args: { comp_id: 1, kind: "null" } }, { tool: "get_text", args: { layer_id: 777 } }] });
+  results.push(["H: a failed batch whose error is over-long keeps batch_id (so it can resume)", longBatchIs && longBatch.error?.code === "NOT_FOUND" && typeof longBatch.batch_id === "string" && JSON.stringify(longBatch).length < 3000, JSON.stringify(longBatch).slice(0, 200)]);
+
   // an unknown tool in a step is a wrong name (every group is registered): the closest name, not load_tools
   const [wrongTool] = await body("batch", { steps: [{ tool: "get_cmp", args: { comp_id: 1 } }] });
   results.push(["H: an unknown tool in a batch step suggests the closest name", /did you mean get_comp/.test(wrongTool.problems?.[0]?.message ?? "") && !/load_tools/.test(JSON.stringify(wrongTool)), JSON.stringify(wrongTool)]);
@@ -489,6 +499,8 @@ const results: [name: string, pass: boolean, detail?: string][] = [];
     s.p.stdin.write(JSON.stringify({ jsonrpc: "2.0", method: "notifications/cancelled", params: { requestId: id } }) + "\n");
     return until(() => heldClosed > closed);
   };
+  const serverToolClosed = await cancelCall(9003, "get_project", { name: "HOLD" });
+  results.push(["H: cancelling a server-side tool (get_project) closes its request to the panel too", serverToolClosed, `closed ${heldClosed}`]);
   const directClosed = await cancelCall(9001, "split_layer", { layer_ids: [1], time: 99 });
   results.push(["H: cancelling a call closes its request to the panel", directClosed, `closed ${heldClosed}`]);
   calls.length = 0;
@@ -742,6 +754,16 @@ const results: [name: string, pass: boolean, detail?: string][] = [];
   results.push(["G: an unreachable update server is reported, not thrown", failed.result?.isError !== true && fbody.latest === null && typeof fbody.error === "string"]);
   down.p.stdin.end(); await Promise.race([down.exited, sleep(3000)]); down.p.kill();
   tagServer.close();
+}
+
+// Phase J: run_jsx is mostly used to read, so an over-long result is an error (ask for less), not "applied"
+{
+  const s = startServer({ AE_MCP_ALLOW_JSX: "1" });
+  await s.init();
+  const r = await s.call("tools/call", { name: "run_jsx", arguments: { code: "1" } });
+  const b = JSON.parse(textOf(r) || "{}");
+  results.push(["J: an over-long run_jsx result is a BAD_ARGS error, not the applied note", r.result?.isError === true && b.error?.code === "BAD_ARGS" && b.applied === undefined, JSON.stringify(b).slice(0, 200)]);
+  s.p.stdin.end(); await Promise.race([s.exited, sleep(3000)]); s.p.kill();
 }
 
 for (const [name, ok, detail] of results) console.log((ok ? "PASS" : "FAIL") + "  " + name + (ok || !detail ? "" : "\n      " + detail));

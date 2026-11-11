@@ -17,7 +17,7 @@
  */
 import type { McpServer, CallToolResult, ToolAnnotations } from "@modelcontextprotocol/server";
 import { z } from "zod";
-import type { Bridge, BridgeResult } from "../bridge.js";
+import { callSignal, type Bridge, type BridgeResult } from "../bridge.js";
 import { CHARACTER_LIMIT } from "../config.js";
 import { toErrorBody, type ToolErrorBody } from "../errors.js";
 import type { RenderManager } from "../render/manager.js";
@@ -97,15 +97,22 @@ function annotationsFor(o: ToolOptions): ToolAnnotations {
   };
 }
 
+/** How much of an over-long error's message is kept. */
+const ERROR_MESSAGE_KEPT = 2000;
+
 /**
- * Replace an over-long text result, so one call cannot flood the model's context: a read-only tool gets an actionable
- * error (ask for less). A tool that changes things has already made its change, and an error would invite running it
- * again, so it gets a short success that says the call ran and its result was left out.
+ * Replace an over-long text result, so one call cannot flood the model's context:
+ * - an error keeps its code and hint and the start of its message, and its other small fields (a batch's batch_id
+ *   and steps, so it can still be resumed);
+ * - a read-only tool, or run_jsx (`asksForData`: mostly used to read), gets an actionable error (ask for less);
+ * - a tool that changes things has already made its change, and an error would invite running it again, so it gets
+ *   a short success that says the call ran and its result was left out.
  */
-function capSize(result: CallToolResult, hint: string | undefined, readOnly: boolean): CallToolResult {
+function capSize(result: CallToolResult, hint: string | undefined, asksForData: boolean): CallToolResult {
   const size = result.content.reduce((n, c) => n + (c.type === "text" ? c.text.length : 0), 0);
-  if (size <= CHARACTER_LIMIT || result.isError) return result;
-  if (!readOnly) {
+  if (size <= CHARACTER_LIMIT) return result;
+  if (result.isError) return capError(result, size);
+  if (!asksForData) {
     return json({
       applied: true,
       note: `The call ran and its changes are made; its result (${size} characters) is over the ${CHARACTER_LIMIT} limit and was left out. Do not run it again: read what you need with the get_ / list_ tools`,
@@ -117,6 +124,25 @@ function capSize(result: CallToolResult, hint: string | undefined, readOnly: boo
     message: `Response is ${size} characters, over the ${CHARACTER_LIMIT} limit`,
     hint: hint ?? "Ask for less data (narrower filter, fewer items or a smaller depth)",
   });
+}
+
+/** An over-long error result, cut down to its code, hint, the start of its message and its other small fields. */
+function capError(result: CallToolResult, size: number): CallToolResult {
+  const text = result.content.map((c) => (c.type === "text" ? c.text : "")).join("");
+  let body: Record<string, unknown> = {};
+  try { body = JSON.parse(text) as Record<string, unknown>; } catch { /* plain text */ }
+  const e = (body.error ?? {}) as Partial<ToolErrorBody>;
+  const message = typeof e.message === "string" ? e.message : text;
+  const kept: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(body)) if (k !== "error" && JSON.stringify(v).length <= 500) kept[k] = v;
+  return json({
+    error: {
+      code: e.code ?? "AE_ERROR",
+      message: message.length > ERROR_MESSAGE_KEPT ? `${message.slice(0, ERROR_MESSAGE_KEPT)}... (error reply cut from ${size} characters)` : message,
+      ...(e.hint ? { hint: e.hint } : {}),
+    },
+    ...kept,
+  }, true);
 }
 
 /** What batch needs to run a bridged tool itself: its strict schema and path arguments. */
@@ -181,7 +207,8 @@ export class ToolRegistry {
     const handler = async (args: Args<S>, extra?: ToolExtra): Promise<CallToolResult> => {
       let out: CallToolResult;
       try {
-        out = capSize(await run(args, extra), opts.tooLargeHint, opts.readOnly === true);
+        // run_jsx (open world: arbitrary code) is mostly used to read: an over-long result is an error, as for read tools
+        out = capSize(await callSignal.run(extra?.mcpReq?.signal, () => run(args, extra)), opts.tooLargeHint, opts.readOnly === true || opts.openWorld === true);
       } catch (e) {
         out = errorResult(toErrorBody(e));
       }
