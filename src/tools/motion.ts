@@ -44,10 +44,10 @@ export function registerMotionTools(r: ToolRegistry): void {
 
   r.bridged(
     "review_motion",
-    "Critique a comp's animation without rendering (cheap, no image): linear easing, holds over max_hold (changes too small to see don't count as motion: fix holds with animate push / drift), a first move later than 0.3 s, layers moving in unison, entrances with no animation, moves cut off by out points, jumps, text under min_text px (default 3% of the comp's short side), share of moves on beat markers; layers hidden behind opaque ones (3D: by depth), off screen, text partly covered, text crossing the 5% title-safe margin (vertical comps: the top 10% and bottom 20% social apps cover) (scene false skips). Run after each scene and fix every warning.",
+    "Critique a comp's animation without rendering (cheap, no image): linear easing, holds over max_hold (changes too small to see don't count as motion: fix holds with animate push / drift), a first move later than 0.3 s, layers moving in unison, entrances with no animation, moves cut off by out points, jumps, text under min_text px (default 3% of the comp's short side), share of moves on beat markers; layers hidden behind opaque ones (3D: by depth), off screen, a background that stops filling the frame, text partly covered, text crossing the 5% title-safe margin (vertical comps: the top 10% and bottom 20% social apps cover) (scene false skips). Run after each scene and fix every warning.",
     {
       comp_id: id("Comp"), max_hold: z.number().positive().optional(), min_text: z.number().positive().optional(),
-      max: z.number().int().min(1).max(100).optional(), all: z.boolean().optional().describe("List info notes too (default: counted in stats.info)"), scene: z.boolean().optional(),
+      max: z.number().int().min(1).max(100).optional().describe("Issues listed (default 30; more_issues counts the rest)"), all: z.boolean().optional().describe("List info notes too (default: counted in stats.info)"), scene: z.boolean().optional(),
     },
     { readOnly: true },
   );

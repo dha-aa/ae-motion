@@ -38,7 +38,7 @@ npm test            # builds, then runs every test; no After Effects needed
    description what the schema already says (enums, ranges), and prefer one option on an existing tool over a new
    tool.
 4. **Results leave out defaults and stay short.** Return ids and what changed, not full objects. Over 25k characters
-   becomes an error with a hint, so big lists need filters or paging (`limit` / `offset` / `next_offset`).
+   becomes an error with a hint (a mutating tool: a short note that the call ran, its result left out), so big lists need filters or paging (`limit` / `offset` / `next_offset`).
 5. **Destructive behaviour must be visible in the result.** If a call replaces or removes existing data, the result
    says how much (`replaced`, `removed`, `deleted`). *Incident: `set_keyframes` silently replaced a whole animation.*
 6. **Remove features cleanly.** Taking something out means the tool, its registration, schema, tests, docs, changelog

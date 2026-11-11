@@ -66,7 +66,7 @@ export function registerProjectTools(r: ToolRegistry): void {
       fps: fps().optional(), duration: z.number().positive().optional(), bg_color: Color.optional(), pixel_aspect: z.number().positive().optional(),
       work_area: z.strictObject({ start: z.number().min(0).optional(), duration: z.number().positive().optional() }).optional(),
       motion_blur: z.boolean().optional(), shutter_angle: z.number().min(0).max(720).optional(), shutter_phase: z.number().min(-360).max(360).optional(), frame_blending: z.boolean().optional(),
-      renderer: z.string().optional(),
+      renderer: z.string().optional().describe("3D renderer name; an unknown one lists those installed"),
     },
     { idempotent: true },
   );

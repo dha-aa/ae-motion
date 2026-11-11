@@ -11,7 +11,7 @@ export function registerLayerTools(r: ToolRegistry): void {
       comp_id: id("Comp"),
       kind: z.enum(["solid", "text", "shape", "null", "adjustment", "footage", "precomp", "camera", "light", "mesh"]),
       options: z
-        .object({
+        .strictObject({
           name: z.string().optional(), color: Color.optional(), size: z.array(z.number()).length(2).optional(), duration: z.number().positive().optional(),
           text: z.string().optional(), item_id: z.number().int().optional(), center: z.array(z.number()).min(2).max(3).optional(), light_type: LightType.optional(),
           start: z.number().optional(), in: z.number().optional(), out: z.number().optional(), position: V3.optional(), three_d: z.boolean().optional(),

@@ -11,12 +11,13 @@
  *   like `colour` fails loudly rather than "succeeding" without effect. Every object schema is a z.strictObject
  *   (test/static-checks.ts fails on a plain z.object in src/);
  * - a title and the four MCP annotations (see {@link ToolOptions});
- * - compact JSON output with numbers rounded to 6 significant digits, capped at {@link CHARACTER_LIMIT} characters;
+ * - compact JSON output with numbers rounded to 6 significant digits, capped at {@link CHARACTER_LIMIT} characters
+ *   (a read-only tool's over-long result becomes an error with a hint; a mutating tool's a short "applied" note);
  * - error handling: anything thrown becomes an MCP error result `{error: {code, message, hint}}`.
  */
 import type { McpServer, CallToolResult, ToolAnnotations } from "@modelcontextprotocol/server";
 import { z } from "zod";
-import type { Bridge, BridgeResult } from "../bridge.js";
+import { callSignal, type Bridge, type BridgeResult } from "../bridge.js";
 import { CHARACTER_LIMIT } from "../config.js";
 import { toErrorBody, type ToolErrorBody } from "../errors.js";
 import type { RenderManager } from "../render/manager.js";
@@ -96,15 +97,52 @@ function annotationsFor(o: ToolOptions): ToolAnnotations {
   };
 }
 
-/** Replace an over-long text result with an actionable error, so one call cannot flood the model's context. */
-function capSize(result: CallToolResult, hint?: string): CallToolResult {
+/** How much of an over-long error's message is kept. */
+const ERROR_MESSAGE_KEPT = 2000;
+
+/**
+ * Replace an over-long text result, so one call cannot flood the model's context:
+ * - an error keeps its code and hint and the start of its message, and its other small fields (a batch's batch_id
+ *   and steps, so it can still be resumed);
+ * - a read-only tool, or run_jsx (`asksForData`: mostly used to read), gets an actionable error (ask for less);
+ * - a tool that changes things has already made its change, and an error would invite running it again, so it gets
+ *   a short success that says the call ran and its result was left out.
+ */
+function capSize(result: CallToolResult, hint: string | undefined, asksForData: boolean): CallToolResult {
   const size = result.content.reduce((n, c) => n + (c.type === "text" ? c.text.length : 0), 0);
   if (size <= CHARACTER_LIMIT) return result;
+  if (result.isError) return capError(result, size);
+  if (!asksForData) {
+    return json({
+      applied: true,
+      note: `The call ran and its changes are made; its result (${size} characters) is over the ${CHARACTER_LIMIT} limit and was left out. Do not run it again: read what you need with the get_ / list_ tools`,
+      ...(hint ? { next_time: hint } : {}),
+    });
+  }
   return errorResult({
     code: "BAD_ARGS",
     message: `Response is ${size} characters, over the ${CHARACTER_LIMIT} limit`,
     hint: hint ?? "Ask for less data (narrower filter, fewer items or a smaller depth)",
   });
+}
+
+/** An over-long error result, cut down to its code, hint, the start of its message and its other small fields. */
+function capError(result: CallToolResult, size: number): CallToolResult {
+  const text = result.content.map((c) => (c.type === "text" ? c.text : "")).join("");
+  let body: Record<string, unknown> = {};
+  try { body = JSON.parse(text) as Record<string, unknown>; } catch { /* plain text */ }
+  const e = (body.error ?? {}) as Partial<ToolErrorBody>;
+  const message = typeof e.message === "string" ? e.message : text;
+  const kept: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(body)) if (k !== "error" && JSON.stringify(v).length <= 500) kept[k] = v;
+  return json({
+    error: {
+      code: e.code ?? "AE_ERROR",
+      message: message.length > ERROR_MESSAGE_KEPT ? `${message.slice(0, ERROR_MESSAGE_KEPT)}... (error reply cut from ${size} characters)` : message,
+      ...(e.hint ? { hint: e.hint } : {}),
+    },
+    ...kept,
+  }, true);
 }
 
 /** What batch needs to run a bridged tool itself: its strict schema and path arguments. */
@@ -113,11 +151,25 @@ export interface BridgedSpec {
   paths: string[];
 }
 
-/** The part of the SDK's per-request context (ctx.mcpReq) tools use: the client's progress token and a way to notify it. */
+/** The part of the SDK's per-request context (ctx.mcpReq) tools use: the cancel signal, the client's progress token and a way to notify it. */
 export interface ToolExtra {
   mcpReq?: {
+    /** Aborted when the client cancels the call. */
+    signal?: AbortSignal;
     _meta?: { progressToken?: string | number };
     notify?: (n: { method: "notifications/progress"; params: { progressToken: string | number; progress: number; total?: number; message?: string } }) => Promise<void>;
+  };
+}
+
+/**
+ * Reports progress on a long call to a client that asked for it (a progress token): clients that honour it keep the
+ * call from timing out. Best effort: a client without a token, or a failed notification, changes nothing.
+ */
+export function progressTo(extra: ToolExtra | undefined, total: number): (done: number, message: string) => Promise<void> {
+  const token = extra?.mcpReq?._meta?.progressToken, notify = extra?.mcpReq?.notify;
+  return async (done, message) => {
+    if (token === undefined || !notify) return;
+    try { await notify({ method: "notifications/progress", params: { progressToken: token, progress: done, total, message } }); } catch { /* best effort */ }
   };
 }
 
@@ -155,7 +207,8 @@ export class ToolRegistry {
     const handler = async (args: Args<S>, extra?: ToolExtra): Promise<CallToolResult> => {
       let out: CallToolResult;
       try {
-        out = capSize(await run(args, extra), opts.tooLargeHint);
+        // run_jsx (open world: arbitrary code) is mostly used to read: an over-long result is an error, as for read tools
+        out = capSize(await callSignal.run(extra?.mcpReq?.signal, () => run(args, extra)), opts.tooLargeHint, opts.readOnly === true || opts.openWorld === true);
       } catch (e) {
         out = errorResult(toErrorBody(e));
       }
@@ -179,10 +232,10 @@ export class ToolRegistry {
       name,
       description,
       shape,
-      async (a) => {
+      async (a, extra) => {
         const args: Record<string, unknown> = { ...a };
         sandboxPaths(args, paths);
-        return fromBridge(await this.deps.bridge.run(name, args));
+        return fromBridge(await this.deps.bridge.run(name, args, undefined, extra?.mcpReq?.signal));
       },
       opts,
     );

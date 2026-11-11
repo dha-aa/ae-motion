@@ -17,7 +17,8 @@ const near = (a, b, m = "") => assert.ok(Math.abs(a - b) < 1e-4, `${m} expected 
 class FakeProp {
   constructor() { this.keys = []; }
   get numKeys() { return this.keys.length; }
-  setValueAtTime(t, v) { this.keys.push({ t, v }); this.keys.sort((a, b) => a.t - b.t); }
+  // as in After Effects, a value set at an existing key's time replaces that key
+  setValueAtTime(t, v) { const k = this.keys.find((x) => Math.abs(x.t - t) < 1e-9); if (k) k.v = v; else { this.keys.push({ t, v }); this.keys.sort((a, b) => a.t - b.t); } }
   keyTime(i) { return this.keys[i - 1].t; }
   keyValue(i) { return this.keys[i - 1].v; }
   removeKey(i) { this.keys.splice(i - 1, 1); }
@@ -111,6 +112,8 @@ function makeWorld({ startShiftsInOut = true, inKeepsDuration = true } = {}) {
       removeUnusedFootage() { const unused = world.items.filter((i) => i instanceof FootageItem && i.usedIn.length === 0); world.items = world.items.filter((i) => !unused.includes(i)); return unused.length; },
     },
     beginUndoGroup() {}, endUndoGroup() {},
+    // 120 blurs and one glow
+    effects: [...Array.from({ length: 120 }, (_, i) => ({ displayName: "Blur " + (i + 1), matchName: "MOCK Blur " + (i + 1), category: "Blur & Sharpen" })), { displayName: "Glow", matchName: "ADBE Glo2", category: "Stylize" }],
     opened: [], open(f) { this.opened.push(f.path); return {}; },
     newProjects: 0, newProject() { this.newProjects++; return {}; },
   };
@@ -435,6 +438,15 @@ t("delete_range move_markers removes markers inside the range and pulls later on
   assert.ok(marks(c).some((m) => m[0] === 8), "markers stay put without move_markers");
 });
 
+t("marker results leave out empty fields", () => {
+  const w = makeWorld(); const c = w.comp();
+  const plain = (v) => JSON.parse(JSON.stringify(v)); // results come from the vm context: compare as plain JSON
+  assert.deepEqual(plain(w.call("add_marker", { comp_id: c.id, time: 1, comment: "beat" }).result), { index: 1, time: 1, comment: "beat" });
+  assert.deepEqual(plain(w.call("add_marker", { comp_id: c.id, time: 2 }).result), { index: 2, time: 2 });
+  ok(w.call("update_marker", { comp_id: c.id, index: 2, duration: 0.5, chapter: "two", url: "https://example.com", label: 3 }));
+  assert.deepEqual(plain(w.call("list_markers", { comp_id: c.id }).result.markers), [{ index: 1, time: 1, comment: "beat" }, { index: 2, time: 2, duration: 0.5, chapter: "two", url: "https://example.com", label: 3 }]);
+});
+
 t("update_marker edits fields in place, moves with to_time, refuses collisions", () => {
   const w = makeWorld(); const c = w.comp();
   ok(w.call("add_marker", { comp_id: c.id, time: 1, comment: "a" }));
@@ -500,6 +512,22 @@ t("open_project protects unsaved work and closes without a save dialog when disc
   w.app.project.dirty = true;
   fails(w.call("open_project", { new: true }), "BAD_ARGS"); assert.equal(w.app.newProjects, 0);
   ok(w.call("open_project", { new: true, discard_unsaved: true })); assert.equal(w.app.newProjects, 1);
+  // as After Effects 26.5: newProject() returns null when the open project is already blank; that is a success
+  w.app.newProject = () => null;
+  w.world.items = []; w.app.project.dirty = false;
+  ok(w.call("open_project", { new: true }));
+  w.world.items.push(new w.CompItem("left over"));
+  fails(w.call("open_project", { new: true, discard_unsaved: true }), "AE_ERROR");
+});
+
+t("find_effects pages its matches: limit / offset, matched and next_offset only when there are more", () => {
+  const { call } = makeWorld();
+  const one = call("find_effects", { query: "glow" }).result;
+  if (one.effects.length !== 1 || one.effects[0].match_name !== "ADBE Glo2" || "matched" in one || "next_offset" in one) throw new Error("one match: " + JSON.stringify(one));
+  const first = call("find_effects", { query: "blur" }).result;
+  if (first.effects.length !== 50 || first.matched !== 120 || first.next_offset !== 50) throw new Error("default page: " + JSON.stringify([first.effects.length, first.matched, first.next_offset]));
+  const last = call("find_effects", { query: "blur", limit: 100, offset: 100 }).result;
+  if (last.effects.length !== 20 || last.effects[0].display_name !== "Blur 101" || last.matched !== 120 || "next_offset" in last) throw new Error("last page: " + JSON.stringify([last.effects.length, last.effects[0], last.matched, last.next_offset]));
 });
 
 for (const [name, pass, msg] of results) console.log((pass ? "PASS" : "FAIL") + "  " + name + (pass ? "" : "\n      " + msg));

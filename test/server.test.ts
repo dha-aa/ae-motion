@@ -24,6 +24,7 @@ let prepareOk = true;
 let prepareFps: number | undefined; // set: prepare_render reports a frame rate (and 240 frames), so the server passes a range
 const received: Record<string, Json> = {}; // command -> args of the last call the fake bridge received
 const calls: string[] = []; // every command the fake bridge received, in order
+let heldClosed = 0; // held commands (split_layer at time 99) whose request the server closed without an answer
 
 const bridge = http.createServer((req, res) => {
   let body = "";
@@ -34,6 +35,11 @@ const bridge = http.createServer((req, res) => {
     const { cmd, args } = JSON.parse(body);
     received[cmd] = args;
     calls.push(cmd);
+    // never answered: stands for a command waiting in the panel's queue, which the panel drops once its request closes
+    if (cmd === "split_layer" && args.time === 99) { res.on("close", () => { heldClosed++; }); return; }
+    if (cmd === "get_project" && args.name === "HOLD") { res.on("close", () => { heldClosed++; }); return; } // a server-side tool
+    if (cmd === "run_jsx") return res.end(JSON.stringify({ ok: true, result: { result: "x".repeat(30000) } })); // a read over CHARACTER_LIMIT
+    if (cmd === "get_text" && args.layer_id === 777) return res.end(JSON.stringify({ ok: false, error: { code: "NOT_FOUND", message: "No text: " + "y".repeat(30000), hint: "Use get_comp" } }));
     if (cmd === "add_layer") return res.end(JSON.stringify({ ok: true, result: { id: 42, name: args.options?.name ?? "L" } }));
     if (cmd === "delete_layer" && args.layer_id === 13) return res.end(JSON.stringify({ ok: false, error: { code: "NOT_FOUND", message: "No layer with id 13", hint: "Use get_comp" } }));
     if (cmd === "prepare_render") {
@@ -43,6 +49,7 @@ const bridge = http.createServer((req, res) => {
     }
     if (cmd === "save_project") { fs.writeFileSync(path.join(DIR, "proj.aep"), "aep v" + calls.length); return res.end(JSON.stringify({ ok: true, result: { project_path: path.join(DIR, "proj.aep") } })); }
     if (cmd === "get_selection") return res.end(JSON.stringify({ ok: false, error: { code: "AE_ERROR", message: "boom", hint: "try again" } }));
+    if (cmd === "beat_markers") return res.end(JSON.stringify({ ok: true, result: { times: "x".repeat(30000) } })); // a mutating tool over CHARACTER_LIMIT
     if (cmd === "list_properties") return res.end(JSON.stringify({ ok: true, result: { properties: "x".repeat(30000) } })); // over CHARACTER_LIMIT
     if (cmd === "preview_frame") {
       // After Effects writes the PNG after the command returns (a moment for light frames, seconds for heavy 3D ones):
@@ -59,7 +66,7 @@ await new Promise<void>((r) => bridge.listen(0, "127.0.0.1", () => r()));
 fs.writeFileSync(path.join(DIR, "bridge.json"), JSON.stringify({ port: (bridge.address() as AddressInfo).port, token: TOKEN }));
 
 const fake = path.join(DIR, "aerender");
-fs.writeFileSync(fake, `#!/bin/bash\necho $$ > ${DIR}/aerender.pid\necho "$@" > ${DIR}/aerender.args\nif [ "$FAKE_MODE" = "write" ] || [ "$FAKE_MODE" = "gpu" ]; then\n  while [ "$1" != "-output" ]; do shift; done\n  out="$2"\n  if [ "$FAKE_MODE" = "gpu" ]; then echo "PROGRESS:  0:00:29:00 (870): 0 Seconds"; echo "PROGRESS:  After Effects has encountered a failure (code: 19969) related to GPU-enabled effects on this frame. This is likely because your GPU is out of memory."; fi\n  echo "PROGRESS: finished"; printf data > "\${out%.*}.mp4"; exit 0\nfi\nif [ "$FAKE_MODE" = "progress" ]; then\n  sleep 0.6; for f in 1 2 3 4; do echo "PROGRESS:  0:00:00:0$f ($f): 0 Seconds"; sleep 0.25; done\nfi\nexec sleep 300\n`, { mode: 0o755 });
+fs.writeFileSync(fake, `#!/bin/bash\necho $$ > ${DIR}/aerender.pid\necho "$@" > ${DIR}/aerender.args\nif [ "$FAKE_MODE" = "dir" ]; then\n  while [ "$1" != "-output" ]; do shift; done\n  mkdir -p "$2"; printf data > "$2/part"; echo "PROGRESS: finished"; exit 0\nfi\nif [ "$FAKE_MODE" = "write" ] || [ "$FAKE_MODE" = "gpu" ]; then\n  while [ "$1" != "-output" ]; do shift; done\n  out="$2"\n  if [ "$FAKE_MODE" = "gpu" ]; then echo "PROGRESS:  0:00:29:00 (870): 0 Seconds"; echo "PROGRESS:  After Effects has encountered a failure (code: 19969) related to GPU-enabled effects on this frame. This is likely because your GPU is out of memory."; fi\n  echo "PROGRESS: finished"; printf data > "\${out%.*}.mp4"; exit 0\nfi\nif [ "$FAKE_MODE" = "progress" ]; then\n  sleep 0.6; for f in 1 2 3 4; do echo "PROGRESS:  0:00:00:0$f ($f): 0 Seconds"; sleep 0.25; done\nfi\nexec sleep 300\n`, { mode: 0o755 });
 
 // a fake ffmpeg: a probe sees video and audio, the check finds black 2-4 s, deliver writes its output (last argument)
 const fakeFf = path.join(DIR, "ffmpeg");
@@ -277,6 +284,26 @@ const results: [name: string, pass: boolean, detail?: string][] = [];
   s.p.kill();
 }
 
+// Phase C6: a master that cannot be removed after delivery (here a directory) must not stop the server or leave the
+// job running: the delivery was made, so the job is done.
+{
+  prepareOk = true;
+  const s = startServer({ FAKE_MODE: "dir" });
+  await s.init();
+  const out = path.join(DIR, "kept.mp4");
+  const job = JSON.parse(textOf(await s.call("tools/call", { name: "render_start", arguments: { comp_id: 1, output_path: out, deliver: true } }))).job_id;
+  let st: Json = {}, died = false;
+  void s.exited.then(() => { died = true; });
+  for (let i = 0; i < 80 && !died && st.state !== "done" && st.state !== "failed"; i++) {
+    await sleep(100);
+    st = await Promise.race([s.call("tools/call", { name: "render_status", arguments: { job_id: job } }).then((r) => JSON.parse(textOf(r))), s.exited.then(() => ({}))]);
+  }
+  results.push(["C6: a master that cannot be removed leaves the server up and the delivery done", !died && st.state === "done" && fs.existsSync(out), JSON.stringify({ died, state: st.state, errors: st.errors })]);
+  s.p.stdin.end();
+  await Promise.race([s.exited, sleep(3000)]);
+  s.p.kill();
+}
+
 // Phase D: preview_frame must wait for a PNG that is written shortly after the command returns.
 {
   prepareOk = true;
@@ -347,6 +374,9 @@ const results: [name: string, pass: boolean, detail?: string][] = [];
   delete received.add_layer;
   const nested = await callTool("add_layer", { comp_id: 1, kind: "shape", options: { shape: { type: "rect", fil: [1, 0, 0] } } });
   results.push(["F: unknown keys in nested objects are rejected too", nested.result?.isError === true && text(nested).includes("fil") && !received.add_layer]);
+  // add_layer's options object itself (it was a plain z.object: a typo there was dropped and the call "succeeded")
+  const optTypo = await callTool("add_layer", { comp_id: 1, kind: "text", options: { text: "Hi", colour: [1, 0, 0] } });
+  results.push(["F: an unknown key in add_layer options is rejected, not dropped", optTypo.result?.isError === true && text(optTypo).includes("colour") && !received.add_layer]);
 
   await callTool("add_layer", { comp_id: 1, kind: "shape", options: { shape: { fill: [1, 0, 0] } } });
   results.push(["F: schema defaults still apply under strict validation", received.add_layer?.options?.shape?.type === "rect"]);
@@ -422,6 +452,61 @@ const results: [name: string, pass: boolean, detail?: string][] = [];
   const [, jsxErr] = await body("batch", { steps: [{ tool: "run_jsx", args: { code: "1" } }] });
   const [, openErr] = await body("batch", { steps: [{ tool: "open_project", args: { path: path.join(DIR, "x.aep") } }] });
   results.push(["H: paths are sandboxed, forward references, run_jsx and open_project are refused", sandboxed && outsideErr && refErr && jsxErr && openErr && calls.length === 0]);
+
+  const listed = (await s.call("tools/list", {})).result as unknown as { tools: { name: string; annotations?: { idempotentHint?: boolean } }[] };
+  results.push(["H: edit_effect (removes by index) is not advertised as idempotent", listed.tools.find((x) => x.name === "edit_effect")?.annotations?.idempotentHint === false]);
+
+  // a mutating tool whose result is over the limit has already made its change: a success that says so, not an error
+  // (an error is run again); a read-only tool still gets the error (phase F)
+  const [bigDone, bigDoneErr] = await body("beat_markers", { audio_layer_id: 1 });
+  results.push(["H: an over-limit result of a mutating tool is a short success saying the call ran", !bigDoneErr && bigDone.applied === true && /Do not run it again/.test(bigDone.note ?? "") && /start\/end/.test(bigDone.next_time ?? ""), JSON.stringify(bigDone).slice(0, 300)]);
+
+  // preview_frame reports progress after each frame when the client asks for it
+  const pBefore = s.notifications.length;
+  await s.call("tools/call", { name: "preview_frame", arguments: { comp_id: 1, time: [0, 1] }, _meta: { progressToken: "pv" } });
+  results.push(["H: preview_frame sends a progress notification per frame when given a progress token", s.notifications.slice(pBefore).filter((m) => m === "notifications/progress").length === 2]);
+
+  // resources and the prompt carry titles; a failed resource read is a JSON-RPC error with the internal-error code
+  const resList = (await s.call("resources/list", {})).result as unknown as { resources: { title?: string }[] };
+  const promptList = (await s.call("prompts/list", {})).result as unknown as { prompts: { title?: string }[] };
+  const selFail = await s.call("resources/read", { uri: "ae://selection" });
+  results.push(["H: resources and the prompt have titles; a failed read is error -32603", resList.resources.every((x) => x.title) && promptList.prompts.every((x) => x.title) && selFail.error?.code === -32603, JSON.stringify([resList, promptList, selFail.error])]);
+
+  // an over-long error keeps its code, hint and the start of its message; a failed batch keeps its batch_id
+  const [longErr, longErrIs] = await body("get_text", { layer_id: 777 });
+  results.push(["H: an over-long error reply is cut, keeping its code, hint and the start of its message",
+    longErrIs && longErr.error?.code === "NOT_FOUND" && longErr.error?.hint === "Use get_comp" && /^No text: y+\.\.\. \(error reply cut/.test(longErr.error?.message ?? "") && JSON.stringify(longErr).length < 3000, JSON.stringify(longErr).slice(0, 200)]);
+  const [longBatch, longBatchIs] = await body("batch", { steps: [{ tool: "add_layer", args: { comp_id: 1, kind: "null" } }, { tool: "get_text", args: { layer_id: 777 } }] });
+  results.push(["H: a failed batch whose error is over-long keeps batch_id (so it can resume)", longBatchIs && longBatch.error?.code === "NOT_FOUND" && typeof longBatch.batch_id === "string" && JSON.stringify(longBatch).length < 3000, JSON.stringify(longBatch).slice(0, 200)]);
+
+  // an unknown tool in a step is a wrong name (every group is registered): the closest name, not load_tools
+  const [wrongTool] = await body("batch", { steps: [{ tool: "get_cmp", args: { comp_id: 1 } }] });
+  results.push(["H: an unknown tool in a batch step suggests the closest name", /did you mean get_comp/.test(wrongTool.problems?.[0]?.message ?? "") && !/load_tools/.test(JSON.stringify(wrongTool)), JSON.stringify(wrongTool)]);
+
+  // a file-system error inside a step (snapshots is a file, so mkdir fails with EEXIST) is AE_ERROR, as in a direct call
+  fs.writeFileSync(path.join(DIR, "snapshots"), "in the way");
+  const [fsFail, fsFailErr] = await body("batch", { steps: [{ tool: "save_project", args: { snapshot: true } }] });
+  fs.rmSync(path.join(DIR, "snapshots"));
+  results.push(["H: a Node error in a batch step is reported with one of the server's codes", fsFailErr && fsFail.error?.code === "AE_ERROR", JSON.stringify(fsFail)]);
+
+  // cancelling a call closes its request to the panel (which then drops the queued command), and a cancelled batch
+  // does not run its later steps
+  const until = async (cond: () => boolean): Promise<boolean> => { const end = Date.now() + 10000; while (Date.now() < end) { if (cond()) return true; await sleep(20); } return cond(); };
+  const cancelCall = async (id: number, name: string, args: Json): Promise<boolean> => {
+    const before = calls.length, closed = heldClosed;
+    s.p.stdin.write(JSON.stringify({ jsonrpc: "2.0", id, method: "tools/call", params: { name, arguments: args } }) + "\n");
+    if (!(await until(() => calls.length > before))) return false; // the held command reached the panel
+    s.p.stdin.write(JSON.stringify({ jsonrpc: "2.0", method: "notifications/cancelled", params: { requestId: id } }) + "\n");
+    return until(() => heldClosed > closed);
+  };
+  const serverToolClosed = await cancelCall(9003, "get_project", { name: "HOLD" });
+  results.push(["H: cancelling a server-side tool (get_project) closes its request to the panel too", serverToolClosed, `closed ${heldClosed}`]);
+  const directClosed = await cancelCall(9001, "split_layer", { layer_ids: [1], time: 99 });
+  results.push(["H: cancelling a call closes its request to the panel", directClosed, `closed ${heldClosed}`]);
+  calls.length = 0;
+  const batchClosed = await cancelCall(9002, "batch", { steps: [{ tool: "split_layer", args: { layer_ids: [1], time: 99 } }, { tool: "set_layer", args: { layer_id: 1, label: 3 } }] });
+  await body("get_comp", { comp_id: 1 }); // a full round trip later, the batch would have run its second step
+  results.push(["H: a cancelled batch stops before its next step", batchClosed && calls.join(",") === "split_layer,get_comp", calls.join(",")]);
 
   // a path array (import_footage paths) is sandboxed element by element, directly and inside a batch
   calls.length = 0;
@@ -669,6 +754,16 @@ const results: [name: string, pass: boolean, detail?: string][] = [];
   results.push(["G: an unreachable update server is reported, not thrown", failed.result?.isError !== true && fbody.latest === null && typeof fbody.error === "string"]);
   down.p.stdin.end(); await Promise.race([down.exited, sleep(3000)]); down.p.kill();
   tagServer.close();
+}
+
+// Phase J: run_jsx is mostly used to read, so an over-long result is an error (ask for less), not "applied"
+{
+  const s = startServer({ AE_MCP_ALLOW_JSX: "1" });
+  await s.init();
+  const r = await s.call("tools/call", { name: "run_jsx", arguments: { code: "1" } });
+  const b = JSON.parse(textOf(r) || "{}");
+  results.push(["J: an over-long run_jsx result is a BAD_ARGS error, not the applied note", r.result?.isError === true && b.error?.code === "BAD_ARGS" && b.applied === undefined, JSON.stringify(b).slice(0, 200)]);
+  s.p.stdin.end(); await Promise.race([s.exited, sleep(3000)]); s.p.kill();
 }
 
 for (const [name, ok, detail] of results) console.log((ok ? "PASS" : "FAIL") + "  " + name + (ok || !detail ? "" : "\n      " + detail));

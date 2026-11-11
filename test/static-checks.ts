@@ -37,7 +37,9 @@ fs.rmSync(TMP, { recursive: true, force: true });
 const plainObjects: string[] = [];
 for (const f of fs.readdirSync(path.join(ROOT, "src"), { recursive: true }) as string[]) {
   if (!f.endsWith(".ts")) continue;
-  fs.readFileSync(path.join(ROOT, "src", f), "utf8").split("\n").forEach((line, i) => { if (/\bz\.(object|looseObject)\(/.test(line)) plainObjects.push(`src/${f}:${i + 1}`); });
+  // over the whole file, not line by line: "z" and ".object(" on two lines hid add_layer's options from this check
+  const text = fs.readFileSync(path.join(ROOT, "src", f), "utf8");
+  for (const m of text.matchAll(/\bz\s*\.\s*(object|looseObject)\(/g)) plainObjects.push(`src/${f}:${text.slice(0, m.index).split("\n").length}`);
 }
 report(!plainObjects.length, "schemas use z.strictObject, never z.object" + (plainObjects.length ? ": " + plainObjects.join(", ") : ""));
 

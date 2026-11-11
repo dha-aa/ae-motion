@@ -13,7 +13,10 @@ type Seg = { p: Prop; k: number; t0: number; t1: number; linear: boolean; sample
 type CamView = { P: Vec; f: Vec; r: Vec; d: Vec; zoom: number };
 /** A layer's box on screen, and whether it is 3D and how far along the view. */
 type ScreenBox = { x0: number; y0: number; x1: number; y1: number; three: boolean; z: number };
-type SceneItem = { l: AVLayer; kind: string; t: number };
+/** A layer the scene checks look at, with what they need of it read once (each read is a call into After Effects, and
+ * the checks compare every layer with every other): id, name, stack index, in / out, the time it is judged at, and
+ * whether it could hide what is behind it (hides: unset until first asked). */
+type SceneItem = { l: AVLayer; kind: string; t: number; id: number; name: string; index: number; i0: number; o0: number; hides?: boolean };
 
 var REVEAL_TAG = "// ae-motion reveal";
 var MOVES: { [move: string]: number } = { fade: 1, pop: 1, grow: 1, slide: 1, drop: 1, spin: 1, push: 1, drift: 1 };
@@ -301,7 +304,8 @@ var REVIEW_MIN: { [matchName: string]: number } = {
   "ADBE Position": 2, "ADBE Position_0": 2, "ADBE Position_1": 2, "ADBE Position_2": 2, "ADBE Anchor Point": 2,
   "ADBE Scale": 1, "ADBE Rotate Z": 0.5, "ADBE Rotate X": 0.5, "ADBE Rotate Y": 0.5, "ADBE Opacity": 2
 };
-var REVIEW_SKIP: { [matchName: string]: number } = { "ADBE Marker": 1, "ADBE Audio Group": 1 };
+// "ADBE Vector Materials Group": 48 3D-only settings in every shape group, never the motion being reviewed
+var REVIEW_SKIP: { [matchName: string]: number } = { "ADBE Marker": 1, "ADBE Audio Group": 1, "ADBE Vector Materials Group": 1 };
 // expressions that keep moving all the time (springs only reshape their keys; reveals are timed: revealSpan)
 var REVIEW_LIVE = /wiggle|loopOut|loopIn|time\s*\*|ae-motion (rig|shake)/;
 
@@ -316,25 +320,30 @@ function revealSpan(p: Prop, l: Layer): number[] | null {
 
 // Motion segments of a layer: every pair of neighbouring keys whose values differ, on any property.
 function motionSegments(g: any, out: Seg[], live: { on: boolean }, l: Layer): Seg[] {
-  var i, p: any, k: number, v0, v1, rs;
+  var i, p: any, k: number, v0, v1, rs, ex: string, nk: number, sprung: boolean;
   for (i = 1; i <= g.numProperties; i++) {
     p = g.property(i);
     if (!p || REVIEW_SKIP[p.matchName]) continue;
     if (p.propertyType === PropertyType.PROPERTY) {
-      if (safe(function () { return p.expressionEnabled && REVIEW_LIVE.test(p.expression); })) live.on = true;
-      if (safe(function () { return p.expressionEnabled && p.expression.indexOf(REVEAL_TAG) === 0; })) {
+      // the expression is read once per property, and each key's value once: this walks every property of every layer
+      ex = safe(function () { return p.expressionEnabled ? String(p.expression) : ""; }) || "";
+      if (ex && REVIEW_LIVE.test(ex)) live.on = true;
+      if (ex && ex.indexOf(REVEAL_TAG) === 0) {
         rs = revealSpan(p, l);
         if (rs) out.push({ p: p, k: 0, t0: rs[0], t1: rs[1], linear: false, sampled: false, spring: false, reveal: true });
       }
-      if (!p.numKeys || p.numKeys < 2) continue;
-      for (k = 1; k < p.numKeys; k++) {
-        v0 = safe(function () { return p.keyValue(k); }); v1 = safe(function () { return p.keyValue(k + 1); });
+      nk = p.numKeys;
+      if (!nk || nk < 2) continue;
+      sprung = ex.indexOf(SPRING_TAG) === 0;
+      v1 = safe(function () { return p.keyValue(1); });
+      for (k = 1; k < nk; k++) {
+        v0 = v1; v1 = safe(function () { return p.keyValue(k + 1); });
         if (v0 !== undefined && v1 !== undefined && typeof v0 !== "object" && v0 === v1) continue;
         if (v0 instanceof Array && v1 instanceof Array && dist(v0, v1) < 1e-6) continue;
         if (REVIEW_MIN[p.matchName] !== undefined && v0 !== undefined && v1 !== undefined && dist(v0, v1) < REVIEW_MIN[p.matchName]) continue;
         out.push({ p: p, k: k, t0: p.keyTime(k), t1: p.keyTime(k + 1),
           linear: p.keyOutInterpolationType(k) === KeyframeInterpolationType.LINEAR && p.keyInInterpolationType(k + 1) === KeyframeInterpolationType.LINEAR,
-          sampled: p.numKeys > 8, spring: safe(function () { return p.expressionEnabled && p.expression.indexOf(SPRING_TAG) === 0; }) === true });
+          sampled: nk > 8, spring: sprung });
       }
     } else motionSegments(p, out, live, l);
   }
@@ -449,13 +458,18 @@ function sceneLayer(l: AVLayer, kind: string): boolean {
 
 // Solid colour that hides what is behind it: a solid, or a shape layer with a full-strength fill; normal blending,
 // full opacity, no matte.
-function opaqueAt(l: AVLayer, kind: string, t: number): boolean {
+// The part of that which holds at any time (kind, mask, blending, matte, fill); opaqueAt adds the opacity at t.
+function canHide(l: AVLayer, kind: string): boolean {
   if (kind !== "solid" && kind !== "shape") return false;
   if (safe(function () { return l.property("ADBE Mask Parade").numProperties; })) return false; // a mask shows only part of it
   if (l.blendingMode !== BlendingMode.NORMAL || safe(function () { return l.isTrackMatte || l.trackMatteType !== TrackMatteType.NO_TRACK_MATTE; })) return false;
-  if ((safe(function () { return tp(l, "ADBE Opacity").valueAtTime(t, false); }) as number) < 99.5) return false;
   if (kind === "shape") return safe(function () { return shapeHasFill(l.property("ADBE Root Vectors Group")); }) === true;
   return true;
+}
+function opaqueAt(x: SceneItem, t: number): boolean {
+  if (x.hides === undefined) x.hides = canHide(x.l, x.kind);
+  if (!x.hides) return false;
+  return !((safe(function () { return tp(x.l, "ADBE Opacity").valueAtTime(t, false); }) as number) < 99.5);
 }
 
 function shapeHasFill(g: any): boolean {
@@ -480,16 +494,21 @@ function outsideSafe(c: CompItem, O: ScreenBox): string {
 }
 
 function sceneChecks(c: CompItem, issue: (o: Obj) => void): void {
-  var ls: SceneItem[] = [], views: { [t: number]: CamView } = {}, boxes: { [key: string]: ScreenBox | null } = {}, i, j, l, kind, t: number, L: SceneItem, O, X, front, tt, E: string, tEnd: number, Oe;
+  var ls: SceneItem[] = [], views: { [t: number]: CamView } = {}, boxes: { [key: string]: ScreenBox | null } = {}, i, j, l, kind, t: number, L: SceneItem, O, X, front, tt, E: string, tEnd: number, Oe,
+    times: number[] | null, was: boolean, gap: ScreenBox | null, sides: string[], cover: ScreenBox[];
   if (c.numLayers > 400) return;
   function boxOf(x: SceneItem, at: number): ScreenBox | null {
-    var k = x.l.id + "@" + at;
+    var k = x.id + "@" + at;
     if (!has(boxes, k)) boxes[k] = safe(function () { return screenBox(x.l, c, views[at] || (views[at] = viewAt(c, at)), at); }) || null;
     return boxes[k];
   }
   for (i = 1; i <= c.numLayers; i++) {
     l = c.layer(i) as AVLayer; kind = layerKind(l);
-    if (sceneLayer(l, kind)) ls.push({ l: l, kind: kind, t: Math.round(Math.max(0, Math.min(c.duration - c.frameDuration, (l.inPoint + l.outPoint) / 2)) / c.frameDuration) * c.frameDuration });
+    if (sceneLayer(l, kind)) {
+      L = { l: l, kind: kind, t: 0, id: l.id, name: l.name, index: i, i0: l.inPoint, o0: l.outPoint };
+      L.t = Math.round(Math.max(0, Math.min(c.duration - c.frameDuration, (L.i0 + L.o0) / 2)) / c.frameDuration) * c.frameDuration;
+      ls.push(L);
+    }
   }
   for (i = 0; i < ls.length; i++) {
     L = ls[i]; t = L.t; tt = Math.round(t * 1000) / 1000;
@@ -497,35 +516,126 @@ function sceneChecks(c: CompItem, issue: (o: Obj) => void): void {
     O = boxOf(L, t);
     if (!O) continue;
     if (O.x1 < 0 || O.x0 > c.width || O.y1 < 0 || O.y0 > c.height) {
-      issue({ type: "off_screen", severity: "warn", layer_id: L.l.id, layer: L.l.name, t: tt, msg: "Entirely outside the frame (as the camera sees it)" });
+      issue({ type: "off_screen", severity: "warn", layer_id: L.id, layer: L.name, t: tt, msg: "Entirely outside the frame (as the camera sees it)" });
       continue;
     }
     // text is checked mid-way and again on its last frame: a camera push often carries a title out of the frame
     // only by the end (seen: titles clipped at the top as the camera moved in, fine at the midpoint)
     if (L.kind === "text") {
       E = outsideSafe(c, O);
-      tEnd = Math.round(Math.max(0, Math.min(c.duration, L.l.outPoint) - c.frameDuration) / c.frameDuration) * c.frameDuration;
-      if (!E && tEnd > t + 1e-6) { Oe = boxOf(L, tEnd); if (Oe && (E = outsideSafe(c, Oe))) { tt = Math.round(tEnd * 1000) / 1000; E += " by the end of its time on screen"; } }
-      if (E) issue({ type: "outside_safe", severity: "warn", layer_id: L.l.id, layer: L.l.name, t: tt, msg: E });
+      tEnd = Math.round(Math.max(0, Math.min(c.duration, L.o0) - c.frameDuration) / c.frameDuration) * c.frameDuration;
+      // (not when it has faded out by then: a title the camera flies past grows out of the frame as it disappears)
+      if (!E && tEnd > t + 1e-6 && !((safe(function () { return tp(L.l, "ADBE Opacity").valueAtTime(tEnd, false); }) as number) < 30)) { Oe = boxOf(L, tEnd); if (Oe && (E = outsideSafe(c, Oe))) { tt = Math.round(tEnd * 1000) / 1000; E += " by the end of its time on screen"; } }
+      if (E) issue({ type: "outside_safe", severity: "warn", layer_id: L.id, layer: L.name, t: tt, msg: E });
       tt = Math.round(t * 1000) / 1000;
     }
     for (j = 0; j < ls.length; j++) {
-      if (j === i || ls[j].l.inPoint > t || ls[j].l.outPoint <= t || !opaqueAt(ls[j].l, ls[j].kind, t)) continue;
+      if (j === i || ls[j].i0 > t || ls[j].o0 <= t || !opaqueAt(ls[j], t)) continue;
       X = boxOf(ls[j], t);
       if (!X) continue;
       // in front: closer to the camera when both are 3D, otherwise higher in the layer stack
-      front = X.three && O.three ? X.z < O.z - 1 : ls[j].l.index < L.l.index;
+      front = X.three && O.three ? X.z < O.z - 1 : ls[j].index < L.index;
       if (!front) continue;
       if (X.x0 <= O.x0 + 1 && X.y0 <= O.y0 + 1 && X.x1 >= O.x1 - 1 && X.y1 >= O.y1 - 1) {
-        issue({ type: "hidden", severity: "warn", layer_id: L.l.id, layer: L.l.name, t: tt, by: ls[j].l.name, msg: "Hidden behind " + ls[j].l.name + (X.three && O.three ? " (it is closer to the camera)" : "") });
+        issue({ type: "hidden", severity: "warn", layer_id: L.id, layer: L.name, t: tt, by: ls[j].name, msg: "Hidden behind " + ls[j].name + (X.three && O.three ? " (it is closer to the camera)" : "") });
         break;
       }
       if (L.kind === "text" && X.x0 < O.x1 && X.x1 > O.x0 && X.y0 < O.y1 && X.y1 > O.y0) {
-        issue({ type: "covered", severity: "warn", layer_id: L.l.id, layer: L.l.name, t: tt, by: ls[j].l.name, msg: "Text partly covered by " + ls[j].l.name });
+        issue({ type: "covered", severity: "warn", layer_id: L.id, layer: L.name, t: tt, by: ls[j].name, msg: "Text partly covered by " + ls[j].name });
         break;
       }
     }
   }
+  // A background that stops covering the frame: a layer that fills it at one of its keys and, at another, is still
+  // in the frame but leaves a strip of it bare, with nothing else covering that strip then (a push-in or a move that
+  // went too far: the comp's background colour shows in the gap). The layers behind count together, so two scenes
+  // pushing past each other are fine. A layer that leaves entirely is an exit, not this.
+  for (i = 0; i < ls.length; i++) {
+    L = ls[i];
+    if (L.kind === "text") continue;
+    times = coverTimes(L, c);
+    if (!times) continue;
+    was = false; gap = null; t = 0;
+    for (j = 0; j < times.length; j++) {
+      O = boxOf(L, times[j]);
+      if (!O || O.three) { gap = null; break; }
+      if (fillsFrame(O, c)) { if (backsFrame(L, times[j])) was = true; }
+      else if (!gap && O.x1 > 0 && O.x0 < c.width && O.y1 > 0 && O.y0 < c.height) { gap = O; t = times[j]; }
+    }
+    if (!was || !gap) continue;
+    cover = [gap];
+    for (j = 0; j < ls.length; j++) {
+      if (j === i || ls[j].i0 > t || ls[j].o0 <= t || !backsFrame(ls[j], t)) continue;
+      X = boxOf(ls[j], t);
+      if (X && !X.three) cover.push(X);
+    }
+    if (boxesCover(cover, c)) continue;
+    sides = [];
+    if (gap.x0 > 1) sides.push("left"); if (gap.x1 < c.width - 1) sides.push("right"); if (gap.y0 > 1) sides.push("top"); if (gap.y1 < c.height - 1) sides.push("bottom");
+    issue({ type: "uncovered", severity: "warn", layer_id: L.id, layer: L.name, t: Math.round(t * 1000) / 1000, msg: "Fills the frame at another time but leaves it bare on the " + sides.join(", ") + ": the comp's background shows there (move or scale it to cover)" });
+  }
+}
+
+function fillsFrame(O: ScreenBox, c: CompItem): boolean { return O.x0 <= 1 && O.y0 <= 1 && O.x1 >= c.width - 1 && O.y1 >= c.height - 1; }
+
+// Do the boxes together cover the frame? The frame is cut into cells at every box edge; each cell's centre must lie
+// in some box (1 px of slack, as fillsFrame).
+function boxesCover(bs: ScreenBox[], c: CompItem): boolean {
+  var xs = [0, c.width], ys = [0, c.height], i, j, k, cx, cy, hit;
+  var add = function (a: number[], v: number, max: number): void { if (v > 1 && v < max - 1) a.push(v); };
+  for (i = 0; i < bs.length; i++) { add(xs, bs[i].x0, c.width); add(xs, bs[i].x1, c.width); add(ys, bs[i].y0, c.height); add(ys, bs[i].y1, c.height); }
+  xs.sort(function (a, b) { return a - b; }); ys.sort(function (a, b) { return a - b; });
+  for (i = 0; i + 1 < xs.length; i++) for (j = 0; j + 1 < ys.length; j++) {
+    if (xs[i + 1] - xs[i] < 1 || ys[j + 1] - ys[j] < 1) continue;
+    cx = (xs[i] + xs[i + 1]) / 2; cy = (ys[j] + ys[j + 1]) / 2; hit = false;
+    for (k = 0; k < bs.length && !hit; k++) hit = bs[k].x0 <= cx + 1 && bs[k].x1 >= cx - 1 && bs[k].y0 <= cy + 1 && bs[k].y1 >= cy - 1;
+    if (!hit) return false;
+  }
+  return true;
+}
+
+// Is what an item shows opaque over its whole frame? A solid; footage without an alpha channel; a precomp holding an
+// enabled, unmasked, normally blended, fully opaque layer at least its size whose own source is opaque (two levels
+// deep). A precomp's box is always its whole frame, so one holding only a logo must not count as a background.
+function opaqueSource(src: any, depth: number): boolean {
+  var i, l: AVLayer, op;
+  if (!src) return false;
+  if (src instanceof FootageItem) return safe(function () { return src.mainSource instanceof SolidSource || src.mainSource.hasAlpha === false; }) === true;
+  if (!(src instanceof CompItem) || depth > 2) return false;
+  for (i = 1; i <= src.numLayers; i++) {
+    l = src.layer(i) as AVLayer;
+    if (!l.enabled || !l.source || l.blendingMode !== BlendingMode.NORMAL) continue;
+    if (safe(function () { return l.property("ADBE Mask Parade").numProperties; })) continue;
+    op = safe(function () { return tp(l, "ADBE Opacity").value; }) as number;
+    if (op < 99.5 || l.source.width < src.width || l.source.height < src.height) continue;
+    if (opaqueSource(l.source, depth + 1)) return true;
+  }
+  return false;
+}
+
+// Could x be what the viewer sees behind everything at t? An opaque solid or filled shape, or a precomp / footage
+// layer at full opacity with normal blending whose source is opaque (opaqueSource).
+function backsFrame(x: SceneItem, t: number): boolean {
+  if (opaqueAt(x, t)) return true;
+  if (x.kind !== "precomp" && x.kind !== "footage") return false;
+  if (x.l.blendingMode !== BlendingMode.NORMAL || !opaqueSource(x.l.source, 0)) return false;
+  return !((safe(function () { return tp(x.l, "ADBE Opacity").valueAtTime(t, false); }) as number) < 99.5);
+}
+
+// The times at which a layer's place on screen is set: the position (also separated x / y), scale, rotation and anchor
+// keys of the layer and its parents while it shows, with its first and last frame. Null when none of them is keyed
+// (its box never changes, so there is nothing to compare).
+function coverTimes(x: SceneItem, c: CompItem): number[] | null {
+  var names = ["ADBE Position", "ADBE Position_0", "ADBE Position_1", "ADBE Scale", "ADBE Rotate Z", "ADBE Anchor Point"], fd = c.frameDuration, out: number[] = [], i: number, k, p, kt,
+    t0 = Math.max(0, x.i0), t1 = Math.min(c.duration, x.o0) - fd, q: Layer | null;
+  for (q = x.l; q; q = q.parent) for (i = 0; i < names.length; i++) {
+    p = safe(function () { return tp(q!, names[i]); });
+    if (!p || !p.numKeys) continue;
+    for (k = 1; k <= p.numKeys && out.length < 40; k++) { kt = p.keyTime(k); if (kt > t0 + fd / 2 && kt < t1 - fd / 2) out.push(Math.round(kt / fd) * fd); }
+  }
+  if (!out.length) return null;
+  out.push(t0); if (t1 > t0) out.push(t1);
+  return out;
 }
 
 // Comp setups that look wrong with no error: a mesh on a renderer that draws nothing, and a light-adding blend over
@@ -549,6 +659,20 @@ function blendIssues(c: CompItem, issue: (o: Obj) => void): void {
     }
     if (!under) issue({ type: "no_background", severity: "warn", layer_id: l.id, layer: l.name, t: l.inPoint, msg: "Nothing under this light-adding blend, so its black shows as black: add a background layer (the comp's background colour does not count)" });
   }
+}
+
+// A slow, small move at constant speed (a push-in over a whole shot, clouds drifting) is a choice, not easing left
+// undone: animate push / drift offer it as style linear. Two seconds or more, and at most about 10% of scale, 8% of the
+// frame's short side, or 8 degrees.
+function slowDrift(s: Seg, c: CompItem): boolean {
+  var m = s.p.matchName, d;
+  if (s.reveal || s.t1 - s.t0 < 2) return false;
+  d = safe(function () { return dist(s.p.keyValue(s.k), s.p.keyValue(s.k + 1)); });
+  if (d === undefined) return false;
+  if (m === "ADBE Scale") return d <= 18;
+  if (m === "ADBE Position" || m === "ADBE Position_0" || m === "ADBE Position_1") return d <= Math.min(c.width, c.height) * 0.08;
+  if (m === "ADBE Rotate Z") return d <= 8;
+  return false;
 }
 
 C.review_motion = function (a: Args["review_motion"]) {
@@ -575,7 +699,7 @@ C.review_motion = function (a: Args["review_motion"]) {
       spans.push([Math.max(s.t0, l.inPoint), Math.min(s.t1, l.outPoint)]);
       if (first === null || s.t0 < first) first = s.t0;
       starts2.push({ t: s.t0, layer_id: l.id });
-      if (s.linear && !s.sampled && !s.spring && !lin[l.id + s.p.name]) {
+      if (s.linear && !s.sampled && !s.spring && !lin[l.id + s.p.name] && !slowDrift(s, c)) {
         lin[l.id + s.p.name] = true;
         issue({ type: "linear", severity: "warn", layer_id: l.id, layer: l.name, property: s.p.name, t: s.t0, msg: "Linear keys: ease them (style snappy / smooth) or use animate" });
       }

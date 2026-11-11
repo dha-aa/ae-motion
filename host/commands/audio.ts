@@ -193,9 +193,16 @@ function loudestOffset(l: AVLayer, key: string): number {
 
 C.add_sfx = function (a: Args["add_sfx"]) {
   need(a, ["comp_id", "path", "time"]);
-  var c = getComp(a.comp_id), it = soundItem(a.path), l = c.layers.add(it), align = a.align || "peak",
-    vol = has(a, "volume") ? a.volume : -6, fi = a.fade_in || 0, fo = a.fade_out || 0, peak = 0, lv, s, e, hit = snapT(c, a.time);
+  var c = getComp(a.comp_id), align = a.align || "peak", it, l: AVLayer;
   if (align !== "peak" && align !== "start") fail("BAD_ARGS", "align must be peak or start");
+  it = soundItem(a.path); l = c.layers.add(it);
+  // the layer is in the comp from here on: a call that fails takes it out again, or every failed try (fades longer
+  // than the sound, a file with nothing to measure) left one more behind
+  try { return placeSfx(a, c, it, l, align); } catch (e) { safe(function () { l.remove(); }); throw e; }
+};
+
+function placeSfx(a: Args["add_sfx"], c: CompItem, it: FootageItem, l: AVLayer, align: string): Obj {
+  var vol = has(a, "volume") ? a.volume : -6, fi = a.fade_in || 0, fo = a.fade_out || 0, peak = 0, lv, s, e, hit = snapT(c, a.time);
   l.name = a.name || "SFX: " + it.name;
   l.startTime = 0;
   if (align === "peak") peak = loudestOffset(l, new File(a.path).fsName);
@@ -218,7 +225,7 @@ C.add_sfx = function (a: Args["add_sfx"]) {
     if (fo > 0) lv.setValueAtTime(e, [SFX_SILENT, SFX_SILENT]);
   } else lv.setValue([vol, vol]);
   return { layer: layerRef(l), start: l.startTime, peak_offset: peak, hit: hit, "in": s, out: e, volume: vol };
-};
+}
 
 // Keyframe segments [t0, t1] of a property with their start and end values.
 function segments(p: Prop): { t0: number; t1: number; v0: any; v1: any }[] {
@@ -236,12 +243,13 @@ function dist(a: any, b: any): number {
 
 // The frame of fastest change in [t0, t1], and the speed there compared with the speed into t1.
 function fastest(p: Prop, t0: number, t1: number, fd: number): { t: number; speed: number; end: number } {
-  var best = t0, top = 0, t, d, prev = p.valueAtTime(t0, false), endSpeed = 0;
+  var best = t0, top = 0, t, d, cur, prev = p.valueAtTime(t0, false), endSpeed = 0;
   for (t = t0 + fd; t <= t1 + 1e-6; t += fd) {
-    d = dist(prev, p.valueAtTime(t, false)) / fd;
+    cur = p.valueAtTime(t, false); // read once per frame: every read is a call into After Effects
+    d = dist(prev, cur) / fd;
     if (d > top) { top = d; best = t - fd / 2; }
     endSpeed = d;
-    prev = p.valueAtTime(t, false);
+    prev = cur;
   }
   return { t: best, speed: top, end: endSpeed };
 }

@@ -55,9 +55,16 @@ function shapeFromSpec(s: PathSpec, W: number, H: number): Shape {
 
 function copyPts(a: ArrayLike<ArrayLike<number>>): Pts { var o: Pts = [], i; for (i = 0; i < a.length; i++) o.push([a[i][0], a[i][1]]); return o; }
 
-// A Shape as JSON, in the path spec format shapeFromSpec accepts.
+function anyTangent(a: ArrayLike<ArrayLike<number>>): boolean { var i; for (i = 0; i < a.length; i++) if (Math.abs(a[i][0]) > 1e-9 || Math.abs(a[i][1]) > 1e-9) return true; return false; }
+
+// A Shape as JSON, in the path spec format shapeFromSpec accepts. Straight-sided paths leave the tangents out and
+// closed paths leave closed out: both are what mkShape assumes, so the value still writes back unchanged, and a rect
+// mask key is less than half the size.
 function shapeToJson(v: Shape): PathSpec {
-  return { type: "path", vertices: copyPts(v.vertices), in_tangents: copyPts(v.inTangents), out_tangents: copyPts(v.outTangents), closed: v.closed };
+  var o: PathSpec = { type: "path", vertices: copyPts(v.vertices) };
+  if (anyTangent(v.inTangents) || anyTangent(v.outTangents)) { o.in_tangents = copyPts(v.inTangents); o.out_tangents = copyPts(v.outTangents); }
+  if (v.closed === false) o.closed = false;
+  return o;
 }
 
 var LINE_CAPS: { [name: string]: number } = { butt: 1, round: 2, square: 3 };

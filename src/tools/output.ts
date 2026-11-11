@@ -9,7 +9,7 @@ import { z } from "zod";
 import { TIMEOUTS } from "../config.js";
 import { contactSheet, shrinkPng } from "../render/image.js";
 import { toAe } from "../sandbox.js";
-import { errorResult, fromBridge, json, type ToolRegistry } from "./registry.js";
+import { errorResult, fromBridge, json, progressTo, type ToolRegistry } from "./registry.js";
 import { id } from "./schemas.js";
 
 const PREVIEW_DIR = path.join(os.tmpdir(), "ae-motion-mcp");
@@ -55,16 +55,18 @@ export function registerOutputTools(r: ToolRegistry): void {
       time: z.union([z.number().min(0), z.array(z.number().min(0)).min(1).max(9)]).describe("Seconds, or up to 9 times for a contact sheet"),
       size: z.number().int().min(64).max(4096).optional().describe("Longest edge of the returned image in px (default 768, or 1152 for several times)"),
     },
-    async (a) => {
+    async (a, extra) => {
       fs.mkdirSync(PREVIEW_DIR, { recursive: true });
       const times = Array.isArray(a.time) ? a.time : [a.time];
       const files: string[] = [];
       // the long side each frame needs in the returned image: the host renders no finer than that
       const edge = times.length === 1 ? (a.size ?? 768) : Math.ceil((a.size ?? 1152) / Math.ceil(Math.sqrt(times.length)));
       const scenes: (string | null)[] = [];
+      // a contact sheet of heavy frames can take minutes: progress after each frame
+      const progress = progressTo(extra, times.length);
       for (const t of times) {
         const out = path.join(PREVIEW_DIR, `preview_${a.comp_id}_${String(t).replace(".", "_")}_${Date.now()}.png`);
-        const res = await bridge.run("preview_frame", { comp_id: a.comp_id, time: t, output_path: toAe(out), max_edge: edge }, TIMEOUTS.preview);
+        const res = await bridge.run("preview_frame", { comp_id: a.comp_id, time: t, output_path: toAe(out), max_edge: edge }, TIMEOUTS.preview, extra?.mcpReq?.signal);
         if (!res.ok) return fromBridge(res);
         scenes.push((res.result as { scene?: string }).scene ?? null);
         if (!(await waitForFile(out, TIMEOUTS.previewFile))) {
@@ -75,6 +77,7 @@ export function registerOutputTools(r: ToolRegistry): void {
           });
         }
         files.push(out);
+        await progress(files.length, `frame at ${t} s`);
       }
       const pngs = files.map((f) => fs.readFileSync(f));
       // the files on disk stay full size; only the copy sent to the model is shrunk

@@ -60,10 +60,18 @@ C.set_keyframes = function (a: Args["set_keyframes"]) {
   // the keys as they are now (values, interpolation, ease, springs), so no get_keyframes is needed to check them
   res = { num_keys: p.numKeys, keys: [] };
   for (i = 0; i < a.keys.length; i++) res.keys.push(keyInfo(p, p.nearestKeyIndex(a.keys[i].t)));
+  echoIfFits(res);
   // say when earlier keys went: replacing a property's whole animation by accident is easy to miss
   if (replaced) res.replaced = replaced;
   return res;
 };
+
+// The keys a call set are echoed so no get_keyframes is needed, unless the echo would pass the response limit: the
+// keys are in After Effects by then, and an error for the size of the reply read as a failed call (it was retried).
+function echoIfFits(res: Obj): Obj {
+  if (jsonSize(res) > KEYS_ROOM) { res.keys_set = res.keys.length; delete res.keys; res.note = "Keys set; too many to list here (get_keyframes reads them)"; }
+  return res;
+}
 
 // Find the key an edit addresses: by 1-based index, or by time (the key within half a frame of t).
 type KeyEdit = Args["edit_keyframes"]["edits"][number];
@@ -156,7 +164,7 @@ C.edit_keyframes = function (a: Args["edit_keyframes"]) {
     idx = p.nearestKeyIndex(done[i].t); done[i].index = idx;
     if (!v[idx]) { v[idx] = true; k.push(keyInfo(p, idx)); }
   }
-  return { edits: done, num_keys: p.numKeys, keys: k, expression_active: p.expressionEnabled === true };
+  return echoIfFits({ edits: done, num_keys: p.numKeys, keys: k, expression_active: p.expressionEnabled === true });
 };
 
 // Copy one property's animation (every key setting, or the static value, and any expression) to other layers.
@@ -250,15 +258,37 @@ function setEffectParams(e: PropertyGroup, params: { [name: string]: any }): voi
   for (i = 0; i < todo.length; i++) todo[i].p.setValue(todo[i].v);
 }
 
+// Effects whose "Repeat Edge Pixels" switch (by match name: names are localized) comes on when a script adds them.
+// With it on, the blur is cut off at the layer's own box: right for a layer that fills the frame (no dark edges),
+// wrong for an element (a blurred glow, cloud or shadow gets hard rectangular edges). Verified in After Effects 26.5.
+var REPEAT_EDGE: { [effect: string]: string } = { "ADBE Gaussian Blur 2": "ADBE Gaussian Blur 2-0003" };
+
+// Turn Repeat Edge Pixels off on an effect just added to a layer smaller than the frame (text, shapes, and solids,
+// footage and precomps whose size in the comp, with their scale at the in point, is under the frame's), unless the
+// caller set it. True if it was turned off. The scale counts: a half-size solid at 200% fills the frame.
+function softEdges(l: AVLayer, fx: any, params?: { [name: string]: any }): boolean {
+  var m = REPEAT_EDGE[fx.matchName], c = l.containingComp, k, p, s;
+  if (!m) return false;
+  if (params) { for (k in params) { if (params.hasOwnProperty(k) && (k === m || k === "3" || /repeat edge/i.test(k))) return false; } }
+  s = (safe(function () { return tp(l, "ADBE Scale").valueAtTime(l.inPoint, false); }) as number[]) || [100, 100];
+  if (!(l instanceof TextLayer || l instanceof ShapeLayer || l.width * Math.abs(s[0]) / 100 < c.width - 1 || l.height * Math.abs(s[1]) / 100 < c.height - 1)) return false;
+  p = safe(function () { return fx.property(m); });
+  if (!p || !p.value) return false;
+  p.setValue(0);
+  return true;
+}
+
 C.apply_effect = function (a: Args["apply_effect"]) {
   need(a, ["layer_id", "match_name"]);
-  var l = getLayer(a.layer_id), parade = l.property("ADBE Effect Parade"), fx;
+  var l = getLayer(a.layer_id), parade = l.property("ADBE Effect Parade"), fx, res: Obj;
   if (!parade) fail("BAD_ARGS", "Layer does not support effects", "Effects go on solid, footage, text, shape, adjustment and precomp layers");
   if (!parade.canAddProperty(a.match_name)) fail("NOT_FOUND", "Unknown effect match name: " + a.match_name, "Use find_effects");
   fx = parade.addProperty(a.match_name);
   if (a.name) fx.name = a.name;
   if (a.params) setParams(fx, a.params, "Effect", true);
-  return { effect_index: fx.propertyIndex, name: fx.name, match_name: fx.matchName };
+  res = { effect_index: fx.propertyIndex, name: fx.name, match_name: fx.matchName };
+  if (softEdges(l, fx, a.params)) res.repeat_edge_pixels = false; // said, because it differs from what After Effects would have left
+  return res;
 };
 
 C.edit_effect = function (a: Args["edit_effect"]) {

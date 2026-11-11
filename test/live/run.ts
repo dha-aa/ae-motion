@@ -2,9 +2,10 @@
 // The mocks (test/mock-*.test.ts) are fakes written by hand; these catch a mock that no longer matches After Effects
 // (a new AE version, a quirk modelled wrong). Not part of `npm test` (CI has no After Effects): run before a release.
 //
-//   npm run build && node test/live/run.ts --yes [--only <name substring>]
+//   npm run build && node test/live/run.ts --yes [--only <name substring>[|<another>...]]
 //
 // Needs After Effects with the ae-motion panel open. It replaces the open project with a new one (--yes confirms).
+import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -435,6 +436,35 @@ check("preview_frame returns one tiled image for several times", async () => {
   expect(!r.isError && r.images === 1, "one image", r);
 });
 
+// Undo and reads go through AppleScript's DoScript (macOS), outside the panel: an Undo run inside run_jsx's undo group
+// does not act like Edit > Undo. After Effects 26.x is "Adobe After Effects 2026".
+const AS_OUT = path.join(os.tmpdir(), "ae-motion-live-doscript.txt");
+function viaAppleScript(code: string): Json {
+  try { fs.rmSync(AS_OUT); } catch {}
+  const js = `var f = new File(${JSON.stringify(AS_OUT)}); f.open("w"); f.write((function () { ${code} })()); f.close();`;
+  const app = `Adobe After Effects 20${String(status.value.ae_version).split(".")[0]}`;
+  execFileSync("osascript", ["-e", `tell application ${JSON.stringify(app)} to DoScript ${JSON.stringify(js)}`], { timeout: 30_000 });
+  return JSON.parse(fs.readFileSync(AS_OUT, "utf8"));
+}
+const compState = (c: number, undo: boolean): Json =>
+  viaAppleScript(`${undo ? "app.executeCommand(16); " : ""}var c = app.project.itemByID(${c}); return JSON.stringify({ layers: c.numLayers, rf: c.resolutionFactor[0] });`);
+
+check("preview_frame leaves the undo history and the comp's resolution as they were", async () => {
+  if (process.platform !== "darwin") return; // needs AppleScript
+  // a full-resolution comp is rendered as it is: the next Undo takes back the last edit, not a resolution change
+  await solid("bg");
+  for (const time of [0.5, [0, 1, 2, 3]]) {
+    await solid("last edit", { size: [200, 200] });
+    await call("preview_frame", { comp_id: comp, time });
+    const u = compState(comp, true);
+    expect(u.layers === 1 && u.rf === 1, `after preview_frame time ${JSON.stringify(time)}, Undo takes back the last edit`, u);
+  }
+  // a comp the user (or After Effects) left at quarter resolution is previewed at half and left at quarter
+  viaAppleScript(`app.project.itemByID(${comp}).resolutionFactor = [4, 4]; return "1";`);
+  const q = await call("preview_frame", { comp_id: comp, time: 1 });
+  expect(PNG.sync.read(fs.readFileSync(q.path)).width === 960 && compState(comp, false).rf === 4, "previewed at half, left at quarter", q);
+});
+
 // ----- server-side features against the real host -----
 check("batch runs several steps with $N references", async () => {
   const r = await call("batch", { steps: [
@@ -479,7 +509,7 @@ check("errors use the ae-motion format", async () => {
 await call("open_project", { new: true, discard_unsaved: true });
 const results: [string, boolean, string?][] = [];
 for (const [name, fn] of checks) {
-  if (only && !name.includes(only)) continue;
+  if (only && !only.split("|").some((o) => name.includes(o))) continue;
   try {
     comp = await newComp(name.slice(0, 30));
     await fn();

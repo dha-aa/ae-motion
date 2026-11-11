@@ -14,7 +14,9 @@ C.open_project = function (a: Args["open_project"]) {
   if (p && p.dirty && a.discard_unsaved !== true) fail("BAD_ARGS", "The open project has unsaved changes", "Save them with save_project first, or pass discard_unsaved: true to throw them away");
   // closing first keeps After Effects from asking about unsaved changes in a dialog
   if (p && p.dirty) p.close(CloseOptions.DO_NOT_SAVE_CHANGES);
-  if (fresh) { if (!app.newProject()) fail("AE_ERROR", "After Effects did not create a new project"); }
+  // newProject() returns null when the open project is already a blank one (no items, never saved): it then is the
+  // new project that was asked for (seen in AE 26.5 after a project was closed without saving)
+  if (fresh) { if (!app.newProject() && !(app.project && !app.project.file && app.project.numItems === 0)) fail("AE_ERROR", "After Effects did not create a new project", "Check After Effects for an open dialog, then try again"); }
   else if (!app.open(f)) fail("AE_ERROR", "After Effects could not open " + a.path, "The file may be damaged or from a newer After Effects; try opening it by hand");
   return C.get_project();
 };
