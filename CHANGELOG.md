@@ -2,7 +2,7 @@
 
 All notable changes. Versions follow [semantic versioning](https://semver.org); each release is a git tag `vX.Y.Z`, which is what the update check looks for.
 
-## Unreleased
+## 2.26.0 — 2026-11-11
 
 ### Changed
 - `get_keyframes` can read any animation. Every key still comes in one reply when they fit the response limit; when they do not, it returns as many as fit with `next_offset` (pass it as `offset` for the rest; `limit` caps a page). It used to send every key whatever the size, which passed the limit on long or detailed animations (a sampled 3D camera path, audio keyed per frame) with no way to read them, and silently stopped at 500.
