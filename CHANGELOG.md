@@ -2,6 +2,14 @@
 
 All notable changes. Versions follow [semantic versioning](https://semver.org); each release is a git tag `vX.Y.Z`, which is what the update check looks for.
 
+## Unreleased
+
+### Added
+- `guide` topic `limits`: what ae-motion cannot do (make new media, tracking and rotoscoping, gradient colours, hearing sound, plugins that are not installed, undo, .mogrt export) and the workaround to offer instead, so a model tells you rather than promising something it cannot deliver. The server instructions point to it.
+
+### Changed
+- A wrong effect parameter name in `apply_effect` or `edit_effect` now lists the effect's real parameters in the error (`Its parameters: Blurriness, Blur Dimensions, Repeat Edge Pixels`), so a model fixes the call from the error instead of guessing again. `apply_effect`'s message also says the effect was not added.
+
 ## 2.27.0 — 2026-11-23
 
 ### Added

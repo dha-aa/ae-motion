@@ -13,7 +13,7 @@ export { DESIGN_RULES, RUN_JSX_RULE };
  * the guide tool: in Claude Code it sees only tool names until it loads one, and a prompt is the user's to run.
  */
 export const SERVER_INSTRUCTIONS = [
-  "Controls a live Adobe After Effects project. First call guide (no After Effects needed): which tool does each job, with checked example calls; read an area's topic before using it. Then get_project: every comp with its layers (ids, names, kinds, timing). preview_frame shows frames (several times in one call: one tiled image).",
+  "Controls a live Adobe After Effects project. First call guide (no After Effects needed): which tool does each job, with checked example calls; read an area's topic before using it, and topic limits before promising anything unusual. Then get_project: every comp with its layers (ids, names, kinds, timing).",
   "Work fast: make independent calls together in one turn; put dependent steps in one batch call (\"$1.id\" uses step 1's result). Results already show the outcome (keys as set, values read back, fields changed), so don't re-read to confirm.",
   "Units: seconds, pixels, colors [r,g,b] 0-1, scale in percent, degrees. x right, y DOWN, z into the screen (a camera in front of the comp has negative z). Comps, layers and items are project-wide numeric ids, not layer indexes. Unknown argument keys are rejected.",
   'Properties: an alias (position, scale, rotation, opacity, anchor; x_position / y_position / z_position after set_layer separate_dimensions; volume = audio levels in dB) or a path of match names and 1-based indexes, e.g. ["ADBE Effect Parade", 1, "ADBE Gaussian Blur 2-0001"]; list_properties shows them.',

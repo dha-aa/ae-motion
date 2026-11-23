@@ -279,6 +279,19 @@ const HOWTO = {
     "- Sound follows the story, not every cut: pass find_sound_cues events for the moments that matter (importance 0 mutes one); a big reveal can take a riser that peaks on it (add_sfx align peak, lead_in), a short silence just before it (duck_music dips) and one impact. Silence is a valid choice.",
     "- Delivery: render_start deliver (about -14 LUFS), only when the user asks for a render.",
   ],
+  limits: [
+    "What ae-motion cannot do, and what to do instead. When a request needs one of these, tell the user plainly and offer the workaround; never fake it (run_jsx included) and never say it is done.",
+    "- Every claim about the project comes from a tool result: ids, names, times, values, what is on screen. When a result does not say it, read it (get_comp, get_layer, list_properties, preview_frame) instead of assuming.",
+    "- New media: no tool creates or downloads photos, video, music, voice, sound effects, icons or fonts. Use the user's files (import_footage) and what After Effects draws itself: text, shapes, solids, generated effects (Gradient Ramp, Fractal Noise). Ask for the files a piece needs.",
+    "- Tracking (point, planar, 3D camera), Roto Brush, Content-Aware Fill, Warp Stabilizer: no tool. The user runs them in After Effects; afterwards the tools work with the result (get_keyframes on the tracked layer, copy_animation onto another layer, link_layers to a tracked null).",
+    "- Gradient colours (shape fills and strokes, the gradient_overlay layer style) cannot be set by script. Use the Gradient Ramp effect (linear or radial, two colours) or 4-Color Gradient (ADBE 4ColorGradient):",
+    "  apply_effect {\"layer_id\":4,\"match_name\":\"ADBE Ramp\",\"params\":{\"Start of Ramp\":[960,0],\"Start Color\":[0.1,0.12,0.3],\"End of Ramp\":[960,1080],\"End Color\":[0.02,0.02,0.05],\"Ramp Shape\":\"Radial Ramp\"}}",
+    "- Seeing and hearing: the model sees only preview_frame images and hears nothing (the audio tools report beats, peaks and loudness as numbers). Judge motion from several times in one preview_frame and from review_motion; never describe a frame or a sound without having checked it.",
+    "- Fonts and effects: only what is installed (find_fonts, find_effects). Third-party plugins (Trapcode, Element 3D, Saber, Optical Flares and so on) only if find_effects lists them; otherwise build the look from built-in effects or tell the user.",
+    "- Undo: no tool undoes. Change it back with the tools, or ask the user to press Undo in After Effects (each call is one undo step).",
+    "- Essential Graphics (.mogrt) templates, Media Encoder queues: no tool. render_start renders with aerender and the installed output-module templates; deliver makes an H.264 MP4.",
+    "- run_jsx is off unless the user turned it on (AE_MCP_ALLOW_JSX=1). When no tool covers something and run_jsx is off, say so.",
+  ],
   "3d": [
     "Coordinates: x right, y down, z into the screen; a camera in front of the comp has negative z.",
     "- 3D layers: set_3d (position, z, rotation, orientation, scale, material; keys with time):",
@@ -300,12 +313,13 @@ const HOWTO = {
 } as const;
 
 /** Every topic the guide tool serves, in the order it lists them. */
-export const TOPICS = ["tools", "workflow", "design", "motion", "text", "graphics", "properties", "edit", "audio", "3d"] as const;
+export const TOPICS = ["tools", "workflow", "limits", "design", "motion", "text", "graphics", "properties", "edit", "audio", "3d"] as const;
 export type Topic = (typeof TOPICS)[number];
 
 /** What each topic covers, for the tools map's header. */
 const ABOUT: Record<Exclude<Topic, "tools">, string> = {
   workflow: "build loop, batch, review, render",
+  limits: "what cannot be done, and what to do instead: read it before promising anything unusual",
   design: "the design rules",
   motion: "animation tools",
   text: "type",
