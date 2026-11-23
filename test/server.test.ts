@@ -693,12 +693,12 @@ const results: [name: string, pass: boolean, detail?: string][] = [];
   const ccInit = await cc.call("initialize", { protocolVersion: "2024-11-05", capabilities: {}, clientInfo: { name: "claude-code", version: "2" } });
   cc.p.stdin.write(JSON.stringify({ jsonrpc: "2.0", method: "notifications/initialized" }) + "\n");
   const ccNames = await listNames(cc);
-  results.push(["I: Claude Code is shown every tool (no load_tools, no hidden-tools note)", ccNames.length === 78 && ccNames.includes("camera_move") && !ccNames.includes("load_tools") && !/not listed yet/.test((ccInit.result as Json | undefined)?.instructions ?? ""), String(ccNames.length)]);
+  results.push(["I: Claude Code is shown every tool (no load_tools, no hidden-tools note)", ccNames.length === 79 && ccNames.includes("camera_move") && !ccNames.includes("load_tools") && !/not listed yet/.test((ccInit.result as Json | undefined)?.instructions ?? ""), String(ccNames.length)]);
 
   // the motion guide: Claude Code reads the instructions, so its guide leaves out what they already say
   const guideOf = async (srv: { call: typeof s.call }): Promise<string> => ((await srv.call("prompts/get", { name: "motion-guide" })).result as Json | undefined)?.messages?.[0]?.content?.text ?? "";
   const ccGuide = await guideOf(cc), fullGuide = await guideOf(dflt);
-  results.push(["I: other clients get the whole motion guide (conventions, design rules, run_jsx rule)", /Work like a senior motion designer/.test(fullGuide) && /run_jsx is a last resort/.test(fullGuide) && /Time is in seconds/.test(fullGuide) && /Recommended loop/.test(fullGuide)]);
+  results.push(["I: other clients get the whole motion guide (conventions, design rules, run_jsx rule)", /Work like a senior motion designer/.test(fullGuide) && /run_jsx is a last resort/.test(fullGuide) && /Time is in seconds/.test(fullGuide) && /Build loop/.test(fullGuide)]);
   // Claude Code shows the instructions cut at 4096 characters: every rule must be in that part or in its guide
   const ccShown = ((ccInit.result as Json | undefined)?.instructions ?? "").slice(0, 4096);
   const rules: string[] = [...DESIGN_RULES.split("\n"), RUN_JSX_RULE];
@@ -706,7 +706,7 @@ const results: [name: string, pass: boolean, detail?: string][] = [];
   const twice = rules.filter((l) => ccShown.includes(l) && ccGuide.includes(l));
   const ccFull: string = (ccInit.result as Json | undefined)?.instructions ?? "";
   results.push(["I: the server instructions fit in Claude Code's 4096-character cut", ccFull.length <= 4096 && ccFull.includes(RUN_JSX_RULE), String(ccFull.length)]);
-  results.push(["I: Claude Code's guide keeps every rule its cut instructions miss, and none they show", lost.length === 0 && twice.length === 0 && !/Time is in seconds/.test(ccGuide) && /Recommended loop/.test(ccGuide) && /one undo step/.test(ccGuide) && ccGuide.length < fullGuide.length, `lost ${lost.length}, twice ${twice.length}, ${ccGuide.length} vs ${fullGuide.length}`]);
+  results.push(["I: Claude Code's guide keeps every rule its cut instructions miss, and none they show", lost.length === 0 && twice.length === 0 && !/Time is in seconds/.test(ccGuide) && /Build loop/.test(ccGuide) && /one undo step/.test(ccGuide) && ccGuide.length < fullGuide.length, `lost ${lost.length}, twice ${twice.length}, ${ccGuide.length} vs ${fullGuide.length}`]);
 
   // advertised schemas use the short equivalent forms (one type list, no type beside a const)
   const ccTools: Json[] = ((await cc.call("tools/list", {})).result as Json | undefined)?.tools ?? [];
@@ -763,6 +763,64 @@ const results: [name: string, pass: boolean, detail?: string][] = [];
   const r = await s.call("tools/call", { name: "run_jsx", arguments: { code: "1" } });
   const b = JSON.parse(textOf(r) || "{}");
   results.push(["J: an over-long run_jsx result is a BAD_ARGS error, not the applied note", r.result?.isError === true && b.error?.code === "BAD_ARGS" && b.applied === undefined, JSON.stringify(b).slice(0, 200)]);
+  s.p.stdin.end(); await Promise.race([s.exited, sleep(3000)]); s.p.kill();
+}
+
+// Phase K: the guide tool. Its map names exactly the registered tools, every example call in it passes that tool's
+// real schema (batch steps through batch's own pre-check), and get_project points to it until it has been read.
+{
+  type Guide = { TOOL_MAP: [string, [string, string][]][]; TOPICS: readonly string[]; topicText: (t: string) => string; EXAMPLE: RegExp };
+  const g = await import(new URL("../dist/guide.js", import.meta.url).href) as Guide;
+  const { McpServer } = await import("@modelcontextprotocol/server");
+  const { ToolRegistry } = await import(new URL("../dist/tools/registry.js", import.meta.url).href);
+  const { registerAllTools } = await import(new URL("../dist/tools/index.js", import.meta.url).href);
+  const { precheck, mergeArgs } = await import(new URL("../dist/tools/batch.js", import.meta.url).href);
+  const reg = new ToolRegistry(new McpServer({ name: "t", version: "0" }), { bridge: {}, renders: {} });
+  registerAllTools(reg);
+  const names: string[] = reg.names;
+  const mapped = g.TOOL_MAP.flatMap(([, rows]) => rows.map(([t]) => t));
+  const missing = names.filter((t) => !mapped.includes(t)), unknown = mapped.filter((t) => !names.includes(t));
+  const twice = mapped.filter((t, i) => mapped.indexOf(t) !== i);
+  results.push(["K: the guide's tool map names every registered tool once, and no other", !missing.length && !unknown.length && !twice.length, `missing ${missing}, unknown ${unknown}, twice ${twice}`]);
+
+  const bad: string[] = [];
+  let examples = 0;
+  for (const topic of g.TOPICS) {
+    for (const line of g.topicText(topic).split("\n")) {
+      const m = g.EXAMPLE.exec(line);
+      if (!m) { if (/^ {2}\S/.test(line)) bad.push(`${topic}: not an example line: ${line.slice(0, 80)}`); continue; }
+      examples++;
+      const [, tool, raw] = m;
+      let args: Json;
+      try { args = JSON.parse(raw); } catch { bad.push(`${topic}: ${tool}: arguments are not JSON`); continue; }
+      const schema = reg.schemas.get(tool);
+      if (!schema) { bad.push(`${topic}: unknown tool ${tool}`); continue; }
+      const parsed = schema.safeParse(args);
+      if (!parsed.success) { bad.push(`${topic}: ${tool}: ${parsed.error.issues.map((x: { path: unknown[]; message: string }) => `${x.path.join(".")} ${x.message}`).join("; ")}`); continue; }
+      if (tool === "batch") {
+        const d = (parsed.data.defaults ?? {}) as Record<string, Json>;
+        const steps = (parsed.data.steps as Json[]).map((st) => (d[st.tool] ? { ...st, args: mergeArgs(d[st.tool], st.args) } : st));
+        for (const x of precheck(steps, reg)) bad.push(`${topic}: batch step ${x.step} (${x.tool}): ${x.message}`);
+      }
+    }
+  }
+  results.push(["K: every example call in the guide passes its tool's schema", !bad.length && examples > 40, `${examples} examples; ${bad.join(" | ")}`]);
+  results.push(["K: every topic but tools and design has example calls", g.TOPICS.filter((t) => t !== "tools" && t !== "design").every((t) => g.topicText(t).split("\n").some((l) => g.EXAMPLE.test(l)))]);
+
+  const s = startServer();
+  const init = await s.call("initialize", { protocolVersion: "2024-11-05", capabilities: {}, clientInfo: { name: "claude-code", version: "2" } });
+  s.p.stdin.write(JSON.stringify({ jsonrpc: "2.0", method: "notifications/initialized" }) + "\n");
+  const instructions: string = (init.result as Json | undefined)?.instructions ?? "";
+  results.push(["K: the instructions send the model to guide first", /^Controls a live Adobe After Effects project\. First call guide/.test(instructions) && !/motion-guide prompt/.test(instructions)]);
+  const proj = JSON.parse(textOf(await s.call("tools/call", { name: "get_project", arguments: {} })) || "{}");
+  const map = await s.call("tools/call", { name: "guide", arguments: {} });
+  const two = textOf(await s.call("tools/call", { name: "guide", arguments: { topics: ["motion", "3d", "motion"] } }));
+  const proj2 = JSON.parse(textOf(await s.call("tools/call", { name: "get_project", arguments: {} })) || "{}");
+  results.push(["K: guide with no topic returns the map, as plain text", map.result?.isError !== true && textOf(map).startsWith("# tools\nEvery ae-motion tool by job") && textOf(map).includes("- camera_move: ")]);
+  results.push(["K: guide returns each topic asked for once, in order", two.startsWith("# motion\n") && two.includes("\n\n# 3d\n") && two.split("# motion").length === 2]);
+  results.push(["K: get_project points to the guide until it has been read", /call guide/.test(proj.guide ?? "") && proj2.guide === undefined, JSON.stringify([proj, proj2])]);
+  const bad2 = await s.call("tools/call", { name: "guide", arguments: { topics: ["animation"] } });
+  results.push(["K: an unknown topic is a BAD_ARGS error", bad2.result?.isError === true && JSON.parse(textOf(bad2)).error?.code === "BAD_ARGS"]);
   s.p.stdin.end(); await Promise.race([s.exited, sleep(3000)]); s.p.kill();
 }
 

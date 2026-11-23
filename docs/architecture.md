@@ -30,7 +30,8 @@ src/                        MCP server (TypeScript)
   bridge.ts                 Bridge interface + HttpBridge (the CEP transport)
   sandbox.ts                path allowlist for tool arguments
   resources.ts              ae://project, ae://selection
-  prompts.ts                motion-guide
+  guide.ts                  what the guide tool serves: tool map, topics, design rules
+  prompts.ts                server instructions, motion-guide
   tools/
     registry.ts             ToolRegistry: tool() / bridged() helpers, result helpers
     schemas.ts              shared zod schemas (ids, colors, vectors, property paths)

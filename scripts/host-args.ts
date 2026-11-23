@@ -59,7 +59,7 @@ ${body}
 }
 
 /** Tools implemented in the server only (no C.<name>); keep in sync with test/static-checks.ts. */
-export const SERVER_ONLY = new Set(["render_start", "render_status", "render_cancel", "check_for_updates", "batch", "load_tools"]);
+export const SERVER_ONLY = new Set(["render_start", "render_status", "render_cancel", "check_for_updates", "guide", "batch", "load_tools"]);
 
 export async function listTools(): Promise<{ name: string; inputSchema: Schema }[]> {
   const server = path.join(ROOT, "dist", "index.js");
