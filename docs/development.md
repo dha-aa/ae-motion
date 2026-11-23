@@ -125,7 +125,7 @@ there, with a mock that models it and a live check.
 1. On a branch: bump the version in `package.json` **and** both versions in `panel/CSXS/manifest.xml` (`npm test` fails if they differ; the build stamps it into `host.jsx` as `AEM.version`), then `npm install --package-lock-only`.
 2. Turn `## Unreleased` in `CHANGELOG.md` into `## X.Y.Z — date`.
 3. `npm run typecheck && npm test`, then commit, push and open a PR.
-4. Wait for CI to pass on every runner (`gh pr checks <n> --watch`), then merge.
+4. Wait for CI to pass on every runner (`gh pr checks <n> --watch`), then merge. Pull requests run Linux and Windows; macOS runs on `main` after the merge (`gh run list --branch main`), and must pass before the next step.
 5. Tag the merged `main` and push the tag (`git tag vX.Y.Z && git push origin vX.Y.Z`), create the GitHub release with the changelog section as notes (`gh release create`), and reinstall locally (`bash scripts/install.sh`). The tag is what installed servers detect (GitHub's tags API, at most once a day per user).
 
 Use semantic versioning: a breaking change (a removed or renamed tool or argument, a higher Node requirement) bumps the major version.

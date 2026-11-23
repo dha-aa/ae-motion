@@ -145,8 +145,9 @@ release. The maintainer merges (step 4) and releases (steps 2 and 5).
 3. Commit with the attribution line, push, open a PR whose description says what changed, why, and how it was
    tested (including live checks).
 4. **Merge only when CI is green on every runner** (`gh pr checks <n> --watch`). *Incident: 2.11.1 was merged
-   without waiting and `main` went red.*
-5. Release (maintainer): tag `vX.Y.Z` on the merged `main`, push the tag, create the GitHub release with the changelog section as notes,
+   without waiting and `main` went red.* Pull requests run Linux and Windows; macOS runs on `main` after the merge
+   (GitHub's macOS runners are often short of capacity and held pull requests up for 15 minutes and more).
+5. Release (maintainer): only once CI on `main`, macOS included, is green (`gh run list --branch main`), tag `vX.Y.Z` on the merged `main`, push the tag, create the GitHub release with the changelog section as notes,
    then reinstall locally (`bash scripts/install.sh`).
 6. Semantic versioning: removing or renaming a tool or argument is a major bump; new tools or options are minor;
    fixes are patch.
@@ -161,4 +162,4 @@ release. The maintainer merges (step 4) and releases (steps 2 and 5).
 - [ ] Tests added (fail without the change); no fixed sleeps; `npm test` + `npm run typecheck` pass
 - [ ] Host change reloaded (`"ok": true`) and verified live; `test/live/run.ts` passes; visual changes previewed
 - [ ] Docs and `CHANGELOG.md` updated
-- [ ] CI green on every runner before merge; tag + release after
+- [ ] CI green on every runner before merge; macOS green on `main` before tag + release
