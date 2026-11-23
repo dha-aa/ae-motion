@@ -4,6 +4,7 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch: # run every job, macOS included, from the Actions tab
 
 # A newer push to the same branch or pull request cancels the older run, so stale jobs do not wait in the runner queues.
 concurrency:
@@ -16,11 +17,12 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-latest, ubuntu-latest, windows-latest]
+        # Pull requests: Linux and Windows only, done in about a minute. macOS runs on main after each merge (and from
+        # the Actions tab): GitHub's macOS arm64 runners are short of capacity, and a job waiting for one held up
+        # pull requests for 15 minutes and more, then was cancelled ("not acquired by Runner").
+        os: ${{ github.event_name == 'pull_request' && fromJSON('["ubuntu-latest", "windows-latest"]') || fromJSON('["macos-latest", "ubuntu-latest", "windows-latest"]') }}
         node: [22, 24] # Node 22.18+ runs the .ts tests and scripts directly (type stripping)
-        # macOS once, on the oldest Node we support: GitHub's macOS arm64 runners are short of capacity, and a job that
-        # gets none is cancelled after 15 minutes ("not acquired by Runner"), which turned main red twice. Node 24 is
-        # still tested on Linux and Windows.
+        # macOS once, on the oldest Node we support; Node 24 is tested on Linux and Windows.
         exclude:
           - os: macos-latest
             node: 24
