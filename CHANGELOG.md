@@ -2,6 +2,14 @@
 
 All notable changes. Versions follow [semantic versioning](https://semver.org); each release is a git tag `vX.Y.Z`, which is what the update check looks for.
 
+## Unreleased
+
+### Added
+- `guide`: which tool does each job, and how-tos per area (workflow, design, motion, text, graphics, properties, edit, audio, 3d) with example calls. Clients that only see tool names until they load one (Claude Code) now have one place to learn what all 79 tools are for, instead of guessing from names. The examples are checked against the real schemas by a test, so the guide cannot teach an argument that does not exist. No After Effects needed.
+
+### Changed
+- The server instructions tell models to call `guide` first, and `get_project` adds a `guide` note until it has been called. They no longer point models to the `motion-guide` prompt, which only the user can run; the prompt now shares its text with `guide`.
+
 ## 2.26.0 — 2026-11-11
 
 ### Changed

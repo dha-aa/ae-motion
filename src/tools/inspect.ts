@@ -1,5 +1,6 @@
 /** Read-only inspection tools. Host side: host/commands/inspect.jsx. */
 import { z } from "zod";
+import { guideState } from "../guide.js";
 import { knownUpdate } from "../update.js";
 import { fromBridge, json, type ToolRegistry } from "./registry.js";
 import { id, PropPath } from "./schemas.js";
@@ -16,8 +17,11 @@ export function registerInspectTools(r: ToolRegistry): void {
     },
     async (a) => {
       const res = await r.deps.bridge.run("get_project", a);
+      if (!res.ok) return fromBridge(res);
       const update = knownUpdate();
-      return res.ok && update?.update_available ? json({ ...res.result, update }) : fromBridge(res);
+      // until the model has read the guide, the first result it always asks for points to it
+      const notes = { ...(update?.update_available ? { update } : {}), ...(guideState.read ? {} : { guide: "Not read yet: call guide for which tool does each job (with checked examples) before building" }) };
+      return Object.keys(notes).length ? json({ ...(res.result as object), ...notes }) : fromBridge(res);
     },
     { ...ro, tooLargeHint: "Filter by name or type, or lower limit and page with offset" },
   );

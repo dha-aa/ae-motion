@@ -67,7 +67,7 @@ Effects: *"Create a 1920x1080 comp, 5 seconds, with a title that slides in, and 
 
 ## What Claude can do in After Effects
 
-78 tools, grouped by what they're for, plus a helper that loads them on demand in apps that start with fewer. You
+79 tools, grouped by what they're for, plus a helper that loads them on demand in apps that start with fewer. You
 never call them yourself: ask in plain words, and Claude picks the right ones.
 
 | Area | Ask for things like | Tools |
@@ -83,7 +83,7 @@ never call them yourself: ask in plain words, and Claude picks the right ones.
 | **3D and camera** | "Orbit the camera around the product" | `get_camera` `set_camera` `camera_move` `camera_shake` `camera_rig` `set_3d` `set_light` `set_3d_view` |
 | **Audio** | "Cut the clips to the beat, duck the music under the voice" | `beat_markers` `audio_react` `find_sound_cues` `add_sfx` `duck_music` |
 | **Preview and render** | "Show me frame 2s, then render an MP4" | `preview_frame` `render_start` `render_status` `render_cancel` |
-| **Power tools** | "Check for updates" | `batch` `check_for_updates` `run_jsx` (off unless you turn it on) |
+| **Power tools** | "Check for updates" | `guide` `batch` `check_for_updates` `run_jsx` (off unless you turn it on) |
 
 How each one works: [docs/tools.md](docs/tools.md).
 

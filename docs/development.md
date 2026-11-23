@@ -93,7 +93,7 @@ A tool has two halves with the same name: a schema on the server and a command i
    - If the command changes nothing undoable, add it to `READONLY` in `host/dispatch.ts`.
    - A new host file must be added to `MODULES` in `scripts/build-host.ts`. Top-level names must be unique across `host/`; the build fails on a duplicate.
 
-3. **Tests**: bump `EXPECTED_TOOLS` in `test/static-checks.ts`, and add logic tests to `test/mock-host.test.ts` or `test/mock-camera.test.ts` when the command has real logic.
+3. **Tests**: bump `EXPECTED_TOOLS` in `test/static-checks.ts`, add the tool to `TOOL_MAP` in `src/guide.ts` (one line: what it is for, and what not, if it is easy to mix up with another; a test fails until every tool is there), and add an example call to its area's topic, and add logic tests to `test/mock-host.test.ts` or `test/mock-camera.test.ts` when the command has real logic.
 
 4. **Docs**: add the tool to the table in `docs/tools.md` and to its area in the README's tool table (`npm test` fails until the README lists exactly the server's tools).
 
@@ -146,7 +146,7 @@ Use semantic versioning: a breaking change (a removed or renamed tool or argumen
 | `mock-motion.test.ts` | The motion tools (`animate`, `text_reveal`, `transition`, `review_motion`) against a fake DOM whose properties evaluate the expressions the tools write: springs overshoot once and land exactly, bounces never pass rest, reveal units stagger in order and finish at the reported end, transition bars all cover at the cut, the iris covers the corners, and every review rule |
 | `aerender-discovery.test.ts` | `findAerender` against fake install layouts |
 | `preview-image.test.ts` | Shrinking preview PNGs and tiling contact sheets (`src/render/image.ts`) |
-| `server.test.ts` | The built server end to end over stdio, with a fake bridge and a fake `aerender`: render lifecycle (failed start keeps old output, jobs stop on disconnect, the real output file is reported), `preview_frame` waiting, path sandboxing, the `run_jsx` gate. Skipped on Windows (uses a bash script) |
+| `server.test.ts` | The built server end to end over stdio, with a fake bridge and a fake `aerender`: render lifecycle (failed start keeps old output, jobs stop on disconnect, the real output file is reported), `preview_frame` waiting, path sandboxing, the `run_jsx` gate. Skipped on Windows (uses a bash script); the `guide` tool (its map names exactly the registered tools, every example call passes its tool's schema, `get_project` points to it until read) |
 | `panel.test.ts`, `update-script.test.ts`, `register.test.ts`, `check-script.test.ts` | The panel bridge in a vm; `scripts/update.ts` against throwaway git repos; `scripts/register.ts` (the installers' Claude Desktop / Claude Code registration) with a throwaway HOME and a fake `claude`; `scripts/check.ts` (the install check) with fake After Effects prefs files and a fake bridge |
 | `docs.test.ts` | Links and `#section` links in the Markdown, docs sections named in messages, every `AE_*` variable documented in `docs/setup.md` |
 
