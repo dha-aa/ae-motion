@@ -3,8 +3,27 @@
  * Host side: host/commands/motion.jsx.
  */
 import { z } from "zod";
-import type { ToolRegistry } from "./registry.js";
+import { fromBridge, json, type ToolRegistry } from "./registry.js";
 import { Color, id, LayerIds, Pt, Time } from "./schemas.js";
+
+type Issue = { severity?: string; t?: unknown };
+type Review = { issues: Issue[]; stats: Record<string, unknown> };
+
+/** An issue's sort time as the host's comparator reads it: a number, the first of a list, else 0. */
+const issueTime = (x: Issue): number => (typeof x.t === "number" ? x.t : Array.isArray(x.t) && typeof x.t[0] === "number" ? x.t[0] : 0);
+
+/**
+ * review_motion's result with review_small_text's issues merged in, in the host's order (warnings first, then by
+ * time) and cut to max, with the rest counted in stats.more_issues as the host does.
+ */
+export function withSmallText(review: Review, small: Issue[], max: number): Review {
+  if (!small.length) return review;
+  const rank = (x: Issue) => (x.severity === "warn" ? 0 : 1);
+  const issues = [...review.issues, ...small].sort((x, y) => rank(x) - rank(y) || issueTime(x) - issueTime(y));
+  const stats = { ...review.stats };
+  if (issues.length > max) { stats.more_issues = (typeof stats.more_issues === "number" ? stats.more_issues : 0) + issues.length - max; issues.length = max; }
+  return { issues, stats };
+}
 
 const Curve = z.enum(["snappy", "smooth", "spring", "bounce", "linear"]);
 const Dir = z.enum(["up", "down", "left", "right"]);
@@ -42,12 +61,23 @@ export function registerMotionTools(r: ToolRegistry): void {
     { destructive: false },
   );
 
-  r.bridged(
+  // Two host calls: the review, then its small-text check. Reading TextDocuments inside the review's call corrupted
+  // ExtendScript's memory in After Effects 27.0 and crashed it soon after (host/CLAUDE.md); in a call of their own
+  // they are safe.
+  r.tool(
     "review_motion",
     "Critique a comp's animation without rendering (cheap, no image): linear easing, holds over max_hold (changes too small to see don't count as motion: fix holds with animate push / drift), a first move later than 0.3 s, layers moving in unison, entrances with no animation, moves cut off by out points, jumps, text under min_text px (default 3% of the comp's short side), share of moves on beat markers; layers hidden behind opaque ones (3D: by depth), off screen, a background that stops filling the frame, text partly covered, text crossing the 5% title-safe margin (vertical comps: the top 10% and bottom 20% social apps cover) (scene false skips). Run after each scene and fix every warning.",
     {
       comp_id: id("Comp"), max_hold: z.number().positive().optional(), min_text: z.number().positive().optional(),
       max: z.number().int().min(1).max(100).optional().describe("Issues listed (default 30; more_issues counts the rest)"), all: z.boolean().optional().describe("List info notes too (default: counted in stats.info)"), scene: z.boolean().optional(),
+    },
+    async (a, extra) => {
+      const signal = extra?.mcpReq?.signal;
+      const review = await r.deps.bridge.run("review_motion", { ...a }, undefined, signal);
+      if (!review.ok) return fromBridge(review);
+      const small = await r.deps.bridge.run("review_small_text", a.min_text === undefined ? { comp_id: a.comp_id } : { comp_id: a.comp_id, min_text: a.min_text }, undefined, signal);
+      if (!small.ok) return fromBridge(small);
+      return json(withSmallText(review.result as Review, (small.result as { issues: Issue[] }).issues, a.max ?? 30));
     },
     { readOnly: true },
   );

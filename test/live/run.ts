@@ -441,6 +441,24 @@ check("animate, text_reveal and review_motion run on real layers", async () => {
   expect(typeof r === "object", "review result", r);
 });
 
+// After Effects 27.0 (host/CLAUDE.md): TextDocuments read inside review_motion's call corrupted ExtendScript's memory.
+// The crash needs a big comp, so this checks the split itself on real text: an expression-driven and a keyed Source
+// Text, small text still found through review_small_text, run after run.
+check("review_motion finds small text with its sizes read in a call of their own, run after run", async () => {
+  const text = async (name: string, s: string, size: number): Promise<number> => (await call("add_layer", { comp_id: comp, kind: "text", options: { name, text: s, text_style: { size } } })).id;
+  const small = await text("Fine print", "fine print", 14);
+  const count = await text("Count", "0", 120);
+  await call("set_expression", { layer_id: count, path: ["ADBE Text Properties", "ADBE Text Document"], expression: "Math.round(time * 10).toString();" });
+  const keyed = await text("Keyed", "one", 120);
+  await call("set_text", { layer_id: keyed, time: 0, text: "one" });
+  await call("set_text", { layer_id: keyed, time: 1, text: "two" });
+  for (let run = 1; run <= 3; run++) {
+    const s = (await call("review_motion", { comp_id: comp })).issues.filter((i: Json) => i.type === "small_text");
+    expect(s.length === 1 && (s[0].layer_id ?? s[0].layer_ids?.[0]) === small, `run ${run}: the 14 px text is the one small text`, s);
+  }
+  expect((await call("get_comp", { comp_id: comp })).num_layers === 3, "After Effects still answers with all three layers");
+});
+
 // ----- output -----
 check("preview_frame returns one tiled image for several times", async () => {
   await solid("L");

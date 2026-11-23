@@ -2,6 +2,11 @@
 
 All notable changes. Versions follow [semantic versioning](https://semver.org); each release is a git tag `vX.Y.Z`, which is what the update check looks for.
 
+## Unreleased
+
+### Fixed
+- `review_motion` no longer crashes After Effects 27.0. On comps with text layers, After Effects quit a few seconds after the review (or on the next command): reading text documents inside the review's walk corrupted ExtendScript's memory. The review now reads none; its small-text check runs as a separate call right after (a host command of its own, `review_small_text`), and the server merges its finding in. Same findings, same order. The walk also reads keys and expressions without making a function per call.
+
 ## 2.27.1 — 2026-11-23
 
 ### Changed

@@ -19,7 +19,7 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const EXPECTED_TOOLS = 79; // update when adding or removing a tool
 
 const SERVER_ONLY_TOOLS = SERVER_ONLY; // implemented in the server, no host command (scripts/host-args.ts)
-const HOST_ONLY_COMMANDS = new Set(["get_selection", "prepare_render"]); // used by a resource / render_start, not tools
+const HOST_ONLY_COMMANDS = new Set(["get_selection", "prepare_render", "review_small_text"]); // used by a resource / render_start / review_motion, not tools
 
 let bad = 0;
 const report = (ok: boolean, msg: string): void => { console.log((ok ? "PASS  " : "FAIL  ") + msg); if (!ok) bad++; };

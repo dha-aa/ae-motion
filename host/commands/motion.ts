@@ -318,15 +318,22 @@ function revealSpan(p: Prop, l: Layer): number[] | null {
   return [parseFloat(m[1]), parseFloat(m[1]) + parseFloat(m[2]) + Math.max(0, n - 1) * parseFloat(m[3])];
 }
 
+// A key's value, or undefined when After Effects can't give one. A plain function, not safe(): the walk below runs it
+// for every key of every property, and a closure per call was the churn behind the After Effects 27.0 crash
+// (host/CLAUDE.md).
+function reviewKey(p: any, k: number): any {
+  try { return p.keyValue(k); } catch (e) { return undefined; }
+}
+
 // Motion segments of a layer: every pair of neighbouring keys whose values differ, on any property.
 function motionSegments(g: any, out: Seg[], live: { on: boolean }, l: Layer): Seg[] {
-  var i, p: any, k: number, v0, v1, rs, ex: string, nk: number, sprung: boolean;
+  var i, p: any, k: number, v0, v1, rs, ex: string, nk: number, sprung: boolean, doc: boolean;
   for (i = 1; i <= g.numProperties; i++) {
     p = g.property(i);
     if (!p || REVIEW_SKIP[p.matchName]) continue;
     if (p.propertyType === PropertyType.PROPERTY) {
       // the expression is read once per property, and each key's value once: this walks every property of every layer
-      ex = safe(function () { return p.expressionEnabled ? String(p.expression) : ""; }) || "";
+      try { ex = p.expressionEnabled ? String(p.expression) : ""; } catch (e) { ex = ""; }
       if (ex && REVIEW_LIVE.test(ex)) live.on = true;
       if (ex && ex.indexOf(REVEAL_TAG) === 0) {
         rs = revealSpan(p, l);
@@ -335,9 +342,12 @@ function motionSegments(g: any, out: Seg[], live: { on: boolean }, l: Layer): Se
       nk = p.numKeys;
       if (!nk || nk < 2) continue;
       sprung = ex.indexOf(SPRING_TAG) === 0;
-      v1 = safe(function () { return p.keyValue(1); });
+      // Source Text keys always count as a change (two TextDocuments never compare equal), so their values are not
+      // read: no TextDocument is made during the walk (host/CLAUDE.md, After Effects 27.0)
+      doc = p.propertyValueType === PropertyValueType.TEXT_DOCUMENT;
+      v1 = doc ? undefined : reviewKey(p, 1);
       for (k = 1; k < nk; k++) {
-        v0 = v1; v1 = safe(function () { return p.keyValue(k + 1); });
+        v0 = v1; v1 = doc ? undefined : reviewKey(p, k + 1);
         if (v0 !== undefined && v1 !== undefined && typeof v0 !== "object" && v0 === v1) continue;
         if (v0 instanceof Array && v1 instanceof Array && dist(v0, v1) < 1e-6) continue;
         if (REVIEW_MIN[p.matchName] !== undefined && v0 !== undefined && v1 !== undefined && dist(v0, v1) < REVIEW_MIN[p.matchName]) continue;
@@ -675,11 +685,38 @@ function slowDrift(s: Seg, c: CompItem): boolean {
   return false;
 }
 
+// The smallest readable text in a comp: min_text, else 3% of its short side.
+function reviewMinText(c: CompItem, minText: number | undefined): number {
+  return minText !== undefined && minText !== null ? minText : Math.round(Math.min(c.width, c.height) * 0.03);
+}
+
+// review_motion's small-text check, a command of its own that the server runs after review_motion (src/tools/motion.ts):
+// text under min_text px on its last frame (the font size at its in point times its vertical scale). Reading those
+// TextDocuments inside review_motion's call corrupted ExtendScript's memory in After Effects 27.0, and After Effects
+// crashed soon after (host/CLAUDE.md); in a call of their own they are safe.
+C.review_small_text = function (a: HostArgs["review_small_text"]) {
+  need(a, ["comp_id"]);
+  var c = getComp(a.comp_id), fd = c.frameDuration, minText = reviewMinText(c, a.min_text), issues: Obj[] = [], i, l: AVLayer, size: number, sc: any;
+  for (i = 1; i <= c.numLayers; i++) {
+    l = c.layer(i) as AVLayer;
+    if (!l.enabled || layerKind(l) !== "text" || safe(function () { return l.guideLayer; })) continue;
+    try { size = l.property("ADBE Text Properties").property("ADBE Text Document").valueAtTime(l.inPoint, false).fontSize; } catch (e) { size = 0; }
+    try { sc = tp(l, "ADBE Scale").valueAtTime(l.outPoint - fd, false); } catch (e2) { sc = null; }
+    if (size && sc && size * Math.abs(sc[1]) / 100 < minText) {
+      issues.push({ type: "small_text", severity: "warn", layer_id: l.id, layer: l.name, size: Math.round(size * Math.abs(sc[1]) / 100), msg: "Text under " + minText + " px is hard to read on a phone" });
+    }
+  }
+  issues = groupIssues(issues, true, {});
+  $.gc(); // drop the TextDocuments now, at the end of the call, not during a later command
+  return { issues: issues };
+};
+
 C.review_motion = function (a: Args["review_motion"]) {
   need(a, ["comp_id"]);
-  var c = getComp(a.comp_id), fd = c.frameDuration, maxHold = has(a, "max_hold") ? a.max_hold : 1, minText = has(a, "min_text") ? a.min_text : Math.round(Math.min(c.width, c.height) * 0.03),
+  // no TextDocument is read in this call: small text is review_small_text's (see there)
+  var c = getComp(a.comp_id), fd = c.frameDuration, maxHold = has(a, "max_hold") ? a.max_hold : 1,
     issues: Obj[] = [], spans: number[][] = [], events: number[] = [], starts: { [frame: string]: number[] } = {}, beats: number[] = [], lin: { [key: string]: boolean } = {}, i, j, l: AVLayer, segs: Seg[], s: Seg, kind, live: { on: boolean },
-    first: number | null, fs: string, sc: any, mk, gap, cur, onBeat = 0, starts2: Obj[] = [], near: any, hold = 0, b, txt: any;
+    first: number | null, fs: string, sc: any, mk, gap, cur, onBeat = 0, starts2: Obj[] = [], near: any, hold = 0, b;
   function issue(o: Obj): void { issues.push(o); }
   blendIssues(c, issue);
   mk = c.markerProperty;
@@ -713,13 +750,6 @@ C.review_motion = function (a: Args["review_motion"]) {
       near = false;
       for (j = 0; j < segs.length; j++) if (segs[j].t0 <= l.inPoint + 0.25 && segs[j].t1 >= l.inPoint - fd) near = true;
       if (!near) issue({ type: "pops_on", severity: "info", layer_id: l.id, layer: l.name, t: l.inPoint, msg: "Appears with no entrance (fine for a hard cut; otherwise animate it in)" });
-    }
-    if (kind === "text") {
-      txt = safe(function () { return l.property("ADBE Text Properties").property("ADBE Text Document").valueAtTime(l.inPoint, false); });
-      sc = safe(function () { return tp(l, "ADBE Scale").valueAtTime(l.outPoint - fd, false); });
-      if (txt && txt.fontSize && sc && txt.fontSize * Math.abs(sc[1]) / 100 < minText) {
-        issue({ type: "small_text", severity: "warn", layer_id: l.id, layer: l.name, size: Math.round(txt.fontSize * Math.abs(sc[1]) / 100), msg: "Text under " + minText + " px is hard to read on a phone" });
-      }
     }
   }
   for (fs in starts) {

@@ -59,6 +59,9 @@ const bridge = http.createServer((req, res) => {
       setTimeout(() => fs.writeFileSync(args.output_path, png), 700);
       return res.end(JSON.stringify({ ok: true, result: args.time >= 5 ? { scene: "S02 Gold" } : {} }));
     }
+    // review_motion's host review (already sorted: warnings first, then by time) and its small-text check
+    if (cmd === "review_motion") return res.end(JSON.stringify({ ok: true, result: { issues: [{ type: "late_start", severity: "warn", t: 0 }, { type: "linear", severity: "warn", t: 2 }], stats: { layers: 3 } } }));
+    if (cmd === "review_small_text") return res.end(JSON.stringify({ ok: true, result: { issues: [{ type: "small_text", severity: "warn", layer_id: 5, size: 12, t: [] }] } }));
     res.end(JSON.stringify({ ok: true, result: {} }));
   });
 });
@@ -821,6 +824,20 @@ const results: [name: string, pass: boolean, detail?: string][] = [];
   results.push(["K: get_project points to the guide until it has been read", /call guide/.test(proj.guide ?? "") && proj2.guide === undefined, JSON.stringify([proj, proj2])]);
   const bad2 = await s.call("tools/call", { name: "guide", arguments: { topics: ["animation"] } });
   results.push(["K: an unknown topic is a BAD_ARGS error", bad2.result?.isError === true && JSON.parse(textOf(bad2)).error?.code === "BAD_ARGS"]);
+  s.p.stdin.end(); await Promise.race([s.exited, sleep(3000)]); s.p.kill();
+}
+
+// Phase L: review_motion is two host calls (the review, then its small-text check in a call of its own: reading
+// TextDocuments inside the review's call crashed After Effects 27.0), merged in the host's order and cut to max
+{
+  const s = startServer();
+  await s.init();
+  calls.length = 0;
+  const r = JSON.parse(textOf(await s.call("tools/call", { name: "review_motion", arguments: { comp_id: 1, min_text: 40 } })));
+  results.push(["L: review_motion runs the review, then review_small_text with comp_id and min_text", calls.join(",") === "review_motion,review_small_text" && received.review_small_text?.comp_id === 1 && received.review_small_text?.min_text === 40, calls.join(",")]);
+  results.push(["L: small text is merged in the host's order (warnings first, then by time)", r.issues?.map((i: Json) => i.type).join(",") === "late_start,small_text,linear" && r.stats?.layers === 3, JSON.stringify(r)]);
+  const cut = JSON.parse(textOf(await s.call("tools/call", { name: "review_motion", arguments: { comp_id: 1, max: 2 } })));
+  results.push(["L: the merged list keeps max, the rest counted in more_issues", cut.issues?.length === 2 && cut.stats?.more_issues === 1 && received.review_small_text?.min_text === undefined, JSON.stringify(cut)]);
   s.p.stdin.end(); await Promise.race([s.exited, sleep(3000)]); s.p.kill();
 }
 
