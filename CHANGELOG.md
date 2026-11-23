@@ -5,7 +5,7 @@ All notable changes. Versions follow [semantic versioning](https://semver.org); 
 ## Unreleased
 
 ### Added
-- `guide` topic `limits`: what ae-motion cannot do (make new media, tracking and rotoscoping, gradient colours, hearing sound, plugins that are not installed, undo, .mogrt export) and the workaround to offer instead, so a model tells you rather than promising something it cannot deliver. The server instructions point to it.
+- `guide` topic `workarounds`: other ways to get done what ae-motion has no tool for, instead of giving up or pretending: the client's other tools (image, voice, music and sound generators, transcription), a shell with ffmpeg or Python (tested commands for tones, whooshes, stills and stabilizing; tracking with OpenCV keyed onto a null parented to the footage), the user's files, or a step the user does in After Effects; Gradient Ramp for gradient colours, snapshots to go back. The model checks a route exists before relying on it and says which one it takes. The server instructions point to it.
 
 ### Changed
 - A wrong effect parameter name in `apply_effect` or `edit_effect` now lists the effect's real parameters in the error (`Its parameters: Blurriness, Blur Dimensions, Repeat Edge Pixels`), so a model fixes the call from the error instead of guessing again. `apply_effect`'s message also says the effect was not added.

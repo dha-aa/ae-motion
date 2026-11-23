@@ -279,18 +279,21 @@ const HOWTO = {
     "- Sound follows the story, not every cut: pass find_sound_cues events for the moments that matter (importance 0 mutes one); a big reveal can take a riser that peaks on it (add_sfx align peak, lead_in), a short silence just before it (duck_music dips) and one impact. Silence is a valid choice.",
     "- Delivery: render_start deliver (about -14 LUFS), only when the user asks for a render.",
   ],
-  limits: [
-    "What ae-motion cannot do, and what to do instead. When a request needs one of these, tell the user plainly and offer the workaround; never fake it (run_jsx included) and never say it is done.",
-    "- Every claim about the project comes from a tool result: ids, names, times, values, what is on screen. When a result does not say it, read it (get_comp, get_layer, list_properties, preview_frame) instead of assuming.",
-    "- New media: no tool creates or downloads photos, video, music, voice, sound effects, icons or fonts. Use the user's files (import_footage) and what After Effects draws itself: text, shapes, solids, generated effects (Gradient Ramp, Fractal Noise). Ask for the files a piece needs.",
-    "- Tracking (point, planar, 3D camera), Roto Brush, Content-Aware Fill, Warp Stabilizer: no tool. The user runs them in After Effects; afterwards the tools work with the result (get_keyframes on the tracked layer, copy_animation onto another layer, link_layers to a tracked null).",
-    "- Gradient colours (shape fills and strokes, the gradient_overlay layer style) cannot be set by script. Use the Gradient Ramp effect (linear or radial, two colours) or 4-Color Gradient (ADBE 4ColorGradient):",
+  workarounds: [
+    "For what ae-motion has no tool for: other ways to get it done. Pick the best route the client really has (check that a tool or program exists before relying on it), tell the user which route you are taking, and check the result (preview_frame) before saying it is done.",
+    "Routes besides ae-motion's tools: other tools the client has (image, video, voice, music or sound generators; transcription), a shell with ffmpeg or Python, the user's own files, or a step the user does in After Effects. Files made elsewhere go in a folder ae-motion may read (by default the home or temp folder), then import_footage.",
+    "- Media (photos, footage, voice, music, sound effects, icons): the user's files; a generator tool the client has; or make it. ffmpeg makes tones, noise whooshes, test clips and stills: `ffmpeg -f lavfi -i \"sine=frequency=880:duration=0.3\" pop.wav`, `ffmpeg -f lavfi -i \"anoisesrc=d=1:c=pink\" -af \"afade=t=in:d=0.5,afade=t=out:st=0.5:d=0.5\" whoosh.wav`, `ffmpeg -ss 1 -i clip.mp4 -frames:v 1 still.png`. Python can draw images. After Effects draws text, shapes and generated effects (Gradient Ramp, Fractal Noise).",
+    "- Tracking: with a shell and OpenCV (`python3 -c \"import cv2\"` works), track the footage file and key a null parented to the footage layer with set_keyframes (t = frame / fps; positions in the footage's pixels, which is the parent's own space). Or the user tracks in After Effects, and the tools use the result (get_keyframes, copy_animation, link_layers).",
+    "- Cutting out a subject: green or blue screen with a keying effect (find_effects \"key\"); a simple shape with an animated mask (set_keyframes on ADBE Mask Shape); a segmentation tool the client has, output as a PNG sequence with alpha (import_footage as sequence); or Roto Brush by the user.",
+    "- Stabilizing: ffmpeg's deshake filter (`ffmpeg -i in.mp4 -vf deshake out.mp4`), or Warp Stabilizer by the user. Removing an object: cover it with a patch (duplicate_layer, add_mask, shift its position), or Content-Aware Fill by the user.",
+    "- Gradient colours cannot be set by script (shape fills and strokes, the gradient_overlay style): use the Gradient Ramp effect (linear or radial, two colours) or 4-Color Gradient (ADBE 4ColorGradient):",
     "  apply_effect {\"layer_id\":4,\"match_name\":\"ADBE Ramp\",\"params\":{\"Start of Ramp\":[960,0],\"Start Color\":[0.1,0.12,0.3],\"End of Ramp\":[960,1080],\"End Color\":[0.02,0.02,0.05],\"Ramp Shape\":\"Radial Ramp\"}}",
-    "- Seeing and hearing: the model sees only preview_frame images and hears nothing (the audio tools report beats, peaks and loudness as numbers). Judge motion from several times in one preview_frame and from review_motion; never describe a frame or a sound without having checked it.",
-    "- Fonts and effects: only what is installed (find_fonts, find_effects). Third-party plugins (Trapcode, Element 3D, Saber, Optical Flares and so on) only if find_effects lists them; otherwise build the look from built-in effects or tell the user.",
-    "- Undo: no tool undoes. Change it back with the tools, or ask the user to press Undo in After Effects (each call is one undo step).",
-    "- Essential Graphics (.mogrt) templates, Media Encoder queues: no tool. render_start renders with aerender and the installed output-module templates; deliver makes an H.264 MP4.",
-    "- run_jsx is off unless the user turned it on (AE_MCP_ALLOW_JSX=1). When no tool covers something and run_jsx is off, say so.",
+    "- Speech for captions: a transcription tool the client has (or Whisper, if installed) gives words with times; then one add_layer text per line with in / out. Beats, peaks and loudness: the audio tools.",
+    "- A closer look than preview_frame: extract stills from a video file with ffmpeg and view them, if the client can read images; render_start draft only when the user asked for a render.",
+    "- Plugins that are not installed: rebuild the look from built-in effects (find_effects), or ask the user. Fonts: installed ones (find_fonts); ask the user to install another.",
+    "- Undoing: change it back with the tools. Before a risky change to a saved project, save_project snapshot: true; open_project on that copy restores it exactly. Or the user presses Undo.",
+    "- Essential Graphics (.mogrt), Media Encoder: no tool yet; render_start renders (deliver: an H.264 MP4).",
+    "- Inside After Effects, for what no tool covers: run_jsx, if the user turned it on (AE_MCP_ALLOW_JSX=1).",
   ],
   "3d": [
     "Coordinates: x right, y down, z into the screen; a camera in front of the comp has negative z.",
@@ -313,13 +316,13 @@ const HOWTO = {
 } as const;
 
 /** Every topic the guide tool serves, in the order it lists them. */
-export const TOPICS = ["tools", "workflow", "limits", "design", "motion", "text", "graphics", "properties", "edit", "audio", "3d"] as const;
+export const TOPICS = ["tools", "workflow", "workarounds", "design", "motion", "text", "graphics", "properties", "edit", "audio", "3d"] as const;
 export type Topic = (typeof TOPICS)[number];
 
 /** What each topic covers, for the tools map's header. */
 const ABOUT: Record<Exclude<Topic, "tools">, string> = {
   workflow: "build loop, batch, review, render",
-  limits: "what cannot be done, and what to do instead: read it before promising anything unusual",
+  workarounds: "other ways to get done what ae-motion has no tool for: other tools, a shell, the user",
   design: "the design rules",
   motion: "animation tools",
   text: "type",
