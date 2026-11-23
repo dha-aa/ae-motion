@@ -5,6 +5,11 @@ on:
     branches: [main]
   pull_request:
 
+# A newer push to the same branch or pull request cancels the older run, so stale jobs do not wait in the runner queues.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   test:
     # No After Effects in CI: the suite uses a mock AE DOM, a fake bridge and a fake aerender.
@@ -13,6 +18,12 @@ jobs:
       matrix:
         os: [macos-latest, ubuntu-latest, windows-latest]
         node: [22, 24] # Node 22.18+ runs the .ts tests and scripts directly (type stripping)
+        # macOS once, on the oldest Node we support: GitHub's macOS arm64 runners are short of capacity, and a job that
+        # gets none is cancelled after 15 minutes ("not acquired by Runner"), which turned main red twice. Node 24 is
+        # still tested on Linux and Windows.
+        exclude:
+          - os: macos-latest
+            node: 24
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
