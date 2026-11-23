@@ -75,6 +75,13 @@ class MeshGroup {
   get numProperties() { return this.children.length; }
   property(n) { return typeof n === "number" ? this.children[n - 1] : this.children.find((c) => c.matchName === n); }
   propertyGroup() { return this.layer; }
+  // an effect stack takes a new effect with two sliders (apply_effect); as in After Effects, an unknown name gives nothing
+  canAddProperty() { return this.matchName === "ADBE Effect Parade"; }
+  addProperty(m) {
+    const fx = new MeshGroup(m, [new PlainProp("Amount", 10, this.layer), new PlainProp("Other", 5, this.layer)], this.layer);
+    fx.remove = () => { this.children.splice(this.children.indexOf(fx), 1); };
+    this.children.push(fx); fx.propertyIndex = this.children.length; return fx;
+  }
 }
 const MESH_WORDS = ["Cube", "Sphere", "Plane", "Torus", "Cone", "Cylinder"];
 
@@ -590,8 +597,9 @@ function effectLayer() {
   const l = c.layer("L");
   const type = new Dropdown("Type", ["Basic", "(-", "Dynamic", "(-", "Max"], l), amount = new PlainProp("Amount", 10, l), other = new PlainProp("Other", 5, l);
   const fx = new MeshGroup("Fx", [type, amount, other], l);
-  l.tree.push(new MeshGroup("ADBE Effect Parade", [fx], l, true));
-  return { w, id, type, amount, other };
+  const parade = new MeshGroup("ADBE Effect Parade", [fx], l, true);
+  l.tree.push(parade);
+  return { w, id, type, amount, other, parade };
 }
 
 t("list_properties names a dropdown's selection; all lists its items; other properties get neither", () => {
@@ -623,6 +631,18 @@ t("set_property takes a dropdown item's name in any case; an unknown name lists 
   const bad = w.call("set_property", { layer_id: id, path, value: "Nope" });
   fails(bad, "BAD_ARGS"); assert.match(bad.error.hint, /Basic, Dynamic, Max/); assert.equal(type.value, 3);
   fails(w.call("set_property", { layer_id: id, path: ["ADBE Effect Parade", 1, "Amount"], value: "Basic" }), "BAD_ARGS", "a name on a property with no menu");
+});
+
+t("a wrong effect parameter name: the error lists the effect's real parameters; apply_effect leaves no effect behind", () => {
+  const { w, id, parade } = effectLayer();
+  const bad = w.call("edit_effect", { layer_id: id, effect_index: 1, action: "set", params: { Amout: 50 } });
+  fails(bad, "BAD_ARGS"); assert.match(bad.error.hint, /^Its parameters: Type, Amount, Other$/, bad.error.hint);
+  const wrongValue = w.call("edit_effect", { layer_id: id, effect_index: 1, action: "set", params: { Type: "Nope" } });
+  fails(wrongValue, "BAD_ARGS"); assert.doesNotMatch(wrongValue.error.hint, /Its parameters/, "a known name with a bad value is not about names");
+  const added = w.call("apply_effect", { layer_id: id, match_name: "ADBE Glo2", params: { Amount: 2, Radius: 30 } });
+  fails(added, "BAD_ARGS"); assert.match(added.error.message, /Radius: no such parameter/); assert.match(added.error.hint, /^Its parameters: Amount, Other$/, added.error.hint);
+  assert.equal(parade.numProperties, 1, "the new effect was removed");
+  ok(w.call("apply_effect", { layer_id: id, match_name: "ADBE Glo2", params: { Amount: 2 } })); assert.equal(parade.numProperties, 2);
 });
 
 t("edit_effect set: changes params by name; a wrong one changes nothing and keeps the effect", () => {

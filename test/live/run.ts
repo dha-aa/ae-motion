@@ -382,6 +382,18 @@ check("effects apply with parameters and can be removed", async () => {
   expect(e.length === 0, "removed", e);
 });
 
+check("every effect the guide names exists, with the parameter names and values its examples use", async () => {
+  // the guide's apply_effect examples (src/guide.ts), run on a real layer: a made-up match name or parameter fails here
+  const g = await import(new URL("../../dist/guide.js", import.meta.url).href) as { TOPICS: readonly string[]; topicText: (t: string) => string; EXAMPLE: RegExp };
+  const examples = g.TOPICS.flatMap((t) => g.topicText(t).split("\n")).map((line) => g.EXAMPLE.exec(line)).filter((m): m is RegExpExecArray => !!m && m[1] === "apply_effect").map((m) => JSON.parse(m[2]) as Json);
+  expect(examples.length >= 2, "the guide has apply_effect examples", examples.length);
+  for (const ex of examples) {
+    const l = await solid("Guide fx");
+    const r = await c.call("apply_effect", { ...ex, layer_id: l });
+    expect(!r.isError, `guide example ${ex.match_name} applies`, r.value);
+  }
+});
+
 check("masks and shape layers draw where asked", async () => {
   const l = await solid("L");
   await call("add_mask", { layer_id: l, shape: { type: "rect", size: [400, 200] } });

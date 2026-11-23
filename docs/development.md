@@ -138,7 +138,7 @@ Use semantic versioning: a breaking change (a removed or renamed tool or argumen
 |---|---|
 | `static-checks.ts` | `host.jsx` is up to date and parses; ES3 lint of `host/`; `tools/list` matches the host commands; `EXPECTED_TOOLS` |
 | `mock-host.test.ts` | Layer, timeline (split, delete/insert time, align to markers, trim comp), comp, marker, item and replace-source commands against a fake After Effects DOM |
-| `mock-camera.test.ts` | Camera maths, moves, rigs, shake, look-at, 3D layers, lights, linking and 3D views against a fake DOM |
+| `mock-camera.test.ts` | Camera maths, moves, rigs, shake, look-at, 3D layers, lights, linking and 3D views against a fake DOM; effect dropdowns and parameter errors |
 | `mock-shapes.test.ts` | Path values from shape specs, the ellipse vertex order, get_keyframes round trips, comp motion blur |
 | `mock-design.test.ts` | Bounds and alignment maths (rotation, scale, parents, animated and separated position), anchor points, layer switches, solids, precompose leave-attributes, layer style and shape validation |
 | `mock-keyframes.test.ts` | `edit_keyframes`, `copy_animation`, `stagger` fidelity, separate dimensions, auto-orient; the fake property models the ease-switches-to-bezier and roving re-time behaviors |

@@ -225,33 +225,50 @@ C.add_property = function (a: Args["add_property"]) {
   return { name: np.name, match_name: np.matchName, path: path };
 };
 
+// The names of the parameters an effect or modifier takes (no groups or headings), for an error about a name that is
+// not one of them: the model can then fix the call from the error instead of guessing again.
+function paramNames(owner: PropertyBase): string {
+  var g = owner as PropertyGroup, out: string[] = [], p: any, i;
+  for (i = 1; i <= g.numProperties; i++) {
+    p = g.property(i);
+    if (p.propertyType === PropertyType.INDEXED_GROUP || p.propertyType === PropertyType.NAMED_GROUP || p.propertyValueType === PropertyValueType.NO_VALUE) continue;
+    if (out.length === 40) return out.join(", ") + " and more (list_properties lists them all)";
+    out.push(p.name);
+  }
+  return out.join(", ");
+}
+
 // Set named / match-named / 1-based-index parameters on a newly added effect or modifier; on any failure remove it again.
 function setParams(owner: PropertyBase, params: { [name: string]: any }, what: string, numericKeys?: boolean): void {
-  var key, p, errs: string[] = [];
+  var key, p, errs: string[] = [], unknown = false, names: string;
   for (key in params) {
     if (!params.hasOwnProperty(key)) continue;
     try {
       p = owner.property(numericKeys && /^\d+$/.test(key) ? parseInt(key, 10) : key);
-      if (!p) throw new Error("no such parameter");
+      if (!p) { unknown = true; throw new Error("no such parameter"); }
       p.setValue(coerce(p, params[key]));
     } catch (e: any) { errs.push(key + ": " + (e && e.message ? e.message : String(e))); }
   }
-  if (errs.length) { owner.remove(); fail("BAD_ARGS", what + " params failed: " + errs.join("; "), "Use list_properties on an existing " + what.toLowerCase() + " to see parameter names"); }
+  if (errs.length) {
+    names = unknown ? paramNames(owner) : "";
+    owner.remove();
+    fail("BAD_ARGS", what + " params failed (it was not added): " + errs.join("; "), names ? "Its parameters: " + names : "Use list_properties on an existing " + what.toLowerCase() + " to see parameter names");
+  }
 }
 
 // Change an existing effect's params: every name and value is checked before any changes, and unlike setParams the
 // effect stays when one is wrong (it was there before this call).
 function setEffectParams(e: PropertyGroup, params: { [name: string]: any }): void {
-  var key: string, p: any, errs: string[] = [], todo: { p: any; v: any }[] = [], i;
+  var key: string, p: any, errs: string[] = [], todo: { p: any; v: any }[] = [], i, unknown = false;
   for (key in params) {
     if (!params.hasOwnProperty(key)) continue;
     try {
       p = e.property(/^\d+$/.test(key) ? parseInt(key, 10) : key);
-      if (!p) throw new Error("no such parameter");
+      if (!p) { unknown = true; throw new Error("no such parameter"); }
       todo.push({ p: p, v: coerce(p, params[key]) });
     } catch (x: any) { errs.push(key + ": " + (x && x.message ? x.message : String(x))); }
   }
-  if (errs.length) fail("BAD_ARGS", "Effect params failed, nothing changed: " + errs.join("; "), "list_properties shows the names");
+  if (errs.length) fail("BAD_ARGS", "Effect params failed, nothing changed: " + errs.join("; "), unknown ? "Its parameters: " + paramNames(e) : "list_properties shows the names");
   for (i = 0; i < todo.length; i++) {
     if (todo[i].p.numKeys > 0) fail("BAD_ARGS", todo[i].p.name + " is keyframed", "Use set_keyframes or edit_keyframes");
   }

@@ -228,6 +228,8 @@ const HOWTO = {
     "- Effects: find_effects for the match name, then apply_effect (params by name, match name or 1-based index; a failed param removes the effect); edit_effect by the index get_layer lists.",
     "  find_effects {\"query\":\"blur\"}",
     "  apply_effect {\"layer_id\":4,\"match_name\":\"ADBE Gaussian Blur 2\",\"params\":{\"Blurriness\":20}}",
+    "- Gradient backgrounds and fills: the Gradient Ramp effect (linear or radial, two colours; 4-Color Gradient for four):",
+    "  apply_effect {\"layer_id\":4,\"match_name\":\"ADBE Ramp\",\"params\":{\"Start of Ramp\":[960,0],\"Start Color\":[0.1,0.12,0.3],\"End of Ramp\":[960,1080],\"End Color\":[0.02,0.02,0.05],\"Ramp Shape\":\"Radial Ramp\"}}",
     "- Layout: align_layers aligns and distributes by visible content; set_anchor moves the anchor onto the content (scale from the bottom, rotate from a corner):",
     "  align_layers {\"layer_ids\":[4,5,6],\"align\":\"v_center\",\"distribute\":\"horizontal\"}",
     "  set_anchor {\"layer_id\":8,\"anchor\":\"bottom\"}",
