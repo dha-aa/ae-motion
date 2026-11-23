@@ -228,6 +228,8 @@ const HOWTO = {
     "- Effects: find_effects for the match name, then apply_effect (params by name, match name or 1-based index; a failed param removes the effect); edit_effect by the index get_layer lists.",
     "  find_effects {\"query\":\"blur\"}",
     "  apply_effect {\"layer_id\":4,\"match_name\":\"ADBE Gaussian Blur 2\",\"params\":{\"Blurriness\":20}}",
+    "- Gradient backgrounds and fills: the Gradient Ramp effect (linear or radial, two colours; 4-Color Gradient for four):",
+    "  apply_effect {\"layer_id\":4,\"match_name\":\"ADBE Ramp\",\"params\":{\"Start of Ramp\":[960,0],\"Start Color\":[0.1,0.12,0.3],\"End of Ramp\":[960,1080],\"End Color\":[0.02,0.02,0.05],\"Ramp Shape\":\"Radial Ramp\"}}",
     "- Layout: align_layers aligns and distributes by visible content; set_anchor moves the anchor onto the content (scale from the bottom, rotate from a corner):",
     "  align_layers {\"layer_ids\":[4,5,6],\"align\":\"v_center\",\"distribute\":\"horizontal\"}",
     "  set_anchor {\"layer_id\":8,\"anchor\":\"bottom\"}",
@@ -279,22 +281,6 @@ const HOWTO = {
     "- Sound follows the story, not every cut: pass find_sound_cues events for the moments that matter (importance 0 mutes one); a big reveal can take a riser that peaks on it (add_sfx align peak, lead_in), a short silence just before it (duck_music dips) and one impact. Silence is a valid choice.",
     "- Delivery: render_start deliver (about -14 LUFS), only when the user asks for a render.",
   ],
-  workarounds: [
-    "For what ae-motion has no tool for: other ways to get it done. Pick the best route the client really has (check that a tool or program exists before relying on it), tell the user which route you are taking, and check the result (preview_frame) before saying it is done.",
-    "Routes besides ae-motion's tools: other tools the client has (image, video, voice, music or sound generators; transcription), a shell with ffmpeg or Python, the user's own files, or a step the user does in After Effects. Files made elsewhere go in a folder ae-motion may read (by default the home or temp folder), then import_footage.",
-    "- Media (photos, footage, voice, music, sound effects, icons): the user's files; a generator tool the client has; or make it. ffmpeg makes tones, noise whooshes, test clips and stills: `ffmpeg -f lavfi -i \"sine=frequency=880:duration=0.3\" pop.wav`, `ffmpeg -f lavfi -i \"anoisesrc=d=1:c=pink\" -af \"afade=t=in:d=0.5,afade=t=out:st=0.5:d=0.5\" whoosh.wav`, `ffmpeg -ss 1 -i clip.mp4 -frames:v 1 still.png`. Python can draw images. After Effects draws text, shapes and generated effects (Gradient Ramp, Fractal Noise).",
-    "- Tracking: with a shell and OpenCV (`python3 -c \"import cv2\"` works), track the footage file and key a null parented to the footage layer with set_keyframes (t = frame / fps; positions in the footage's pixels, which is the parent's own space). Or the user tracks in After Effects, and the tools use the result (get_keyframes, copy_animation, link_layers).",
-    "- Cutting out a subject: green or blue screen with a keying effect (find_effects \"key\"); a simple shape with an animated mask (set_keyframes on ADBE Mask Shape); a segmentation tool the client has, output as a PNG sequence with alpha (import_footage as sequence); or Roto Brush by the user.",
-    "- Stabilizing: ffmpeg's deshake filter (`ffmpeg -i in.mp4 -vf deshake out.mp4`), or Warp Stabilizer by the user. Removing an object: cover it with a patch (duplicate_layer, add_mask, shift its position), or Content-Aware Fill by the user.",
-    "- Gradient colours cannot be set by script (shape fills and strokes, the gradient_overlay style): use the Gradient Ramp effect (linear or radial, two colours) or 4-Color Gradient (ADBE 4ColorGradient):",
-    "  apply_effect {\"layer_id\":4,\"match_name\":\"ADBE Ramp\",\"params\":{\"Start of Ramp\":[960,0],\"Start Color\":[0.1,0.12,0.3],\"End of Ramp\":[960,1080],\"End Color\":[0.02,0.02,0.05],\"Ramp Shape\":\"Radial Ramp\"}}",
-    "- Speech for captions: a transcription tool the client has (or Whisper, if installed) gives words with times; then one add_layer text per line with in / out. Beats, peaks and loudness: the audio tools.",
-    "- A closer look than preview_frame: extract stills from a video file with ffmpeg and view them, if the client can read images; render_start draft only when the user asked for a render.",
-    "- Plugins that are not installed: rebuild the look from built-in effects (find_effects), or ask the user. Fonts: installed ones (find_fonts); ask the user to install another.",
-    "- Undoing: change it back with the tools. Before a risky change to a saved project, save_project snapshot: true; open_project on that copy restores it exactly. Or the user presses Undo.",
-    "- Essential Graphics (.mogrt), Media Encoder: no tool yet; render_start renders (deliver: an H.264 MP4).",
-    "- Inside After Effects, for what no tool covers: run_jsx, if the user turned it on (AE_MCP_ALLOW_JSX=1).",
-  ],
   "3d": [
     "Coordinates: x right, y down, z into the screen; a camera in front of the comp has negative z.",
     "- 3D layers: set_3d (position, z, rotation, orientation, scale, material; keys with time):",
@@ -316,13 +302,12 @@ const HOWTO = {
 } as const;
 
 /** Every topic the guide tool serves, in the order it lists them. */
-export const TOPICS = ["tools", "workflow", "workarounds", "design", "motion", "text", "graphics", "properties", "edit", "audio", "3d"] as const;
+export const TOPICS = ["tools", "workflow", "design", "motion", "text", "graphics", "properties", "edit", "audio", "3d"] as const;
 export type Topic = (typeof TOPICS)[number];
 
 /** What each topic covers, for the tools map's header. */
 const ABOUT: Record<Exclude<Topic, "tools">, string> = {
   workflow: "build loop, batch, review, render",
-  workarounds: "other ways to get done what ae-motion has no tool for: other tools, a shell, the user",
   design: "the design rules",
   motion: "animation tools",
   text: "type",
