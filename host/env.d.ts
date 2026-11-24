@@ -31,8 +31,10 @@ interface HostArgs {
   /** max_edge: the long side the returned image needs, in px (the render may be coarser than full resolution). */
   preview_frame: { comp_id: number; time: number; output_path: string; max_edge?: number };
   prepare_render: { comp_id: number; software?: boolean };
-  /** review_motion's small-text check, run by the server after review_motion in a call of its own. */
-  review_small_text: { comp_id: number; min_text?: number };
+  /** review_motion's TextDocument reads (small text, old reveals' lengths), run by the server before it in a call of its own. */
+  review_text: { comp_id: number; min_text?: number };
+  /** reveal_units: review_text's text lengths by layer id, for reveals from before 2.8.2 (no unit count of their own). */
+  review_motion: Args["review_motion"] & { reveal_units?: { [layerId: string]: number } };
 }
 
 // Members the After Effects 22.0 declarations lack: newer APIs (feature-checked before use) and undocumented ones.

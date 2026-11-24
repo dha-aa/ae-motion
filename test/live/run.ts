@@ -443,7 +443,7 @@ check("animate, text_reveal and review_motion run on real layers", async () => {
 
 // After Effects 27.0 (host/CLAUDE.md): TextDocuments read inside review_motion's call corrupted ExtendScript's memory.
 // The crash needs a big comp, so this checks the split itself on real text: an expression-driven and a keyed Source
-// Text, small text still found through review_small_text, run after run.
+// Text, small text still found through review_text, run after run.
 check("review_motion finds small text with its sizes read in a call of their own, run after run", async () => {
   const text = async (name: string, s: string, size: number): Promise<number> => (await call("add_layer", { comp_id: comp, kind: "text", options: { name, text: s, text_style: { size } } })).id;
   const small = await text("Fine print", "fine print", 14);
