@@ -96,10 +96,9 @@ function makeWorld() {
   class Shape {} class KeyframeEase { constructor(speed, influence) { this.speed = speed; this.influence = influence; } }
   class MarkerValue { constructor(c) { this.comment = c; } }
   const layers = new Map();
-  // After Effects 27.0 (host/CLAUDE.md): TextDocuments read in the same command before review_motion's scene checks
-  // lay text out corrupted ExtendScript's memory. The log counts, per command, the TextDocuments read and the
-  // layouts (sourceRectAtTime) that came after one.
-  const docLog = { reads: 0, layoutsAfter: 0 };
+  // After Effects 27.0 (host/CLAUDE.md): any TextDocument read inside a long, busy command like review_motion
+  // corrupted ExtendScript's memory. The log counts the TextDocuments each command reads.
+  const docLog = { reads: 0 };
   const comp = Object.assign(new CompItem(), {
     id: 1, name: "Main", width: 1920, height: 1080, duration: 6, frameRate: FPS, frameDuration: 1 / FPS, numLayers: 0, _layers: [],
     markerProperty: new Prop("ADBE Marker", null), layer: (i) => comp._layers[i - 1],
@@ -118,12 +117,6 @@ function makeWorld() {
       threeDLayer: false, blendingMode: 5212, trackMatteType: 5012, isTrackMatte: false });
     l.root = root; l.tg = tg;
     l.property = (k) => root.property(k);
-    // sourceRectAtTime, however a test sets it, is logged as a layout (see docLog)
-    let rect = Object.prototype.hasOwnProperty.call(l, "sourceRectAtTime") ? l.sourceRectAtTime : undefined;
-    Object.defineProperty(l, "sourceRectAtTime", {
-      get: () => (rect ? (...a) => { if (docLog.reads) docLog.layoutsAfter++; return rect(...a); } : undefined),
-      set: (fn) => { rect = fn; },
-    });
     Object.defineProperty(l, "numProperties", { get: () => root.numProperties });
     if (top) comp._layers.unshift(l); else comp._layers.push(l);
     layers.set(l.id, l); reindex();
@@ -155,7 +148,7 @@ function makeWorld() {
     PropertyValueType: { OneD: 1, TwoD: 2, ThreeD: 3, COLOR: 4, TwoD_SPATIAL: 5, ThreeD_SPATIAL: 6, SHAPE: 7, TEXT_DOCUMENT: 8, NO_VALUE: 9, MARKER: 10, CUSTOM_VALUE: 11 } };
   vm.createContext(ctx);
   vm.runInContext(SRC, ctx);
-  const call = (cmd, args = {}) => { docLog.reads = 0; docLog.layoutsAfter = 0; return JSON.parse(ctx.AEM.dispatch(JSON.stringify({ cmd, args }))); };
+  const call = (cmd, args = {}) => { docLog.reads = 0; return JSON.parse(ctx.AEM.dispatch(JSON.stringify({ cmd, args }))); };
   return { call, comp, solid, text, mesh, precomp, FootageItem, MarkerValue, docLog };
 }
 
@@ -475,8 +468,8 @@ t("review_motion: flags linear keys, unison starts, holds, pop-ons and small tex
   assert.equal(types("pops_on").length, 0, "info notes are counted, not listed"); assert.equal(r.stats.info.pops_on, 1);
   const full = ok(w.call("review_motion", { comp_id: 1, all: true }));
   assert.equal(full.issues.find((i) => i.type === "pops_on").layer_id, late.id);
-  assert.equal(types("small_text").length, 0, "small text is review_small_text's (the server merges it in)");
-  assert.equal(ok(w.call("review_small_text", { comp_id: 1 })).issues[0].layer_id, small.id);
+  assert.equal(types("small_text").length, 0, "small text is review_text's (the server merges it in)");
+  assert.equal(ok(w.call("review_text", { comp_id: 1 })).issues[0].layer_id, small.id);
   assert.equal(r.stats.on_beat, 1);
   assert.equal(r.issues[0].severity, "warn", "warnings first");
   // after animate with springs and a stagger, the same layers are clean
@@ -486,7 +479,7 @@ t("review_motion: flags linear keys, unison starts, holds, pop-ons and small tex
   assert.equal(r2.issues.filter((i) => i.type === "linear" || i.type === "unison").length, 0, JSON.stringify(r2.issues));
 });
 
-t("review_motion reads no TextDocument in its call (After Effects 27.0 crash); review_small_text reads them on its own; Source Text keys still count", () => {
+t("review_motion reads no TextDocument in its call (After Effects 27.0 crash); review_text reads them on its own; Source Text keys still count", () => {
   const w = makeWorld();
   const small = w.text("Fine print", "fine print", 14);
   const keyed = w.text("Keyed", "one");
@@ -495,9 +488,25 @@ t("review_motion reads no TextDocument in its call (After Effects 27.0 crash); r
   const r = ok(w.call("review_motion", { comp_id: 1, all: true }));
   assert.equal(w.docLog.reads, 0, "review_motion read a TextDocument");
   assert.equal(r.stats.moves, 1, "the Source Text key change is still a move");
-  const s = ok(w.call("review_small_text", { comp_id: 1 }));
-  assert.ok(w.docLog.reads > 0 && w.docLog.layoutsAfter === 0, "review_small_text reads font sizes and lays nothing out");
+  const s = ok(w.call("review_text", { comp_id: 1 }));
+  assert.ok(w.docLog.reads > 0, "review_text reads the font sizes");
+  assert.equal(s.reveal_units, undefined, "no reveal from before 2.8.2: no lengths");
   assert.deepEqual(s.issues.map((i) => [i.type, i.layer_id, i.size]), [["small_text", small.id, 14]]);
+});
+
+t("a reveal from before 2.8.2 (no unit count): review_text reads its text length, review_motion takes it and reads no TextDocument", () => {
+  const w = makeWorld(), l = w.text("Words", "one two three four");
+  ok(w.call("text_reveal", { layer_id: l.id, style: "rise", by: "words", time: 1, duration: 0.4, stagger: 0.1 }));
+  const amt = l.property("ADBE Text Properties").property("ADBE Text Animators").property(1).property("ADBE Text Selectors").property(1).property("ADBE Text Expressible Amount");
+  assert.ok(/,k=4;/.test(amt.expression)); amt.expression = amt.expression.replace(/,k=\d+/, "");
+  l.outPoint = 2.5;
+  const s = ok(w.call("review_text", { comp_id: 1 }));
+  assert.deepEqual(s.reveal_units, { [l.id]: 18 }, "the text's length, the old upper bound");
+  const r = ok(w.call("review_motion", { comp_id: 1, reveal_units: s.reveal_units }));
+  assert.equal(w.docLog.reads, 0, "review_motion read a TextDocument");
+  assert.ok(r.issues.some((i) => i.type === "cut_off"), "18 units end at 3.1 s, after the 2.5 s out point: " + JSON.stringify(r.issues));
+  // find_sound_cues, a call of its own, still reads the length itself
+  near(ok(w.call("find_sound_cues", { comp_id: 1 })).cues.find((c) => c.event === "reveal").duration, 2.1, "0.4 + 17 * 0.1");
 });
 
 t("review_motion: a late first move, an invisible wobble is still a hold, text across the title-safe margin", () => {
@@ -534,8 +543,8 @@ t("review_motion in a vertical comp: text in the bottom 20% is under the apps' U
   const r = ok(w.call("review_motion", { comp_id: 1, all: true }));
   const safe = r.issues.filter((i) => i.type === "outside_safe");
   assert.equal(safe.length, 1, JSON.stringify(r.issues)); assert.ok(/social apps/.test(safe[0].msg));
-  assert.equal(ok(w.call("review_small_text", { comp_id: 1 })).issues.length, 0, "40 px is fine on a 1080 px short side (minimum 32)");
-  assert.equal(ok(w.call("review_small_text", { comp_id: 1, min_text: 41 })).issues.length, 1, "min_text overrides it");
+  assert.equal(ok(w.call("review_text", { comp_id: 1 })).issues.length, 0, "40 px is fine on a 1080 px short side (minimum 32)");
+  assert.equal(ok(w.call("review_text", { comp_id: 1, min_text: 41 })).issues.length, 1, "min_text overrides it");
 });
 
 t("review_motion scene checks: a layer hidden behind a closer opaque one, off screen, text under a letterbox bar", () => {
